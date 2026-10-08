@@ -1,4 +1,4 @@
-# code-quality-skill
+# code-quality-skills
 
 A bundle of engineering skills (Matt Pocock's `mattpocock/skills`), vendored under `.agents/skills/` and pinned in `skills-lock.json`.
 
@@ -6,7 +6,7 @@ A bundle of engineering skills (Matt Pocock's `mattpocock/skills`), vendored und
 
 ### Issue tracker
 
-Issues and specs live as GitHub issues in `Gott50/code-quality-skill`, driven by the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues and specs live as GitHub issues in `Gott50/code-quality-skills`, driven by the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

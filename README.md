@@ -1,1 +1,1 @@
-# code-quality-skill
+# code-quality-skills
