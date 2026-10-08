@@ -89,23 +89,22 @@ Each of these was wrong in the first draft; the evidence is the run, not an opin
 
 ## Observations that are not contract changes
 
-- **`.gitignore` is nobody's job.** Recipe A adds dependencies and the fixture committed
-  `node_modules/`. The port ticket should decide whether a `gitignore` recipe (or a line in the
-  formatter recipe) owns `node_modules/`, `coverage/`, `reports/`, `.stryker-tmp/`.
 - **Recipe A is Bun-gated** (`when.packageManager: [bun]`); npm and pnpm variants are the port
   ticket's, per the non-Bun-equivalents research.
 - **`needs` (recipe→recipe dependency) was considered and not forced.** Recipe A is self-contained
   and Recipe B orders last by `priority`; a `needs` field earns its place only when a recipe needs
   another's *output*, which these two do not. Left out rather than speculated in.
 
-## Open questions for the human
+## Decisions taken with the human
 
-1. **Frontmatter token style.** Bare (`[typescript]`, `{ file: package.json }`) keeps the
-   frontmatter readable and costs the reader ~15 lines of quoting regex; JSON-quoted
-   (`["typescript"]`, `{ "file": "package.json" }`) makes the reader a plain `JSON.parse` and the
-   frontmatter uglier. The prototype kept bare tokens.
-2. **Who owns `.husky/pre-commit`.** Recipe A wires husky and writes the hook. When the lint and
-   mutation recipes land they will want lines in the same file — marker-scoped merges already
-   support that, or a `git-hooks` recipe could own the file and the others `needs` it.
-3. **`gates` as the field name** — versus `checks` or `projectCommands` — for the commands the
-   project exposes after a recipe lands.
+1. **Frontmatter token style: bare tokens.** `[typescript]`, `{ file: package.json }` stay; the
+   reader quotes bare tokens before `JSON.parse`. Readability wins over a plain `JSON.parse`.
+2. **Shared files: whoever needs a line merges into it, and every block names its recipe.** No
+   `git-hooks` recipe owning `.husky/pre-commit`; each hook-using recipe merges its own
+   marker-scoped block. The contract now states the attribution rule explicitly: a merged block's
+   marker names the `<id>`, so a reader can see which recipe owns which lines and update or remove
+   exactly that block.
+3. **`.gitignore`: each recipe adds its own lines, marker-scoped.** No separate `gitignore` recipe.
+   Recipe A now merges `node_modules/` under `code-quality:biome-assist`; the coverage and mutation
+   recipes will add `coverage/`, `reports/`, `.stryker-tmp/` under their own markers. Verified: the
+   fixture no longer stages `node_modules/`.
