@@ -16,6 +16,11 @@ files:
     action: create
     scope: root
     template: templates/oxlint-anti-slop/oxlint.config.ts
+  - path: oxlint.config.ts
+    action: create
+    scope: member
+    memberMode: extends-root
+    template: templates/oxlint-anti-slop/oxlint.member.config.ts
   - path: tools/oxlint/anti-slop/index.ts
     action: create
     scope: root
@@ -116,10 +121,11 @@ verify:
 ## Apply
 
 1. **`oxlint.config.ts`** — create from `templates/oxlint-anti-slop/oxlint.config.ts`. It registers the vendored plugin as a JS plugin and turns on its 15 rules plus the size and complexity caps (`max-lines: 400`, `max-lines-per-function: 60`, `max-statements: 20`, `complexity: 10`). Test files are exempted from the line and statement caps through `overrides`: they are assertion-heavy, and the caps force coverage-degrading condensation.
-2. **`tools/oxlint/anti-slop/**`** — create the 19 vendored files. The plugin is self-contained: it imports only `@oxlint/plugins` and its own siblings. `effect/` is deliberately not vendored — the plugin entry registers only the 15 rules under `rules/`, and nothing imports `effect/`.
-3. **`package.json`** — merge from `templates/oxlint-anti-slop/package.json`: add the `oxlint` and `@oxlint/plugins` devDependencies and the `lint` script. Existing keys are never overwritten; a differing value is a collision the plan must show.
-4. **`.husky/pre-commit`** — merge from `templates/oxlint-anti-slop/pre-commit.block`, inside this recipe's marker pair. The hook is inert until `husky` is installed and `prepare` is wired; the `biome-assist` recipe does that, and this recipe's `package.json` fragment does not repeat it.
-5. **`bun install`** — installs the two devDependencies.
+2. **Workspace member `oxlint.config.ts`** — create from `templates/oxlint-anti-slop/oxlint.member.config.ts`. A nested config replaces the root config for its subtree rather than merging with it, so the stub inherits the root base by spreading its extendable fields (`rules`, `plugins`, `overrides`) and re-declares `jsPlugins`. It cannot use `extends: [baseConfig]`: oxlint rejects a relative `jsPlugins` specifier in a config reached through `extends` ("Relative JS plugin specifiers are not supported in configs provided via `extends`"), and the root base carries one. The member's own `jsPlugins` specifier resolves relative to the config file, so it names the vendored plugin through `{{root}}`. Skipped in a single-package repo, where the root entry writes the same path.
+3. **`tools/oxlint/anti-slop/**`** — create the 19 vendored files. The plugin is self-contained: it imports only `@oxlint/plugins` and its own siblings. `effect/` is deliberately not vendored — the plugin entry registers only the 15 rules under `rules/`, and nothing imports `effect/`.
+4. **`package.json`** — merge from `templates/oxlint-anti-slop/package.json`: add the `oxlint` and `@oxlint/plugins` devDependencies and the `lint` script. Existing keys are never overwritten; a differing value is a collision the plan must show.
+5. **`.husky/pre-commit`** — merge from `templates/oxlint-anti-slop/pre-commit.block`, inside this recipe's marker pair. The hook is inert until `husky` is installed and `prepare` is wired; the `biome-assist` recipe does that, and this recipe's `package.json` fragment does not repeat it.
+6. **`bun install`** — installs the two devDependencies.
 
 Two gotchas the config carries:
 
@@ -130,12 +136,12 @@ Two gotchas the config carries:
 
 ## Idempotency
 
-- Every `create` is byte-identical on re-run, so it is a no-op. A local edit shows as drift and is reported, not overwritten.
+- Every `create` — the root and member `oxlint.config.ts` and the vendored files alike — is byte-identical on re-run, so it is a no-op. A local edit shows as drift and is reported, not overwritten.
 - `package.json` and `.husky/pre-commit` are `merge`s: re-running replaces this recipe's marker block and re-adds only missing keys.
 
 ## Undo
 
-- Delete `oxlint.config.ts`.
+- Delete `oxlint.config.ts` (and the member `oxlint.config.ts` in a workspace).
 - Delete `tools/oxlint/anti-slop/`; delete `tools/` if it is empty.
 - Remove the `oxlint` and `@oxlint/plugins` devDependencies and the `lint` script from `package.json` — only where this recipe added them.
 - Remove the `code-quality:oxlint-anti-slop` block from `.husky/pre-commit`; delete the file if the block is all it holds.

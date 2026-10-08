@@ -333,23 +333,28 @@ function detectPackageManager(root, rootManifest) {
   return { name: null, source: null, evidence: null };
 }
 
+// `rootPrefix` is the relative path from the member back to the workspace root (`../..` for
+// `packages/a`), the value a `memberMode: extends-root` stub substitutes for `{{root}}`. The
+// detector reports it so the renderer never does path arithmetic (RECIPE-CONTRACT.md → Substitution).
+function memberEntry(root, path) {
+  const rootPrefix = path
+    .split("/")
+    .map(() => "..")
+    .join("/");
+  return { path, name: readJson(join(root, path, "package.json"))?.name ?? null, rootPrefix };
+}
+
 function detectWorkspace(root, rootManifest, manager) {
   const pnpmFile = join(root, "pnpm-workspace.yaml");
   if (isFile(pnpmFile)) {
     const patterns = readPnpmWorkspace(pnpmFile) ?? [];
-    const members = expandMemberGlobs(root, patterns).map((path) => ({
-      path,
-      name: readJson(join(root, path, "package.json"))?.name ?? null,
-    }));
+    const members = expandMemberGlobs(root, patterns).map((path) => memberEntry(root, path));
     return { kind: members.length > 0 ? "workspace" : "single", declaration: "pnpm-workspace.yaml", patterns, members };
   }
   const ws = rootManifest?.workspaces;
   const patterns = Array.isArray(ws) ? ws : Array.isArray(ws?.packages) ? ws.packages : null;
   if (patterns && patterns.length > 0) {
-    const members = expandMemberGlobs(root, patterns).map((path) => ({
-      path,
-      name: readJson(join(root, path, "package.json"))?.name ?? null,
-    }));
+    const members = expandMemberGlobs(root, patterns).map((path) => memberEntry(root, path));
     return { kind: members.length > 0 ? "workspace" : "single", declaration: "package.json#workspaces", patterns, members };
   }
   return { kind: "single", declaration: null, patterns: [], members: [] };
