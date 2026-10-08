@@ -145,7 +145,7 @@ A re-run is the same `classify()` call with the current library:
 ## What it proved
 
 **The real fixture run** (`prototype/manifest-transcript.mjs` → `prototype/manifest-transcript.txt`,
-8 scenarios, 18/18 checks, exit 0, re-run byte-identical). A scratch Bun/TypeScript package, the
+8 scenarios, 15 checks, exit 0, re-run byte-identical). A scratch Bun/TypeScript package, the
 real `biome-assist` and `tsconfig-strict` recipes, the real templates:
 
 | # | Scenario | Result |
