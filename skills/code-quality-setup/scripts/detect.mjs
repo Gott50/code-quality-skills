@@ -217,7 +217,10 @@ function isFile(path) {
   }
 }
 
-// Bounded walk: returns paths relative to `dir`, skipping the usual build/vendor directories.
+// Bounded walk: returns paths relative to `dir`, skipping the usual build/vendor directories and
+// every dot-directory. Dot-directories are tooling, not project source — and the installed skill
+// itself lives in one (`.agents/skills/code-quality-setup/`), so walking into them would report
+// `javascript: true` for a repo whose only `.mjs` is this script.
 function walk(dir, { maxDepth = 6, maxEntries = 20000 } = {}) {
   const out = [];
   const queue = [{ abs: dir, rel: "", depth: 0 }];
@@ -232,7 +235,7 @@ function walk(dir, { maxDepth = 6, maxEntries = 20000 } = {}) {
     for (const e of entries) {
       const childRel = rel === "" ? e.name : `${rel}/${e.name}`;
       if (e.isDirectory()) {
-        if (SKIP_DIRS.has(e.name) || depth >= maxDepth) continue;
+        if (SKIP_DIRS.has(e.name) || e.name.startsWith(".") || depth >= maxDepth) continue;
         queue.push({ abs: join(abs, e.name), rel: childRel, depth: depth + 1 });
       } else if (e.isFile()) {
         out.push(childRel);
@@ -616,6 +619,9 @@ function selectRecipes(recipes, ctx) {
   for (let guard = 0; guard < usable.length + 2; guard++) {
     let changed = false;
     for (const id of [...selection]) {
+      // The snapshot is taken before the pass; a recipe dropped earlier in it must not be
+      // processed again, or a mutual conflict records the same loser twice.
+      if (!selection.has(id)) continue;
       const r = byId.get(id);
       for (const other of r.conflicts?.recipes ?? []) {
         if (!selection.has(other)) continue;
