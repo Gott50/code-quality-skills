@@ -1,6 +1,6 @@
 # Recipe contract
 
-A **recipe** is one Markdown file at `references/recipes/<id>.md`: YAML frontmatter that `scripts/detect.mjs` reads, plus a body the agent executes. This file is the single source of truth for both halves. `detect.mjs` MUST reject a recipe that breaks a rule here.
+A **recipe** is one Markdown file at `references/recipes/<id>.md`: YAML frontmatter that `scripts/detect.mjs` reads, plus a body the agent executes. This file is the single source of truth for both halves. `detect.mjs` MUST reject a recipe that breaks a **frontmatter** rule here. A rule about a *template's contents* — the `{{root}}` scoping rule below is the only one — is enforced at review time instead, because the detector reads frontmatter and never opens a template. The cheap detector check for the day it does: open each `files[]` entry's template and refuse `{{root}}` in a `root`-scoped entry.
 
 The library is language-agnostic; a recipe is language-specific. Everything below is the shape every language's recipes share.
 
