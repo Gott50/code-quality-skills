@@ -54,9 +54,9 @@ the module directly.
 | `environment` | The detected stack the recipes were applied against. A later run can tell the ground moved (the package manager changed, a single package became a workspace) without re-deriving it. |
 | `recipes[].id` | The recipe, by the same id the contract uses. |
 | `recipes[].skillVersion` | The skill version at the moment *this* recipe was applied — a recipe applied under an older skill stays visible after the skill is updated. |
-| `recipes[].recipeHash` | The recipe file's content hash at apply time. This is the recipe's **version**: it changes exactly when the recipe's output shape changes, and it cannot go stale the way a hand-maintained `version:` field can. |
+| `recipes[].recipeHash` | The recipe's **version**: the hash of the recipe `.md` **and the content it owns in each file** (its templates). It changes exactly when the recipe's output shape changes — including a template-only change, which a `.md`-only hash misses — and it cannot go stale the way a hand-maintained `version:` field can. |
 | `recipes[].appliedAt` | Per-recipe, because recipes are applied one at a time and a failed verify leaves one unrecorded. |
-| `recipes[].files[]` | The files the recipe wrote, with the action and the hash of the rendered content — the whole file for `create`, the marked block for `merge`. This is the ownership index the drift report needs. |
+| `recipes[].files[]` | The files the recipe wrote, with the action and the hash of the content it **owns** in each — the whole file for `create`, the marked block or the named JSON leaves for `merge`. This is the ownership index the drift report needs. |
 | `declined[]` | A decline is a decision, not an absence (see below). |
 
 **The version question.** The ticket asks for "the skill and recipe version each was applied at".
@@ -125,7 +125,8 @@ A re-run is the same `classify()` call with the current library:
 - `new` recipes are proposed for apply.
 - `intact` recipes are reported as already applied — the no-op.
 - `update` recipes are reported as a **library-side re-render**, not drift: the file is untouched,
-  the recipe changed. This is the distinction the recorded `recipeHash`/file hash buys.
+  the recipe changed. This is the distinction the recorded per-file hash buys — the file still
+  matches what the skill wrote, but the library's render has moved.
 - `drifted` and `missing` recipes are reported with their diff, and applied only on approval.
 - `stale` recipes (in the manifest, no longer selected) are reported for removal, never removed
   silently.
@@ -161,11 +162,11 @@ real `biome-assist` and `tsconfig-strict` recipes, the real templates:
 world: 7 walkthroughs, 35 steps, every step changes the state panel, no page errors. It is the
 artifact to click through; the transcript is the proof.
 
-**A finding the transcript forced.** Scenario 6 bumps a *template*, and `recipeChanged` stays
-`false` — the recipe's `.md` hash does not cover its templates. So `recipeHash` is only a coarse
-"which recipe revision" marker; the **per-file recorded hash** is the authoritative update signal.
-If the recipe version is meant to answer "did this recipe's output shape change", it must cover the
-templates too — which is the decision taken below.
+**A finding the transcript forced.** The first cut hashed the recipe `.md` alone, and scenario 6
+bumps a *template*: `recipeChanged` stayed `false` while `biome.json` read `update`. A `.md`-only
+hash cannot answer "did this recipe's output shape change". The library builder now hashes the
+recipe's whole surface — the `.md` plus the content it owns in each file — so scenario 6 reports
+`recipeChanged=true`, and the per-file recorded hash stays the authoritative update signal.
 
 ## Decisions taken with the human
 

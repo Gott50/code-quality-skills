@@ -140,19 +140,24 @@ const detailSections = (rs) =>
     .join("\n\n");
 
 /**
- * The library: [{ id, hash: fnv1a(recipeFileText), files: [{ path, action, content }] }].
+ * The library: [{ id, hash, files: [{ path, action, content }] }].
  * `content` is the rendered template — the whole file for `create`, the marked block for a
  * `markers` merge, the JSON fragment for a `json` merge. Member-scope entries are dropped in a
  * single-package repo (the root entry writes the same path).
+ *
+ * `hash` is the recipe's **version**: the `.md` plus the content it owns in each file. Hashing the
+ * `.md` alone misses a template-only change — scenario 6 bumps `biome.json`'s `lineWidth` and the
+ * `.md` is untouched — which is exactly the case the human's decision settles.
  */
+const surfaceHash = (recipeText, files) =>
+  fnv1a([recipeText, ...files.map((f) => `${f.path}\u0000${f.content}`)].join("\u0001"));
+
 function buildLibrary(ids) {
   const recipes = ids.map(loadRecipe).sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
   const PLAN = { gates: gateTable(recipes), details: detailSections(recipes) };
   const render = (t) => t.replace(/\{\{plan\.(\w+)\}\}/g, (_m, k) => PLAN[k] ?? `{{plan.${k}}}`);
-  return recipes.map((r) => ({
-    id: r.id,
-    hash: fnv1a(r.text),
-    files: (r.files ?? [])
+  return recipes.map((r) => {
+    const files = (r.files ?? [])
       .filter((f) => !(f.scope === "member" && ENVIRONMENT.workspace === "single"))
       .map((f) => {
         const rendered = render(readFileSync(join(SKILL, f.template), "utf8"));
@@ -160,8 +165,9 @@ function buildLibrary(ids) {
         const content = f.action === "merge" && kind === "markers" ? extractBlock(rendered, r.id) : rendered;
         if (content === null) throw new Error(`${r.id}: ${f.path} template has no marker pair`);
         return { path: f.path, action: f.action, content };
-      }),
-  }));
+      });
+    return { id: r.id, text: r.text, hash: surfaceHash(r.text, files), files };
+  });
 }
 
 // --- apply ---------------------------------------------------------------------
@@ -453,18 +459,15 @@ print("");
 // --- 6 ------------------------------------------------------------------------
 print("--- 6. Bump the library — update, not drift ---");
 restoreFixture();
-const bumpedLibrary = library.map((l) =>
-  l.id !== "biome-assist"
-    ? l
-    : {
-        ...l,
-        files: l.files.map((f) =>
-          f.path === "biome.json" && f.action === "create"
-            ? { ...f, content: f.content.replace('"lineWidth": 100', '"lineWidth": 120') }
-            : f,
-        ),
-      },
-);
+const bumpedLibrary = library.map((l) => {
+  if (l.id !== "biome-assist") return l;
+  const files = l.files.map((f) =>
+    f.path === "biome.json" && f.action === "create"
+      ? { ...f, content: f.content.replace('"lineWidth": 100', '"lineWidth": 120') }
+      : f,
+  );
+  return { ...l, files, hash: surfaceHash(l.text, files) };
+});
 print("library bump: biome-assist's biome.json template lineWidth 100 -> 120");
 print("");
 showManifest();
@@ -479,7 +482,7 @@ print(
 );
 print(
   `biome-assist recipeChanged=${biome6.recipeChanged} ` +
-    "(the recipe .md is unchanged; a template is not part of the recipe hash)",
+    "(the recipe's version covers its templates, so a template-only change moves it)",
 );
 print("");
 check("biome.json is update, not drifted", biomeFile6.verdict === "update");
