@@ -1,0 +1,14 @@
+{
+  "name": "npm-eslint-prettier",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "eslint": "9.37.0",
+    "prettier": "3.6.2",
+    "typescript": "5.9.3"
+  }
+}

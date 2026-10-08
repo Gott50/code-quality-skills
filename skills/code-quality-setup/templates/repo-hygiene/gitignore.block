@@ -1,0 +1,8 @@
+# code-quality:repo-hygiene:start
+.npm/
+dist/
+*.tsbuildinfo
+.env
+.env.local
+*.log
+# code-quality:repo-hygiene:end

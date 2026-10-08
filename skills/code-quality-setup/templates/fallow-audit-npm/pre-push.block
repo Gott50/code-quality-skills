@@ -1,0 +1,3 @@
+# code-quality:fallow-audit-npm:start
+npm run fallow:audit || exit 1
+# code-quality:fallow-audit-npm:end

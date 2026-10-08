@@ -1,6 +1,6 @@
-#!/usr/bin/env bun
 /**
- * Pre-push mutation gate.
+ * Pre-push mutation gate. Invoked explicitly by the hook (`bun <script>` under
+ * Bun, `npx tsx <script>` under npm and pnpm), so it carries no shebang.
  *
  * Reads the pre-push hook stdin (one line per pushed ref:
  * `<local ref> <local sha> <remote ref> <remote sha>`), diffs the pushed
@@ -37,6 +37,12 @@ const BAD_STATUSES = {
 const AREA_CONFIGS: ReadonlyArray<readonly [string, string]> = [["", "stryker.conf.mjs"]];
 
 const FULL_CONFIG = "stryker.conf.mjs";
+
+// The Stryker CLI, run through whichever package manager the project uses:
+// `bunx` under Bun, `npx` under npm and pnpm. Derived from the lockfile — the
+// same evidence the detector uses to name the manager, so the two never
+// disagree — which lets one gate script serve every package manager.
+const RUNNER = existsSync("bun.lock") || existsSync("bun.lockb") ? "bunx" : "npx";
 
 /** Short name of a config, used for its report and incremental-cache files. */
 function areaOf(config: string): string {
@@ -125,9 +131,10 @@ function globToRegExp(glob: string): RegExp {
  * The config's own `mutate` globs are the mutation scope, and the gate must
  * respect them: `--mutate` on the command line OVERRIDES the config, so a
  * changed file the config would never mutate (a build script, a vendored
- * plugin) would land in the mutation set — and the bun runner's preload
- * imports every file in that set so its module-level code runs during the dry
- * run, where a script that exits non-zero kills the whole push.
+ * plugin) would land in the mutation set. Under the Bun runner that is fatal:
+ * its preload imports every file in the set, so a script whose module-level
+ * code exits non-zero kills the whole push. Filtering through the config's own
+ * globs is the only way to keep such a file out.
  */
 async function mutateScopeOf(config: string): Promise<MutateScope> {
   // Dynamic import: the specifier is the config path the gate was invoked with
@@ -179,7 +186,7 @@ function runStryker(config: string, files: string[]): boolean {
   // vacuously if the current files were skipped).
   rmSync(reportFile, { force: true });
   const r = spawnSync(
-    "bunx",
+    RUNNER,
     [
       "stryker",
       "run",

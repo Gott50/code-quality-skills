@@ -1,10 +1,8 @@
 {
   "scripts": {
-    "format:check": "biome check .",
-    "prepare": "husky"
+    "format:check": "biome check ."
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.15",
-    "husky": "^9.1.7"
+    "@biomejs/biome": "^2.5.15"
   }
 }

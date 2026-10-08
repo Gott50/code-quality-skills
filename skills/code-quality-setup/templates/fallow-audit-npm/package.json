@@ -1,0 +1,10 @@
+{
+  "scripts": {
+    "fallow": "fallow health --coverage coverage/coverage-final.json",
+    "fallow:audit": "fallow audit --format json --quiet --explain --gate-marker agent",
+    "fallow:coverage": "npm run test && npm run fallow"
+  },
+  "devDependencies": {
+    "fallow": "3.19.0"
+  }
+}

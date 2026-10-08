@@ -1,0 +1,4 @@
+# code-quality:eslint-prettier:start
+npm run lint || exit 1
+npm run format:check || exit 1
+# code-quality:eslint-prettier:end
