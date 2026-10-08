@@ -64,7 +64,8 @@ The skill version is a real field. The recipe version is *not* a frontmatter fie
 and a hand-maintained one goes stale the first time someone edits a recipe and forgets to bump it.
 The prototype therefore records the recipe's **content hash** as its version. The alternative — add
 `version:` to the recipe frontmatter and record it — is a contract change; the hash needs no
-contract change and is strictly more precise. **Open for the human.**
+contract change and is strictly more precise. **Decided: the hash, covering the recipe `.md` and
+the content it owns in each file** (see the decisions below).
 
 ## The precedence rule
 
