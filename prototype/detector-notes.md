@@ -37,6 +37,12 @@ Needs `node >= 22`. No dependencies, no package manager, no network.
   "formatter: .prettierrc"] }` — loud, not a silent drop.
 - **The no-manifest path is safe.** A directory with no `package.json` reports `packageManager:
   null`, an empty selection, and no crash.
+- **Every `when` branch is exercised.** The two real recipes only reach `language`, `packageManager`,
+  `{ file }` and `{ recipe: "*" }`. A scratch recipe set (`transcript.txt` §6) reaches the other five
+  — `{ dep }`, `{ script }`, `{ recipe: <id> }`, `when.excludes`, and both `when.workspace`
+  comparisons — plus both halves of the selection fixpoint: the **grow** pass (`probe-recipe-id`
+  joins because `biome-assist` is selected) and the **shrink** pass (`probe-conflict-b` is held back
+  on priority, and `probe-orphan` is dropped because the recipe it requires went with it).
 
 ## Findings the run forced
 
@@ -67,6 +73,16 @@ Each was wrong in the first draft; the evidence is the run, not an opinion.
 6. **`coverage` has no config file of its own.** It is a key inside the test runner's config
    (`vitest.config.ts`, `bunfig.toml`) or a dedicated rc file. The detector reports it from either,
    naming the file — the only category that reads file *content* rather than presence.
+7. **`walk` recursed into dot-directories.** The installed skill lives in one
+   (`.agents/skills/code-quality-setup/`), so a repo whose only `.mjs` was the skill's own
+   `scripts/detect.mjs` reported `javascript: true` — which would make a JS-gated recipe apply to a
+   repo with no JavaScript, and defeats the destination's "unsupported repo" path. `walk` now skips
+   dot-directories, matching `expandMemberGlobs`. Verified: that repo now reports
+   `typescript: false, javascript: false, sourceExtensions: []`.
+8. **A mutual `conflicts.recipes` pair recorded the same loser twice in `heldBack`.** The shrink
+   pass iterates a snapshot of the selection, so after `probe-conflict-a` dropped
+   `probe-conflict-b`, the loop reached `probe-conflict-b` itself and pushed it again. Guarded with
+   `if (!selection.has(id)) continue;`. Found by the §6 probe — the branch had never run.
 
 ## Decisions taken
 
@@ -103,10 +119,11 @@ Each was wrong in the first draft; the evidence is the run, not an opinion.
 
 ## Gaps this prototype does not close
 
-- **`heldBack` is unexercised.** `biome-assist` declares `conflicts.recipes: [eslint-prettier]`, and
-  no such recipe exists yet, so the shrink pass never fires on a committed fixture. It needs two
-  recipes that genuinely conflict — the npm/pnpm variants (ticket **Author the fresh recipes,
-  including the npm and pnpm variants**) are where that lands.
+- **`heldBack` has no committed fixture.** It is proven by the §6 probe recipes, but `biome-assist`
+  declares `conflicts.recipes: [eslint-prettier]` and no such recipe exists, so the shrink pass
+  never fires on a fixture that ships. It needs two recipes that genuinely conflict — the npm/pnpm
+  variants (ticket **Author the fresh recipes, including the npm and pnpm variants**) are where that
+  lands.
 - **The collision path has no committed fixture.** The only formatter recipe is Bun-gated, so
   `pnpm-workspace`'s prettier + eslint cannot reach it. Proven on a scratch copy instead
   (`transcript.txt` §2); a committed fixture should arrive with the npm variants.

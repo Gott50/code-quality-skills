@@ -1058,7 +1058,25 @@ $ node /tmp/cqs-detect-skill/scripts/detect.mjs fixtures/bun-ts
   "collisions": []
 }
 
-## 6. Hard errors
+## 6. Every `when` branch, exercised
+
+The two real recipes only reach language / packageManager / { file } / { recipe: "*" }.
+These scratch recipes reach the other five branches, plus both halves of the selection
+fixpoint (the grow pass and the shrink pass). Output is filtered to the probe recipes.
+
+### fixtures/plain-ts
+$ node <probe skill>/scripts/detect.mjs fixtures/plain-ts --compact | jq '{probes, heldBack}'
+{"probes":[{"id":"probe-conflict-a","applicable":true,"selected":true,"why":[]},{"id":"probe-conflict-b","applicable":true,"selected":false,"why":[]},{"id":"probe-dep-script","applicable":true,"selected":true,"why":[]},{"id":"probe-excludes","applicable":true,"selected":true,"why":[]},{"id":"probe-orphan","applicable":false,"selected":false,"why":["recipe \"probe-conflict-b\" is not selected"]},{"id":"probe-recipe-id","applicable":false,"selected":false,"why":["recipe \"biome-assist\" is not selected"]},{"id":"probe-workspace-single","applicable":true,"selected":true,"why":[]},{"id":"probe-workspace-ws","applicable":false,"selected":false,"why":["needs workspace \"workspace\"; detected \"single\""]}],"heldBack":[{"id":"probe-conflict-b","reason":"conflicts with \"probe-conflict-a\" (priority 10 > 5)"},{"id":"probe-orphan","reason":"a recipe it requires is no longer selected"}]}
+
+### fixtures/bun-ts
+$ node <probe skill>/scripts/detect.mjs fixtures/bun-ts --compact | jq '{probes, heldBack}'
+{"probes":[{"id":"probe-conflict-a","applicable":true,"selected":true,"why":[]},{"id":"probe-conflict-b","applicable":true,"selected":false,"why":[]},{"id":"probe-dep-script","applicable":false,"selected":false,"why":["root package.json has no script \"build\""]},{"id":"probe-excludes","applicable":false,"selected":false,"why":["excluded by bun.lock exists at the workspace root"]},{"id":"probe-orphan","applicable":false,"selected":false,"why":["recipe \"probe-conflict-b\" is not selected"]},{"id":"probe-recipe-id","applicable":true,"selected":true,"why":[]},{"id":"probe-workspace-single","applicable":true,"selected":true,"why":[]},{"id":"probe-workspace-ws","applicable":false,"selected":false,"why":["needs workspace \"workspace\"; detected \"single\""]}],"heldBack":[{"id":"probe-conflict-b","reason":"conflicts with \"probe-conflict-a\" (priority 10 > 5)"},{"id":"probe-orphan","reason":"a recipe it requires is no longer selected"}]}
+
+### fixtures/pnpm-workspace
+$ node <probe skill>/scripts/detect.mjs fixtures/pnpm-workspace --compact | jq '{probes, heldBack}'
+{"probes":[{"id":"probe-conflict-a","applicable":true,"selected":true,"why":[]},{"id":"probe-conflict-b","applicable":true,"selected":false,"why":[]},{"id":"probe-dep-script","applicable":false,"selected":false,"why":["root package.json has no script \"build\""]},{"id":"probe-excludes","applicable":true,"selected":true,"why":[]},{"id":"probe-orphan","applicable":false,"selected":false,"why":["recipe \"probe-conflict-b\" is not selected"]},{"id":"probe-recipe-id","applicable":false,"selected":false,"why":["recipe \"biome-assist\" is not selected"]},{"id":"probe-workspace-single","applicable":false,"selected":false,"why":["needs workspace \"single\"; detected \"workspace\""]},{"id":"probe-workspace-ws","applicable":true,"selected":true,"why":[]}],"heldBack":[{"id":"probe-conflict-b","reason":"conflicts with \"probe-conflict-a\" (priority 10 > 5)"},{"id":"probe-orphan","reason":"a recipe it requires is no longer selected"}]}
+
+## 7. Hard errors
 
 $ node skills/code-quality-setup/scripts/detect.mjs /nonexistent
 detect.mjs: not a directory: /nonexistent

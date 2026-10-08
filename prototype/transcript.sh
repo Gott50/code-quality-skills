@@ -72,5 +72,189 @@ EOF
 run node "$SKILLCOPY/scripts/detect.mjs" "$FIXTURES/bun-ts"
 
 echo
-echo "## 6. Hard errors"
+echo "## 6. Every \`when\` branch, exercised"
+echo
+echo "The two real recipes only reach language / packageManager / { file } / { recipe: \"*\" }."
+echo "These scratch recipes reach the other five branches, plus both halves of the selection"
+echo "fixpoint (the grow pass and the shrink pass). Output is filtered to the probe recipes."
+PROBESKILL=/tmp/cqs-detect-probes
+rm -rf "$PROBESKILL"
+cp -R "$SKILL" "$PROBESKILL"
+write_probe() {
+  cat > "$PROBESKILL/references/recipes/$1.md"
+}
+write_probe probe-dep-script <<'EOF'
+---
+id: probe-dep-script
+title: Probe — { dep } and { script }
+when:
+  requires: [{ dep: typescript }, { script: build }]
+---
+
+## Apply
+
+Nothing.
+
+## Idempotency
+
+Nothing.
+
+## Undo
+
+- Nothing.
+EOF
+write_probe probe-workspace-single <<'EOF'
+---
+id: probe-workspace-single
+title: Probe — when.workspace single
+when:
+  workspace: single
+---
+
+## Apply
+
+Nothing.
+
+## Idempotency
+
+Nothing.
+
+## Undo
+
+- Nothing.
+EOF
+write_probe probe-workspace-ws <<'EOF'
+---
+id: probe-workspace-ws
+title: Probe — when.workspace workspace
+when:
+  workspace: workspace
+---
+
+## Apply
+
+Nothing.
+
+## Idempotency
+
+Nothing.
+
+## Undo
+
+- Nothing.
+EOF
+write_probe probe-excludes <<'EOF'
+---
+id: probe-excludes
+title: Probe — when.excludes
+when:
+  excludes: [{ file: bun.lock }]
+---
+
+## Apply
+
+Nothing.
+
+## Idempotency
+
+Nothing.
+
+## Undo
+
+- Nothing.
+EOF
+write_probe probe-recipe-id <<'EOF'
+---
+id: probe-recipe-id
+title: Probe — { recipe: <id> }, a specific recipe
+when:
+  requires: [{ recipe: biome-assist }]
+---
+
+## Apply
+
+Nothing.
+
+## Idempotency
+
+Nothing.
+
+## Undo
+
+- Nothing.
+EOF
+write_probe probe-conflict-a <<'EOF'
+---
+id: probe-conflict-a
+title: Probe — conflicts.recipes, higher priority
+priority: 10
+conflicts:
+  recipes: [probe-conflict-b]
+---
+
+## Apply
+
+Nothing.
+
+## Idempotency
+
+Nothing.
+
+## Undo
+
+- Nothing.
+EOF
+write_probe probe-conflict-b <<'EOF'
+---
+id: probe-conflict-b
+title: Probe — conflicts.recipes, lower priority
+priority: 5
+conflicts:
+  recipes: [probe-conflict-a]
+---
+
+## Apply
+
+Nothing.
+
+## Idempotency
+
+Nothing.
+
+## Undo
+
+- Nothing.
+EOF
+write_probe probe-orphan <<'EOF'
+---
+id: probe-orphan
+title: Probe — requires a recipe that the shrink pass then drops
+when:
+  requires: [{ recipe: probe-conflict-b }]
+---
+
+## Apply
+
+Nothing.
+
+## Idempotency
+
+Nothing.
+
+## Undo
+
+- Nothing.
+EOF
+for f in plain-ts bun-ts pnpm-workspace; do
+  echo
+  echo "### fixtures/$f"
+  echo "\$ node <probe skill>/scripts/detect.mjs $FIXTURES/$f --compact | jq '{probes, heldBack}'"
+  node "$PROBESKILL/scripts/detect.mjs" "$FIXTURES/$f" --compact | jq -c '{
+    probes: [.recipes[] | select(.id | startswith("probe-")) | {id, applicable, selected, why: [.reasons[] | select(.pass == false) | .detail]}],
+    heldBack
+  }'
+done
+
+echo
+echo "## 7. Hard errors"
 run node "$SKILL/scripts/detect.mjs" /nonexistent
