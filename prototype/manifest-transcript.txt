@@ -1,0 +1,629 @@
+==============================================================================
+Applied-state manifest — real-fixture transcript
+==============================================================================
+
+fixture:  /tmp/cqs-manifest-fixture  (bun + TypeScript, single package)
+library:  biome-assist, tsconfig-strict  (the plan's selection for this environment)
+skill:    code-quality-setup@0.1.0
+
+--- 1. First apply — manifest written, every verdict intact ---
+apply log:
+  biome-assist: create biome.json -> created
+  biome-assist: merge package.json (json) -> updated
+  biome-assist: merge .husky/pre-commit (markers) -> created
+  biome-assist: merge .gitignore (markers) -> created
+  tsconfig-strict: merge tsconfig.json (json) -> updated
+  tsconfig-strict: merge package.json (json) -> updated
+  tsconfig-strict: merge .husky/pre-commit (markers) -> updated
+
+manifest (.code-quality.json):
+{
+  "schemaVersion": 1,
+  "skill": {
+    "name": "code-quality-setup",
+    "version": "0.1.0"
+  },
+  "appliedAt": "2026-10-08T19:30:00.000Z",
+  "environment": {
+    "packageManager": "bun",
+    "workspace": "single",
+    "languages": [
+      "typescript"
+    ]
+  },
+  "recipes": [
+    {
+      "id": "biome-assist",
+      "skillVersion": "0.1.0",
+      "recipeHash": "7ce45b7a",
+      "appliedAt": "2026-10-08T19:30:00.000Z",
+      "files": [
+        {
+          "path": "biome.json",
+          "action": "create",
+          "hash": "eb095220"
+        },
+        {
+          "path": "package.json",
+          "action": "merge",
+          "hash": "40580bf1"
+        },
+        {
+          "path": ".husky/pre-commit",
+          "action": "merge",
+          "hash": "5364d612"
+        },
+        {
+          "path": ".gitignore",
+          "action": "merge",
+          "hash": "e09cb31d"
+        }
+      ]
+    },
+    {
+      "id": "tsconfig-strict",
+      "skillVersion": "0.1.0",
+      "recipeHash": "70d5b56b",
+      "appliedAt": "2026-10-08T19:30:00.000Z",
+      "files": [
+        {
+          "path": "tsconfig.json",
+          "action": "merge",
+          "hash": "e7dd3d4a"
+        },
+        {
+          "path": "package.json",
+          "action": "merge",
+          "hash": "5c0ae603"
+        },
+        {
+          "path": ".husky/pre-commit",
+          "action": "merge",
+          "hash": "74012385"
+        }
+      ]
+    }
+  ],
+  "declined": []
+}
+
+classify:
+  biome-assist: intact — biome.json [intact], package.json [intact], .husky/pre-commit [intact], .gitignore [intact]
+  tsconfig-strict: intact — tsconfig.json [intact], package.json [intact], .husky/pre-commit [intact]
+
+  PASS — every file verdict is intact
+
+--- 2. Re-run — every file is a no-op, every verdict intact ---
+re-run log:
+  biome-assist: create biome.json -> no-op (identical)
+  biome-assist: merge package.json (json) -> no-op (identical)
+  biome-assist: merge .husky/pre-commit (markers) -> no-op (identical)
+  biome-assist: merge .gitignore (markers) -> no-op (identical)
+  tsconfig-strict: merge tsconfig.json (json) -> no-op (identical)
+  tsconfig-strict: merge package.json (json) -> no-op (identical)
+  tsconfig-strict: merge .husky/pre-commit (markers) -> no-op (identical)
+
+manifest (.code-quality.json):
+{
+  "schemaVersion": 1,
+  "skill": {
+    "name": "code-quality-setup",
+    "version": "0.1.0"
+  },
+  "appliedAt": "2026-10-08T19:30:00.000Z",
+  "environment": {
+    "packageManager": "bun",
+    "workspace": "single",
+    "languages": [
+      "typescript"
+    ]
+  },
+  "recipes": [
+    {
+      "id": "biome-assist",
+      "skillVersion": "0.1.0",
+      "recipeHash": "7ce45b7a",
+      "appliedAt": "2026-10-08T19:30:00.000Z",
+      "files": [
+        {
+          "path": "biome.json",
+          "action": "create",
+          "hash": "eb095220"
+        },
+        {
+          "path": "package.json",
+          "action": "merge",
+          "hash": "40580bf1"
+        },
+        {
+          "path": ".husky/pre-commit",
+          "action": "merge",
+          "hash": "5364d612"
+        },
+        {
+          "path": ".gitignore",
+          "action": "merge",
+          "hash": "e09cb31d"
+        }
+      ]
+    },
+    {
+      "id": "tsconfig-strict",
+      "skillVersion": "0.1.0",
+      "recipeHash": "70d5b56b",
+      "appliedAt": "2026-10-08T19:30:00.000Z",
+      "files": [
+        {
+          "path": "tsconfig.json",
+          "action": "merge",
+          "hash": "e7dd3d4a"
+        },
+        {
+          "path": "package.json",
+          "action": "merge",
+          "hash": "5c0ae603"
+        },
+        {
+          "path": ".husky/pre-commit",
+          "action": "merge",
+          "hash": "74012385"
+        }
+      ]
+    }
+  ],
+  "declined": []
+}
+
+classify:
+  biome-assist: intact — biome.json [intact], package.json [intact], .husky/pre-commit [intact], .gitignore [intact]
+  tsconfig-strict: intact — tsconfig.json [intact], package.json [intact], .husky/pre-commit [intact]
+
+  PASS — every re-run line is a no-op
+  PASS — every file verdict is intact
+
+--- 3. Hand-edit an owned file — drifted, not overwritten ---
+hand-edit: appended a line to biome.json
+
+manifest (.code-quality.json):
+{
+  "schemaVersion": 1,
+  "skill": {
+    "name": "code-quality-setup",
+    "version": "0.1.0"
+  },
+  "appliedAt": "2026-10-08T19:30:00.000Z",
+  "environment": {
+    "packageManager": "bun",
+    "workspace": "single",
+    "languages": [
+      "typescript"
+    ]
+  },
+  "recipes": [
+    {
+      "id": "biome-assist",
+      "skillVersion": "0.1.0",
+      "recipeHash": "7ce45b7a",
+      "appliedAt": "2026-10-08T19:30:00.000Z",
+      "files": [
+        {
+          "path": "biome.json",
+          "action": "create",
+          "hash": "eb095220"
+        },
+        {
+          "path": "package.json",
+          "action": "merge",
+          "hash": "40580bf1"
+        },
+        {
+          "path": ".husky/pre-commit",
+          "action": "merge",
+          "hash": "5364d612"
+        },
+        {
+          "path": ".gitignore",
+          "action": "merge",
+          "hash": "e09cb31d"
+        }
+      ]
+    },
+    {
+      "id": "tsconfig-strict",
+      "skillVersion": "0.1.0",
+      "recipeHash": "70d5b56b",
+      "appliedAt": "2026-10-08T19:30:00.000Z",
+      "files": [
+        {
+          "path": "tsconfig.json",
+          "action": "merge",
+          "hash": "e7dd3d4a"
+        },
+        {
+          "path": "package.json",
+          "action": "merge",
+          "hash": "5c0ae603"
+        },
+        {
+          "path": ".husky/pre-commit",
+          "action": "merge",
+          "hash": "74012385"
+        }
+      ]
+    }
+  ],
+  "declined": []
+}
+
+classify:
+  biome-assist: drifted — biome.json [drifted], package.json [intact], .husky/pre-commit [intact], .gitignore [intact]
+  tsconfig-strict: intact — tsconfig.json [intact], package.json [intact], .husky/pre-commit [intact]
+
+  PASS — biome-assist is drifted
+  PASS — biome.json was NOT overwritten (the hand-edit survives)
+(the plan reports drift and applies only on approval — nothing was rewritten)
+
+--- 4. JSON-merge ownership — an unrelated package.json edit stays intact ---
+hand-edit: changed package.json scripts.test (owned by no recipe)
+
+manifest (.code-quality.json):
+{
+  "schemaVersion": 1,
+  "skill": {
+    "name": "code-quality-setup",
+    "version": "0.1.0"
+  },
+  "appliedAt": "2026-10-08T19:30:00.000Z",
+  "environment": {
+    "packageManager": "bun",
+    "workspace": "single",
+    "languages": [
+      "typescript"
+    ]
+  },
+  "recipes": [
+    {
+      "id": "biome-assist",
+      "skillVersion": "0.1.0",
+      "recipeHash": "7ce45b7a",
+      "appliedAt": "2026-10-08T19:30:00.000Z",
+      "files": [
+        {
+          "path": "biome.json",
+          "action": "create",
+          "hash": "eb095220"
+        },
+        {
+          "path": "package.json",
+          "action": "merge",
+          "hash": "40580bf1"
+        },
+        {
+          "path": ".husky/pre-commit",
+          "action": "merge",
+          "hash": "5364d612"
+        },
+        {
+          "path": ".gitignore",
+          "action": "merge",
+          "hash": "e09cb31d"
+        }
+      ]
+    },
+    {
+      "id": "tsconfig-strict",
+      "skillVersion": "0.1.0",
+      "recipeHash": "70d5b56b",
+      "appliedAt": "2026-10-08T19:30:00.000Z",
+      "files": [
+        {
+          "path": "tsconfig.json",
+          "action": "merge",
+          "hash": "e7dd3d4a"
+        },
+        {
+          "path": "package.json",
+          "action": "merge",
+          "hash": "5c0ae603"
+        },
+        {
+          "path": ".husky/pre-commit",
+          "action": "merge",
+          "hash": "74012385"
+        }
+      ]
+    }
+  ],
+  "declined": []
+}
+
+classify:
+  biome-assist: intact — biome.json [intact], package.json [intact], .husky/pre-commit [intact], .gitignore [intact]
+  tsconfig-strict: intact — tsconfig.json [intact], package.json [intact], .husky/pre-commit [intact]
+
+  PASS — both recipes' package.json stay intact
+hand-edit: changed package.json scripts.format:check (owned by biome-assist)
+
+classify:
+  biome-assist: drifted — biome.json [intact], package.json [drifted], .husky/pre-commit [intact], .gitignore [intact]
+  tsconfig-strict: intact — tsconfig.json [intact], package.json [intact], .husky/pre-commit [intact]
+
+  PASS — biome-assist is drifted (its own key changed)
+  PASS — tsconfig-strict stays intact (its keys are untouched)
+
+--- 5. Delete an owned file — missing, then reinstated on approval ---
+deleted: tsconfig.json
+
+manifest (.code-quality.json):
+{
+  "schemaVersion": 1,
+  "skill": {
+    "name": "code-quality-setup",
+    "version": "0.1.0"
+  },
+  "appliedAt": "2026-10-08T19:30:00.000Z",
+  "environment": {
+    "packageManager": "bun",
+    "workspace": "single",
+    "languages": [
+      "typescript"
+    ]
+  },
+  "recipes": [
+    {
+      "id": "biome-assist",
+      "skillVersion": "0.1.0",
+      "recipeHash": "7ce45b7a",
+      "appliedAt": "2026-10-08T19:30:00.000Z",
+      "files": [
+        {
+          "path": "biome.json",
+          "action": "create",
+          "hash": "eb095220"
+        },
+        {
+          "path": "package.json",
+          "action": "merge",
+          "hash": "40580bf1"
+        },
+        {
+          "path": ".husky/pre-commit",
+          "action": "merge",
+          "hash": "5364d612"
+        },
+        {
+          "path": ".gitignore",
+          "action": "merge",
+          "hash": "e09cb31d"
+        }
+      ]
+    },
+    {
+      "id": "tsconfig-strict",
+      "skillVersion": "0.1.0",
+      "recipeHash": "70d5b56b",
+      "appliedAt": "2026-10-08T19:30:00.000Z",
+      "files": [
+        {
+          "path": "tsconfig.json",
+          "action": "merge",
+          "hash": "e7dd3d4a"
+        },
+        {
+          "path": "package.json",
+          "action": "merge",
+          "hash": "5c0ae603"
+        },
+        {
+          "path": ".husky/pre-commit",
+          "action": "merge",
+          "hash": "74012385"
+        }
+      ]
+    }
+  ],
+  "declined": []
+}
+
+classify (before approval):
+  biome-assist: intact — biome.json [intact], package.json [intact], .husky/pre-commit [intact], .gitignore [intact]
+  tsconfig-strict: missing — tsconfig.json [missing], package.json [intact], .husky/pre-commit [intact]
+
+  PASS — tsconfig-strict is missing
+reinstate log (on approval):
+  tsconfig-strict: merge tsconfig.json (json) -> created
+  tsconfig-strict: merge package.json (json) -> no-op (identical)
+  tsconfig-strict: merge .husky/pre-commit (markers) -> no-op (identical)
+
+classify (after reinstating):
+  biome-assist: intact — biome.json [intact], package.json [intact], .husky/pre-commit [intact], .gitignore [intact]
+  tsconfig-strict: intact — tsconfig.json [intact], package.json [intact], .husky/pre-commit [intact]
+
+  PASS — tsconfig-strict is intact again
+
+--- 6. Bump the library — update, not drift ---
+library bump: biome-assist's biome.json template lineWidth 100 -> 120
+
+manifest (.code-quality.json):
+{
+  "schemaVersion": 1,
+  "skill": {
+    "name": "code-quality-setup",
+    "version": "0.1.0"
+  },
+  "appliedAt": "2026-10-08T19:30:00.000Z",
+  "environment": {
+    "packageManager": "bun",
+    "workspace": "single",
+    "languages": [
+      "typescript"
+    ]
+  },
+  "recipes": [
+    {
+      "id": "biome-assist",
+      "skillVersion": "0.1.0",
+      "recipeHash": "7ce45b7a",
+      "appliedAt": "2026-10-08T19:30:00.000Z",
+      "files": [
+        {
+          "path": "biome.json",
+          "action": "create",
+          "hash": "eb095220"
+        },
+        {
+          "path": "package.json",
+          "action": "merge",
+          "hash": "40580bf1"
+        },
+        {
+          "path": ".husky/pre-commit",
+          "action": "merge",
+          "hash": "5364d612"
+        },
+        {
+          "path": ".gitignore",
+          "action": "merge",
+          "hash": "e09cb31d"
+        }
+      ]
+    },
+    {
+      "id": "tsconfig-strict",
+      "skillVersion": "0.1.0",
+      "recipeHash": "70d5b56b",
+      "appliedAt": "2026-10-08T19:30:00.000Z",
+      "files": [
+        {
+          "path": "tsconfig.json",
+          "action": "merge",
+          "hash": "e7dd3d4a"
+        },
+        {
+          "path": "package.json",
+          "action": "merge",
+          "hash": "5c0ae603"
+        },
+        {
+          "path": ".husky/pre-commit",
+          "action": "merge",
+          "hash": "74012385"
+        }
+      ]
+    }
+  ],
+  "declined": []
+}
+
+classify:
+  biome-assist: update — biome.json [update], package.json [intact], .husky/pre-commit [intact], .gitignore [intact]
+  tsconfig-strict: intact — tsconfig.json [intact], package.json [intact], .husky/pre-commit [intact]
+
+biome.json: verdict=update recordedHash=eb095220 presentHash=eb095220 currentHash=90e82362 updateAvailable=true
+biome-assist recipeChanged=false (the recipe .md is unchanged; a template is not part of the recipe hash)
+
+  PASS — biome.json is update, not drifted
+  PASS — the file is untouched since apply (presentHash === recordedHash)
+
+--- 7. Decline a recipe — previously declined ---
+declined: agent-guidance
+
+manifest (.code-quality.json):
+{
+  "schemaVersion": 1,
+  "skill": {
+    "name": "code-quality-setup",
+    "version": "0.1.0"
+  },
+  "appliedAt": "2026-10-08T19:30:00.000Z",
+  "environment": {
+    "packageManager": "bun",
+    "workspace": "single",
+    "languages": [
+      "typescript"
+    ]
+  },
+  "recipes": [
+    {
+      "id": "biome-assist",
+      "skillVersion": "0.1.0",
+      "recipeHash": "7ce45b7a",
+      "appliedAt": "2026-10-08T19:30:00.000Z",
+      "files": [
+        {
+          "path": "biome.json",
+          "action": "create",
+          "hash": "eb095220"
+        },
+        {
+          "path": "package.json",
+          "action": "merge",
+          "hash": "40580bf1"
+        },
+        {
+          "path": ".husky/pre-commit",
+          "action": "merge",
+          "hash": "5364d612"
+        },
+        {
+          "path": ".gitignore",
+          "action": "merge",
+          "hash": "e09cb31d"
+        }
+      ]
+    },
+    {
+      "id": "tsconfig-strict",
+      "skillVersion": "0.1.0",
+      "recipeHash": "70d5b56b",
+      "appliedAt": "2026-10-08T19:30:00.000Z",
+      "files": [
+        {
+          "path": "tsconfig.json",
+          "action": "merge",
+          "hash": "e7dd3d4a"
+        },
+        {
+          "path": "package.json",
+          "action": "merge",
+          "hash": "5c0ae603"
+        },
+        {
+          "path": ".husky/pre-commit",
+          "action": "merge",
+          "hash": "74012385"
+        }
+      ]
+    }
+  ],
+  "declined": [
+    {
+      "id": "agent-guidance",
+      "at": "2026-10-08T19:30:00.000Z"
+    }
+  ]
+}
+
+classify:
+  biome-assist: intact — biome.json [intact], package.json [intact], .husky/pre-commit [intact], .gitignore [intact]
+  tsconfig-strict: intact — tsconfig.json [intact], package.json [intact], .husky/pre-commit [intact]
+  agent-guidance: declined
+
+  PASS — agent-guidance is declined
+
+--- 8. Delete the manifest — degraded, library-only comparison ---
+deleted: .code-quality.json
+
+manifest on disk: absent
+
+classify:
+  manifest: absent or unreadable — comparing against the current library only
+  biome-assist: new
+  tsconfig-strict: new
+
+  PASS — the report is degraded
+  PASS — every library recipe reads as new
+
+==============================================================================
+All checks passed.
+==============================================================================

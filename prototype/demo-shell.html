@@ -1,0 +1,1014 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The applied-state manifest — a prototype</title>
+<style>
+  :root {
+    --ink: #1b1e23;
+    --muted: #6a7280;
+    --line: #e2e5e9;
+    --paper: #f7f8f7;
+    --card: #ffffff;
+    --accent: #2f6fed;
+    --accent-soft: #eaf0fe;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 15px/1.62 ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 1220px; margin: 0 auto; padding: 44px 28px 96px; }
+  h1 { font-size: 31px; line-height: 1.22; margin: 0 0 12px; letter-spacing: -0.015em; }
+  h2 { font-size: 17px; margin: 0; letter-spacing: -0.01em; }
+  h3 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.09em;
+    color: var(--muted); margin: 28px 0 10px; font-weight: 600;
+  }
+  h4 { font-size: 15px; margin: 0 0 8px; }
+  p { margin: 0 0 10px; }
+  .mono { font-family: var(--mono); font-size: 13px; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .path { font-family: var(--mono); font-size: 12px; color: var(--muted); text-transform: none; letter-spacing: 0; }
+
+  .masthead { max-width: 780px; margin-bottom: 30px; }
+  .kicker {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--accent); font-weight: 600; margin: 0 0 10px;
+  }
+  .question { font-size: 16px; color: #3b414b; }
+  .question strong { color: var(--ink); }
+
+  .layout { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: 24px; align-items: start; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 24px; }
+  .controls { display: grid; gap: 24px; }
+  .panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .hint { color: var(--muted); font-size: 13.5px; margin: 8px 0 0; }
+
+  .btn {
+    font: inherit; font-size: 14px; padding: 8px 13px; border-radius: 9px;
+    border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer;
+    text-align: left;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: #2459c8; color: #fff; }
+  .btn.ghost { border-color: transparent; color: var(--muted); padding: 6px 10px; font-size: 13px; }
+  .btn.ghost:hover { color: var(--accent); }
+
+  .last-action {
+    margin: 16px 0 0; padding: 12px 14px; font-size: 14px;
+    border-left: 3px solid var(--accent); background: var(--accent-soft);
+    border-radius: 0 9px 9px 0;
+  }
+  .last-action.empty { border-left-color: var(--line); background: #f6f7f8; color: var(--muted); }
+  .last-action ul { margin: 6px 0 0; padding-left: 18px; }
+  .last-action li { margin: 2px 0; }
+  .notes li { color: #3b414b; }
+
+  .fields { display: grid; grid-template-columns: 155px minmax(0, 1fr); gap: 5px 16px; margin: 0; font-size: 14px; }
+  .fields dt { color: var(--muted); }
+  .fields dd { margin: 0; }
+
+  .recs { display: grid; gap: 14px; margin-top: 14px; }
+  .rec { border-top: 1px solid var(--line); padding-top: 12px; }
+  .rec-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  .files { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; font-size: 14px; }
+  .files li { display: flex; gap: 9px; align-items: baseline; flex-wrap: wrap; }
+
+  .verdict { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+  .verdict:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
+  .verdict-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+
+  .chip {
+    display: inline-block; font-size: 12px; line-height: 1.5; padding: 0 8px;
+    border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap;
+  }
+  .chip-intact { background: #f4f5f6; }
+  .chip-update, .chip-new { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .chip-drifted, .chip-missing { border-color: var(--accent); background: var(--accent); color: #fff; }
+  .chip-declined, .chip-stale { border-style: dashed; }
+  .tag { font-size: 12px; color: var(--accent); }
+
+  .legend { margin-top: 20px; display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+  .legend span { display: flex; gap: 9px; align-items: baseline; flex-wrap: wrap; }
+
+  .pending {
+    margin-top: 20px; padding: 14px 16px; border: 1px solid var(--accent);
+    border-radius: 10px; background: #f7faff;
+  }
+  .pending .actions { display: flex; gap: 8px; margin-top: 12px; }
+
+  .absent { color: var(--muted); font-size: 14px; }
+  .declined { margin-top: 14px; font-size: 14px; display: flex; gap: 10px; flex-wrap: wrap; align-items: baseline; }
+  .declined .label { color: var(--muted); font-size: 13px; }
+
+  .filelist { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+  .filehead { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  pre {
+    margin: 6px 0 0; padding: 10px 12px; background: #fafbfc; border: 1px solid var(--line);
+    border-radius: 9px; font: 12px/1.55 var(--mono); color: #303540;
+    overflow-x: auto; white-space: pre;
+  }
+  details summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-top: 18px; }
+  details pre { background: #f6f7f8; }
+
+  .pickers { display: grid; gap: 10px; margin: 14px 0; }
+  .pickers label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  select {
+    font: inherit; font-size: 14px; padding: 7px 10px; border-radius: 9px;
+    border: 1px solid var(--line); background: #fff; color: var(--ink); max-width: 100%;
+  }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 16px; }
+  .tab {
+    font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 999px;
+    border: 1px solid var(--line); background: #fff; color: var(--muted); cursor: pointer;
+  }
+  .tab:hover { border-color: var(--accent); color: var(--accent); }
+  .tab.active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+
+  .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; counter-reset: step; }
+  .steps li { display: flex; gap: 10px; align-items: flex-start; }
+  .steps li::before {
+    counter-increment: step; content: counter(step);
+    flex: 0 0 22px; width: 22px; height: 22px; margin-top: 7px; border-radius: 50%;
+    border: 1px solid var(--line); color: var(--muted); font-size: 12px;
+    display: grid; place-items: center;
+  }
+  .steps li.done::before { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .steps li.done .btn { color: var(--muted); }
+  .steps li.current .btn { border-color: var(--accent); color: var(--accent); }
+  .blurb { color: #3b414b; font-size: 14px; margin: 10px 0 16px; }
+
+  @media (max-width: 1020px) {
+    .layout { grid-template-columns: minmax(0, 1fr); }
+    .wrap { padding: 32px 18px 72px; }
+    h1 { font-size: 26px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="masthead">
+    <p class="kicker">Prototype · the applied-state manifest</p>
+    <h1>What does the skill remember about what it wrote?</h1>
+    <p class="question">
+      The skill writes config files into your project and records what it wrote in a small file,
+      <span class="mono">.code-quality.json</span>. Every later run compares that record against your
+      actual files and says what it would do.
+      <strong>The question this demo lets you explore: does this state model feel right?</strong>
+      Press the buttons — nothing is saved, and no real file is touched.
+    </p>
+  </header>
+
+  <div class="layout">
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Current state</h2>
+        <button class="btn ghost" id="startOver">Start over</button>
+      </div>
+      <div id="lastAction" class="last-action empty"></div>
+      <div id="manifestBox"></div>
+      <div id="verdictBox"></div>
+      <div id="pendingBox"></div>
+      <div id="filesBox"></div>
+      <div id="libraryBox"></div>
+    </section>
+
+    <div class="controls">
+      <section class="panel">
+        <h2>Free play</h2>
+        <p class="hint">
+          Every action is available at any time, in any order. Choose the recipe or the file it should
+          work on, then press it.
+        </p>
+        <div class="pickers">
+          <label>Recipe<select id="pickRecipe"></select></label>
+          <label>File<select id="pickFile"></select></label>
+          <label>Hand-edit touches<select id="pickEdit"></select></label>
+        </div>
+        <div class="actions" id="freeActions"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Guided walkthroughs</h2>
+        <p class="hint">
+          One scenario per tab. Opening a tab resets the world, so a scenario always runs the same way.
+          Press the steps in order and watch the panel on the left.
+        </p>
+        <div class="tabs" id="tabs"></div>
+        <div id="scenarioBody"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+/*__MANIFEST_MODULE__*/
+
+/* =============================================================================
+   THE DEMO WORLD
+   An in-memory project, a library of recipes, and the manifest. The logic above
+   is untouched by any of this: the page only calls into it and shows the result.
+   ============================================================================= */
+
+var SKILL = { name: "code-quality-setup", version: "0.1.0" };
+var ENVIRONMENT = { packageManager: "bun", workspace: "single", languages: ["typescript"] };
+var MANIFEST_PATH = ".code-quality.json";
+var RECIPE_IDS = ["biome-assist", "repo-hygiene", "tsconfig-strict"];
+
+var $ = function (id) { return document.getElementById(id); };
+var esc = function (s) {
+  return String(s).replace(/[&<>"]/g, function (c) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+  });
+};
+
+var clock = 0;
+function nowIso() {
+  clock += 1;
+  return new Date(Date.now() + clock * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+function prettyTime(iso) { return iso.slice(0, 10) + " " + iso.slice(11, 19); }
+function byteSize(text) { return new TextEncoder().encode(text).length + " bytes"; }
+function hashSpan(h) { return '<span class="mono">' + esc(h) + "</span>"; }
+function preview(text, maxLines) {
+  var lines = text.replace(/\n$/, "").split("\n");
+  var shown = lines.slice(0, maxLines).join("\n");
+  return esc(lines.length > maxLines ? shown + "\n…" : shown);
+}
+
+/* --- the library: what the recipes would render right now ------------------ */
+
+function markerBlock(recipeId, body) {
+  return "# code-quality:" + recipeId + ":start\n" + body + "\n# code-quality:" + recipeId + ":end";
+}
+
+function biomeJson(rev) {
+  var assist = rev >= 2
+    ? '  "assist": { "enabled": true, "actions": { "source": { "organizeImports": "on", "useSortedKeys": "on" } } },'
+    : '  "assist": { "enabled": true, "actions": { "source": { "organizeImports": "on" } } },';
+  var formatter = rev >= 3
+    ? '  "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },'
+    : '  "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2 },';
+  return [
+    "{",
+    '  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",',
+    assist,
+    '  "linter": { "enabled": true, "rules": { "recommended": true } },',
+    formatter,
+    "}",
+  ].join("\n");
+}
+
+function packageFragment(rev) {
+  var scripts = rev >= 3
+    ? { "format:check": "biome check .", lint: "biome lint ." }
+    : { "format:check": "biome check ." };
+  return JSON.stringify({
+    scripts: scripts,
+    devDependencies: { "@biomejs/biome": rev >= 2 ? "^2.6.0" : "^2.5.15" },
+  });
+}
+
+function tsconfigJson(rev) {
+  var extra = [];
+  if (rev >= 2) extra.push('    "noUncheckedIndexedAccess": true,');
+  if (rev >= 3) extra.push('    "exactOptionalPropertyTypes": true,');
+  return [
+    "{",
+    '  "compilerOptions": {',
+    '    "strict": true,',
+    '    "target": "ES2022",',
+    '    "module": "ESNext",',
+    '    "moduleResolution": "bundler",',
+  ].concat(extra).concat([
+    '    "noEmit": true',
+    "  },",
+    '  "include": ["src"]',
+    "}",
+  ]).join("\n");
+}
+
+function gitignoreBlock(rev) {
+  var lines = ["node_modules/", "dist/", "*.log"];
+  if (rev >= 2) lines.push("coverage/");
+  if (rev >= 3) lines.push(".env");
+  return markerBlock("repo-hygiene", lines.join("\n"));
+}
+
+function buildLibrary(revisions) {
+  var defs = [
+    {
+      id: "biome-assist",
+      files: [
+        { path: "biome.json", action: "create", content: biomeJson(revisions["biome-assist"]) },
+        { path: "package.json", action: "merge", content: packageFragment(revisions["biome-assist"]) },
+        { path: ".husky/pre-commit", action: "merge", content: markerBlock("biome-assist", "npx biome check --staged") },
+      ],
+    },
+    {
+      id: "repo-hygiene",
+      files: [
+        { path: ".gitignore", action: "merge", content: gitignoreBlock(revisions["repo-hygiene"]) },
+      ],
+    },
+    {
+      id: "tsconfig-strict",
+      files: [
+        { path: "tsconfig.json", action: "create", content: tsconfigJson(revisions["tsconfig-strict"]) },
+      ],
+    },
+  ];
+  return defs.map(function (d) {
+    return {
+      id: d.id,
+      files: d.files,
+      hash: fnv1a(d.files.map(function (f) { return f.path + "\u0000" + f.content; }).join("\u0001")),
+    };
+  });
+}
+
+/* --- the project the skill writes into ------------------------------------ */
+
+function initialFiles() {
+  return {
+    "package.json": JSON.stringify({
+      name: "demo-app",
+      private: true,
+      type: "module",
+      scripts: { dev: "bun run src/index.ts", test: "bun test" },
+      devDependencies: { typescript: "^5.6.0" },
+    }, null, 2) + "\n",
+  };
+}
+
+var world;
+var lastAction = null;
+var walk = { active: "happy", ptr: 0 };
+
+function resetWorld() {
+  var revisions = { "biome-assist": 1, "repo-hygiene": 1, "tsconfig-strict": 1 };
+  world = {
+    revisions: revisions,
+    library: buildLibrary(revisions),
+    files: initialFiles(),
+    manifest: emptyManifest({
+      skillName: SKILL.name,
+      skillVersion: SKILL.version,
+      environment: ENVIRONMENT,
+      now: nowIso(),
+    }),
+    selection: { recipe: "biome-assist", file: "package.json", edit: "owned" },
+    pending: null,
+  };
+  lastAction = null;
+}
+
+/* --- writing into the fake filesystem ------------------------------------- */
+
+function deepMerge(base, patch) {
+  if (patch === null || typeof patch !== "object" || Array.isArray(patch)) return patch;
+  var out = (base !== null && typeof base === "object" && !Array.isArray(base)) ? Object.assign({}, base) : {};
+  Object.keys(patch).forEach(function (k) { out[k] = deepMerge(out[k], patch[k]); });
+  return out;
+}
+
+function spliceJson(fileContent, fragment) {
+  var doc;
+  try { doc = JSON.parse(fileContent); } catch (e) { doc = {}; }
+  return JSON.stringify(deepMerge(doc, JSON.parse(fragment)), null, 2) + "\n";
+}
+
+function spliceBlock(fileContent, recipeId, block) {
+  if (extractBlock(fileContent, recipeId) === null) {
+    var base = fileContent === "" || fileContent.slice(-1) === "\n" ? fileContent : fileContent + "\n";
+    return base === "" ? block + "\n" : base + "\n" + block + "\n";
+  }
+  var lines = fileContent.split("\n");
+  var i = lines.findIndex(function (l) { return l.indexOf("code-quality:" + recipeId + ":start") !== -1; });
+  var j = lines.findIndex(function (l) { return l.indexOf("code-quality:" + recipeId + ":end") !== -1; });
+  return lines.slice(0, i).concat(block.split("\n")).concat(lines.slice(j + 1)).join("\n");
+}
+
+function ensureManifest() {
+  if (!world.manifest) {
+    world.manifest = emptyManifest({
+      skillName: SKILL.name,
+      skillVersion: SKILL.version,
+      environment: ENVIRONMENT,
+      now: nowIso(),
+    });
+  }
+}
+
+/** Write every file a recipe owns, then record the recipe in the manifest. */
+function writeRecipe(recipeId) {
+  var lib = world.library.filter(function (r) { return r.id === recipeId; })[0];
+  var written = lib.files.map(function (f) {
+    if (f.action === "create") {
+      world.files[f.path] = f.content;
+    } else if (mergeKind(f, recipeId) === "json") {
+      world.files[f.path] = spliceJson(world.files[f.path] || "", f.content);
+    } else {
+      world.files[f.path] = spliceBlock(world.files[f.path] || "", recipeId, f.content);
+    }
+    return { path: f.path, action: f.action, hash: fnv1a(currentOwned(f, recipeId)) };
+  });
+  ensureManifest();
+  world.manifest = recordApply(world.manifest, {
+    recipeId: recipeId,
+    recipeHash: lib.hash,
+    skillVersion: SKILL.version,
+    files: written,
+    now: nowIso(),
+  });
+  return written.map(function (w) { return w.path; });
+}
+
+/* --- the actions ----------------------------------------------------------- */
+
+function reportOf() {
+  return classify(world.manifest, { library: world.library, files: world.files });
+}
+
+function perform(title, fn) {
+  var before = reportOf();
+  var notes = fn() || [];
+  var after = reportOf();
+  lastAction = { title: title, changes: diffReports(before, after), notes: notes };
+  render();
+}
+
+function diffReports(before, after) {
+  var lines = [];
+  if (before.degraded !== after.degraded) {
+    lines.push(after.degraded
+      ? "the manifest is gone, so the report falls back to the library alone"
+      : "the manifest is readable again");
+  }
+  var was = {};
+  before.recipes.forEach(function (r) { was[r.id] = r; });
+  var now = {};
+  after.recipes.forEach(function (r) { now[r.id] = r; });
+  after.recipes.forEach(function (r) {
+    var b = was[r.id];
+    if (!b) { lines.push(r.id + " appeared in the report (" + r.state + ")"); return; }
+    if (b.state !== r.state) lines.push(r.id + ": " + b.state + " → " + r.state);
+    r.files.forEach(function (f) {
+      var bf = b.files.filter(function (x) { return x.path === f.path; })[0];
+      if (bf && bf.verdict !== f.verdict) {
+        lines.push(r.id + " · " + f.path + ": " + bf.verdict + " → " + f.verdict);
+      }
+    });
+  });
+  Object.keys(was).forEach(function (id) { if (!now[id]) lines.push(id + " left the report"); });
+  return lines;
+}
+
+function doApply(recipeId) {
+  world.selection.recipe = recipeId;
+  world.pending = null;
+  perform("Applied the " + recipeId + " recipe", function () {
+    var paths = writeRecipe(recipeId);
+    return ["wrote " + paths.join(", ") + " and recorded them in the manifest"];
+  });
+}
+
+function planRun() {
+  var report = reportOf();
+  var proposals = [];
+  var notes = [];
+  report.recipes.forEach(function (r) {
+    if (r.state === "intact") {
+      notes.push(r.id + ": already up to date — nothing to write");
+    } else if (r.state === "new") {
+      proposals.push({ recipeId: r.id, why: "not applied yet" });
+      notes.push(r.id + ": not applied yet — proposed");
+    } else if (r.state === "update") {
+      proposals.push({ recipeId: r.id, why: "the library renders a newer revision of it" });
+      notes.push(r.id + ": the library moved — proposed as an update, not as drift");
+    } else if (r.state === "missing") {
+      proposals.push({ recipeId: r.id, why: "a file it wrote is gone" });
+      notes.push(r.id + ": something it wrote is missing — proposed for reinstatement");
+    } else if (r.state === "drifted") {
+      notes.push(r.id + ": you changed its own part — the skill will not touch it");
+    } else if (r.state === "declined") {
+      notes.push(r.id + ": you declined this earlier — it asks again rather than skipping it silently");
+    } else if (r.state === "stale") {
+      notes.push(r.id + ": recorded in the manifest, but the library no longer offers it");
+    }
+  });
+  world.pending = { proposals: proposals, notes: notes, at: nowIso() };
+  return notes;
+}
+
+function doRun() {
+  perform("Re-ran the setup", function () { return planRun(); });
+}
+
+function doApprove() {
+  perform("Approved the plan", function () {
+    var notes = world.pending.proposals.map(function (p) {
+      var paths = writeRecipe(p.recipeId);
+      return "wrote " + paths.join(", ") + " for " + p.recipeId;
+    });
+    world.pending = null;
+    return notes;
+  });
+}
+
+function doDiscard() {
+  perform("Left the plan alone", function () {
+    world.pending = null;
+    return ["nothing was written"];
+  });
+}
+
+function doHandEdit(path, mode, recipeId) {
+  if (!path) return;
+  if (recipeId) world.selection.recipe = recipeId;
+  var owner = recipeId || world.selection.recipe;
+  perform(
+    "Hand-edited " + path + (mode === "unrelated" ? " (something unrelated)" : " (the recipe's own part)"),
+    function () { return [handEdit(path, mode, owner)]; },
+  );
+}
+
+function handEdit(path, mode, recipeId) {
+  var lib = world.library.filter(function (r) { return r.id === recipeId; })[0];
+  var entry = lib.files.filter(function (f) { return f.path === path; })[0];
+  var kind = entry && entry.action === "merge" ? mergeKind(entry, recipeId) : null;
+  var content = world.files[path];
+
+  if (kind === "json") {
+    var doc;
+    try { doc = JSON.parse(content); } catch (e) { doc = {}; }
+    if (mode === "unrelated") {
+      doc.description = "a demo project, edited by hand";
+    } else {
+      doc.scripts = doc.scripts || {};
+      var v = doc.scripts["format:check"] || "";
+      doc.scripts["format:check"] = v.indexOf("--write") === -1 ? v + " --write" : v;
+    }
+    world.files[path] = JSON.stringify(doc, null, 2) + "\n";
+    return mode === "unrelated"
+      ? "added a description — a key " + recipeId + " never named, so the part it owns is untouched"
+      : "changed " + recipeId + "'s own key (scripts.format:check) by hand";
+  }
+
+  if (kind === "markers") {
+    if (content === undefined) {
+      world.files[path] = "# hand-edited by you\n";
+      return "you created " + path + " by hand — it holds no block for " + recipeId;
+    }
+    if (mode === "unrelated") {
+      world.files[path] = content + (content.slice(-1) === "\n" ? "" : "\n") + "# hand-edited by you\n";
+      return "appended a line outside " + recipeId + "'s block — the block itself is untouched";
+    }
+    var lines = content.split("\n");
+    var end = lines.findIndex(function (l) { return l.indexOf("code-quality:" + recipeId + ":end") !== -1; });
+    if (end === -1) {
+      world.files[path] = content + (content.slice(-1) === "\n" ? "" : "\n") + "# hand-edited by you\n";
+      return "there is no block for " + recipeId + " in that file, so the edit landed outside it";
+    }
+    lines.splice(end, 0, "# hand-edited by you");
+    world.files[path] = lines.join("\n");
+    return "edited inside " + recipeId + "'s own block";
+  }
+
+  if (path.slice(-5) === ".json") {
+    var created;
+    try { created = JSON.parse(content); } catch (e) { created = {}; }
+    if (path === "biome.json") {
+      created.formatter = Object.assign({}, created.formatter, { indentWidth: 4 });
+    } else if (path === "tsconfig.json") {
+      created.compilerOptions = Object.assign({}, created.compilerOptions, { target: "ES2020" });
+    } else {
+      created.handEdited = true;
+    }
+    world.files[path] = JSON.stringify(created, null, 2) + "\n";
+    return "a created file belongs entirely to the recipe, so changing a setting in it is drift";
+  }
+
+  world.files[path] = (content || "") + (content && content.slice(-1) !== "\n" ? "\n" : "") + "# hand-edited by you\n";
+  return "a created file belongs entirely to the recipe, so any edit to it is drift";
+}
+
+function doDelete(path) {
+  if (!path) return;
+  perform("Deleted " + path, function () {
+    if (world.files[path] === undefined) return [path + " was not there — nothing to delete"];
+    delete world.files[path];
+    return [path + " is gone from the project"];
+  });
+}
+
+function doBump(recipeId) {
+  world.selection.recipe = recipeId;
+  perform("Bumped the library's " + recipeId + " recipe", function () {
+    world.revisions[recipeId] += 1;
+    world.library = buildLibrary(world.revisions);
+    world.pending = null;
+    return ["the library now renders revision " + world.revisions[recipeId] + " of " + recipeId + " — nothing on disk changed"];
+  });
+}
+
+function doDecline(recipeId) {
+  world.selection.recipe = recipeId;
+  perform("Declined the " + recipeId + " recipe", function () {
+    ensureManifest();
+    world.manifest = recordDecline(world.manifest, { recipeId: recipeId, now: nowIso() });
+    world.pending = null;
+    return ["recorded as a decision — a later run says “previously declined” and asks again"];
+  });
+}
+
+function doDeleteManifest() {
+  perform("Deleted " + MANIFEST_PATH, function () {
+    world.manifest = null;
+    world.pending = null;
+    return ["the skill no longer has a record of what it wrote"];
+  });
+}
+
+/* --- rendering ------------------------------------------------------------- */
+
+var STATE_LABEL = {
+  intact: "up to date",
+  update: "library updated",
+  drifted: "hand-edited",
+  missing: "file missing",
+  new: "not applied yet",
+  stale: "no longer offered",
+  declined: "previously declined",
+};
+
+function chip(state) {
+  return '<span class="chip chip-' + state + '">' + (STATE_LABEL[state] || state) + "</span>";
+}
+
+function render() {
+  var report = reportOf();
+  renderLastAction();
+  renderManifest();
+  renderVerdicts(report);
+  renderPending();
+  renderFiles();
+  renderLibrary();
+  renderFreeplay();
+  renderWalkthroughs();
+}
+
+function renderLastAction() {
+  var box = $("lastAction");
+  if (!lastAction) {
+    box.className = "last-action empty";
+    box.textContent = "Nothing yet — press a button and this panel updates.";
+    return;
+  }
+  box.className = "last-action";
+  var changes = lastAction.changes.length
+    ? '<ul class="changes">' + lastAction.changes.map(function (c) { return "<li>" + esc(c) + "</li>"; }).join("") + "</ul>"
+    : '<p class="muted" style="margin:6px 0 0">Nothing in the report changed.</p>';
+  var notes = lastAction.notes.length
+    ? '<ul class="notes">' + lastAction.notes.map(function (n) { return "<li>" + esc(n) + "</li>"; }).join("") + "</ul>"
+    : "";
+  box.innerHTML = '<p style="margin:0"><strong>Last action:</strong> ' + esc(lastAction.title) + "</p>" + changes + notes;
+}
+
+function renderManifest() {
+  var box = $("manifestBox");
+  var m = world.manifest;
+  if (!m) {
+    box.innerHTML = "<h3>The manifest <span class=\"path\">" + MANIFEST_PATH + "</span></h3>" +
+      '<p class="absent">There is no manifest. The skill has no record of what it wrote, so every ' +
+      "comparison below falls back to the library alone.</p>";
+    return;
+  }
+  var out = ["<h3>The manifest <span class=\"path\">" + MANIFEST_PATH + "</span></h3>"];
+  out.push('<dl class="fields">' +
+    "<dt>Schema version</dt><dd>" + m.schemaVersion + "</dd>" +
+    "<dt>Written by</dt><dd>" + esc(m.skill.name) + ' <span class="muted">v' + esc(m.skill.version) + "</span></dd>" +
+    "<dt>Recorded at</dt><dd>" + prettyTime(m.appliedAt) + "</dd>" +
+    "<dt>Environment</dt><dd>" + esc(m.environment.packageManager) + " · " + esc(m.environment.workspace) +
+      " project · " + m.environment.languages.map(esc).join(", ") + "</dd>" +
+    "<dt>Recipes applied</dt><dd>" + m.recipes.length + "</dd>" +
+    "</dl>");
+
+  if (m.recipes.length) {
+    out.push('<div class="recs">' + m.recipes.map(function (r) {
+      return '<div class="rec">' +
+        '<div class="rec-head"><span class="mono">' + esc(r.id) + "</span>" +
+        '<span class="muted">skill ' + esc(r.skillVersion) + " · recipe hash " + hashSpan(r.recipeHash) +
+        " · applied " + prettyTime(r.appliedAt) + "</span></div>" +
+        '<ul class="files">' + r.files.map(function (f) {
+          return "<li><span class=\"mono\">" + esc(f.path) + "</span>" +
+            '<span class="muted">' + (f.action === "create" ? "created" : "merged into a shared file") + "</span>" +
+            hashSpan(f.hash) + "</li>";
+        }).join("") + "</ul></div>";
+    }).join("") + "</div>");
+    out.push('<p class="muted" style="margin-top:12px">Each hash is of the part the recipe owns: the whole file ' +
+      "for a created file, the marked block or the named keys for a merged one.</p>");
+  } else {
+    out.push('<p class="muted">No recipes applied yet.</p>');
+  }
+
+  if (m.declined.length) {
+    out.push('<div class="declined"><span class="label">Declined</span>' +
+      m.declined.map(function (d) {
+        return '<span><span class="mono">' + esc(d.id) + '</span> <span class="muted">' + prettyTime(d.at) + "</span></span>";
+      }).join(" · ") + "</div>");
+  }
+  box.innerHTML = out.join("");
+}
+
+function renderVerdicts(report) {
+  var box = $("verdictBox");
+  var out = ["<h3>What a re-run would say</h3>"];
+  if (report.degraded) {
+    out.push('<p class="absent">The manifest is unreadable or absent, so the report compares the project ' +
+      "against the current library only. Every recipe the library offers reads as “not applied yet”.</p>");
+  }
+  report.recipes.forEach(function (r) {
+    out.push('<div class="verdict">' +
+      '<div class="verdict-head"><span class="mono">' + esc(r.id) + "</span>" + chip(r.state) +
+      (r.recipeChanged ? '<span class="tag">recipe changed since it was applied</span>' : "") + "</div>" +
+      (r.files.length
+        ? '<ul class="files">' + r.files.map(function (f) {
+            return "<li><span class=\"mono\">" + esc(f.path) + "</span>" + chip(f.verdict) +
+              '<span class="muted">' + (f.action === "create" ? "whole file" : f.kind === "json" ? "its named keys" : "its marked block") + "</span>" +
+              (f.updateAvailable && f.verdict !== "update" ? '<span class="tag">a library update is also waiting</span>' : "") +
+              "</li>";
+          }).join("") + "</ul>"
+        : '<p class="muted">nothing on disk to compare</p>') +
+      "</div>");
+  });
+
+  out.push('<div class="legend">' +
+    '<span><span class="chip chip-intact">up to date</span> the file matches what the recipe would write now</span>' +
+    '<span><span class="chip chip-update">library updated</span> the file is untouched, but the recipe\u2019s own render changed</span>' +
+    '<span><span class="chip chip-drifted">hand-edited</span> you changed the recipe\u2019s own part — it is never overwritten</span>' +
+    '<span><span class="chip chip-missing">file missing</span> something the recipe wrote is gone</span>' +
+    '<span><span class="chip chip-new">not applied yet</span> the manifest has no record of this recipe</span>' +
+    '<span><span class="chip chip-declined">previously declined</span> you said no earlier; it asks again</span>' +
+    "</div>");
+
+  out.push('<details class="own-words"><summary>the same, in the skill\u2019s own words</summary><pre>' +
+    esc(describe(report).join("\n")) + "</pre></details>");
+  box.innerHTML = out.join("");
+}
+
+function renderPending() {
+  var box = $("pendingBox");
+  var p = world.pending;
+  if (!p) { box.innerHTML = ""; return; }
+  var body = p.proposals.length
+    ? '<ul class="files">' + p.proposals.map(function (x) {
+        return '<li><span class="mono">' + esc(x.recipeId) + '</span><span class="muted">' + esc(x.why) + "</span></li>";
+      }).join("") + "</ul>" +
+      '<div class="actions"><button class="btn primary" id="approveBtn">Approve and write</button>' +
+      '<button class="btn" id="discardBtn">Leave it alone</button></div>'
+    : '<p class="muted">Nothing to write — this run has no proposals.</p>';
+  var notes = p.notes.length
+    ? '<ul class="notes">' + p.notes.map(function (n) { return "<li>" + esc(n) + "</li>"; }).join("") + "</ul>"
+    : "";
+  box.innerHTML = '<div class="pending"><h4>The plan from that run <span class="path">' +
+    prettyTime(p.at) + "</span></h4>" + body + notes + "</div>";
+  if ($("approveBtn")) $("approveBtn").onclick = doApprove;
+  if ($("discardBtn")) $("discardBtn").onclick = doDiscard;
+}
+
+function renderFiles() {
+  var box = $("filesBox");
+  var paths = Object.keys(world.files).sort();
+  if (!paths.length) {
+    box.innerHTML = "<h3>The project\u2019s files</h3><p class=\"muted\">Nothing on disk.</p>";
+    return;
+  }
+  var owner = {};
+  world.library.forEach(function (r) {
+    r.files.forEach(function (f) { if (!owner[f.path]) owner[f.path] = r.id; });
+  });
+  box.innerHTML = "<h3>The project\u2019s files</h3>" +
+    '<ul class="filelist">' + paths.map(function (p) {
+      return "<li><div class=\"filehead\"><span class=\"mono\">" + esc(p) + "</span>" +
+        '<span class="muted">' + byteSize(world.files[p]) +
+        (owner[p] ? " · a recipe writes into this file" : " · the project\u2019s own") + "</span></div>" +
+        "<pre>" + preview(world.files[p], 5) + "</pre></li>";
+    }).join("") + "</ul>";
+}
+
+function renderLibrary() {
+  var box = $("libraryBox");
+  box.innerHTML = "<h3>The library</h3>" +
+    '<p class="muted">What the recipes would render right now. None of this is on disk.</p>' +
+    '<div class="recs">' + world.library.map(function (r) {
+      return '<div class="rec">' +
+        '<div class="rec-head"><span class="mono">' + esc(r.id) + "</span>" +
+        '<span class="muted">revision ' + world.revisions[r.id] + " · recipe hash " + hashSpan(r.hash) + "</span></div>" +
+        '<ul class="files">' + r.files.map(function (f) {
+          var kind = f.action === "create" ? "creates the file" : mergeKind(f, r.id) === "json" ? "merges these keys" : "merges a marked block";
+          return "<li><div style=\"width:100%\"><div class=\"filehead\"><span class=\"mono\">" + esc(f.path) +
+            '</span><span class="muted">' + kind + "</span></div><pre>" + preview(f.content, 6) + "</pre></div></li>";
+        }).join("") + "</ul></div>";
+    }).join("") + "</div>";
+}
+
+function renderFreeplay() {
+  var recipeIds = world.library.map(function (r) { return r.id; });
+  if (recipeIds.indexOf(world.selection.recipe) === -1) world.selection.recipe = recipeIds[0];
+  var lib = world.library.filter(function (r) { return r.id === world.selection.recipe; })[0];
+  var files = Object.keys(world.files);
+  lib.files.forEach(function (f) { if (files.indexOf(f.path) === -1) files.push(f.path); });
+  files.sort();
+  if (files.indexOf(world.selection.file) === -1) world.selection.file = files[0] || "";
+
+  $("pickRecipe").innerHTML = recipeIds.map(function (id) {
+    return '<option value="' + esc(id) + '"' + (id === world.selection.recipe ? " selected" : "") + ">" + esc(id) + "</option>";
+  }).join("");
+  $("pickFile").innerHTML = files.map(function (p) {
+    return '<option value="' + esc(p) + '"' + (p === world.selection.file ? " selected" : "") + ">" + esc(p) +
+      (world.files[p] === undefined ? " (not on disk)" : "") + "</option>";
+  }).join("");
+  $("pickEdit").innerHTML =
+    '<option value="owned"' + (world.selection.edit === "owned" ? " selected" : "") + ">the recipe\u2019s own part</option>" +
+    '<option value="unrelated"' + (world.selection.edit === "unrelated" ? " selected" : "") + ">something unrelated</option>";
+
+  $("pickRecipe").onchange = function (e) { world.selection.recipe = e.target.value; render(); };
+  $("pickFile").onchange = function (e) { world.selection.file = e.target.value; render(); };
+  $("pickEdit").onchange = function (e) { world.selection.edit = e.target.value; render(); };
+
+  var recipe = world.selection.recipe;
+  var file = world.selection.file;
+  $("freeActions").innerHTML =
+    '<button class="btn primary" id="aApply">Apply the ' + esc(recipe) + " recipe</button>" +
+    '<button class="btn" id="aRun">Re-run the setup</button>' +
+    '<button class="btn" id="aEdit">Hand-edit ' + esc(file || "—") + "</button>" +
+    '<button class="btn" id="aDelete">Delete ' + esc(file || "—") + "</button>" +
+    '<button class="btn" id="aBump">Bump the library\u2019s ' + esc(recipe) + "</button>" +
+    '<button class="btn" id="aDecline">Decline the ' + esc(recipe) + " recipe</button>" +
+    '<button class="btn" id="aDeleteManifest">Delete ' + MANIFEST_PATH + "</button>";
+
+  $("aApply").onclick = function () { doApply(world.selection.recipe); };
+  $("aRun").onclick = doRun;
+  $("aEdit").onclick = function () { doHandEdit(world.selection.file, world.selection.edit); };
+  $("aDelete").onclick = function () { doDelete(world.selection.file); };
+  $("aBump").onclick = function () { doBump(world.selection.recipe); };
+  $("aDecline").onclick = function () { doDecline(world.selection.recipe); };
+  $("aDeleteManifest").onclick = doDeleteManifest;
+}
+
+/* --- guided walkthroughs --------------------------------------------------- */
+
+var SCENARIOS = [
+  {
+    id: "happy",
+    tab: "Happy path",
+    title: "The happy path",
+    blurb: "A project where nothing has been applied yet. Apply every recipe the library offers, then run " +
+      "the setup twice more. Watch: the later runs find nothing to do. The manifest is what turns a re-run " +
+      "into a no-op instead of a rewrite.",
+    steps: [
+      { label: "Apply the biome-assist recipe", run: function () { doApply("biome-assist"); } },
+      { label: "Apply the repo-hygiene recipe", run: function () { doApply("repo-hygiene"); } },
+      { label: "Apply the tsconfig-strict recipe", run: function () { doApply("tsconfig-strict"); } },
+      { label: "Re-run the setup", run: doRun },
+      { label: "Re-run it again", run: doRun },
+    ],
+  },
+  {
+    id: "drift",
+    tab: "A hand-edited file",
+    title: "You edited a file the skill wrote",
+    blurb: "The recipe was applied, and then you changed one of its files yourself. Watch: the run calls the " +
+      "file hand-edited and leaves it alone. A manifest that treated “I wrote this once” as ownership of your " +
+      "bytes would overwrite them here. This one does not.",
+    steps: [
+      { label: "Apply the biome-assist recipe", run: function () { doApply("biome-assist"); } },
+      { label: "Hand-edit the recipe’s own part of biome.json", run: function () { doHandEdit("biome.json", "owned", "biome-assist"); } },
+      { label: "Re-run the setup", run: doRun },
+    ],
+  },
+  {
+    id: "reinstate",
+    tab: "A missing file",
+    title: "A file the skill wrote has gone missing",
+    blurb: "Deleted by accident, or a fresh checkout that never had it. Watch: the run notices the file is " +
+      "missing — not that the recipe was never applied — and proposes to put it back. Nothing is written until " +
+      "you approve.",
+    steps: [
+      { label: "Apply the biome-assist recipe", run: function () { doApply("biome-assist"); } },
+      { label: "Delete biome.json", run: function () { doDelete("biome.json"); } },
+      { label: "Re-run the setup", run: doRun },
+      { label: "Approve and write", run: doApprove },
+    ],
+  },
+  {
+    id: "library",
+    tab: "The library moves",
+    title: "The recipe changed after you applied it",
+    blurb: "A newer revision of the recipe renders slightly different content. Watch: the file on disk is " +
+      "untouched since it was applied, so the run says “library updated”, not “hand-edited”. That distinction " +
+      "is the whole point — one is safe to rewrite, the other is not.",
+    steps: [
+      { label: "Apply the biome-assist recipe", run: function () { doApply("biome-assist"); } },
+      { label: "Bump the library’s biome-assist recipe", run: function () { doBump("biome-assist"); } },
+      { label: "Re-run the setup", run: doRun },
+      { label: "Approve and write", run: doApprove },
+    ],
+  },
+  {
+    id: "decline",
+    tab: "Declined",
+    title: "You don’t want this recipe",
+    blurb: "Watch: a decline is recorded as a decision, not as an absence. The next run says “previously " +
+      "declined” and asks again — it neither re-proposes the recipe as new nor silently skips it. Applying it " +
+      "later clears the decline.",
+    steps: [
+      { label: "Decline the repo-hygiene recipe", run: function () { doDecline("repo-hygiene"); } },
+      { label: "Re-run the setup", run: doRun },
+      { label: "Apply the repo-hygiene recipe after all", run: function () { doApply("repo-hygiene"); } },
+      { label: "Re-run the setup", run: doRun },
+    ],
+  },
+  {
+    id: "no-manifest",
+    tab: "No manifest",
+    title: "The manifest is gone",
+    blurb: "The record is deleted, and you had edited a file the skill wrote. Watch: with no memory of what " +
+      "it wrote, the skill can only compare the project against the library. It cannot tell your edit from an " +
+      "untouched file, so it offers to overwrite it. Remembering the bytes is the manifest’s entire job.",
+    steps: [
+      { label: "Apply the biome-assist recipe", run: function () { doApply("biome-assist"); } },
+      { label: "Hand-edit the recipe’s own part of biome.json", run: function () { doHandEdit("biome.json", "owned", "biome-assist"); } },
+      { label: "Delete .code-quality.json", run: doDeleteManifest },
+      { label: "Re-run the setup", run: doRun },
+      { label: "Approve and write", run: doApprove },
+    ],
+  },
+  {
+    id: "shared",
+    tab: "A shared file",
+    title: "One file, two owners",
+    blurb: "package.json is shared: the project owns most of it, biome-assist owns two of its keys. Watch: an " +
+      "edit to a key the recipe never named leaves the recipe up to date, while an edit to the recipe’s own key " +
+      "reads hand-edited. That is the difference between indexing whole files and indexing the part a recipe " +
+      "actually owns — and the reason a JSON merge is a bare fragment with no marker lines.",
+    steps: [
+      { label: "Apply the biome-assist recipe", run: function () { doApply("biome-assist"); } },
+      { label: "Hand-edit something unrelated in package.json", run: function () { doHandEdit("package.json", "unrelated", "biome-assist"); } },
+      { label: "Re-run the setup", run: doRun },
+      { label: "Hand-edit biome-assist’s own key in package.json", run: function () { doHandEdit("package.json", "owned", "biome-assist"); } },
+      { label: "Re-run the setup", run: doRun },
+    ],
+  },
+];
+
+function openScenario(id) {
+  resetWorld();
+  walk.active = id;
+  walk.ptr = 0;
+  render();
+}
+
+function renderWalkthroughs() {
+  $("tabs").innerHTML = SCENARIOS.map(function (s) {
+    return '<button class="tab' + (s.id === walk.active ? " active" : "") + '" data-id="' + s.id + '">' + esc(s.tab) + "</button>";
+  }).join("");
+  Array.prototype.forEach.call($("tabs").children, function (b) {
+    b.onclick = function () { openScenario(b.dataset.id); };
+  });
+
+  var s = SCENARIOS.filter(function (x) { return x.id === walk.active; })[0];
+  $("scenarioBody").innerHTML = "<h4>" + esc(s.title) + '</h4><p class="blurb">' + esc(s.blurb) + "</p>" +
+    '<ol class="steps">' + s.steps.map(function (st, i) {
+      var cls = i < walk.ptr ? "done" : i === walk.ptr ? "current" : "todo";
+      return '<li class="' + cls + '"><button class="btn" data-i="' + i + '">' +
+        (i < walk.ptr ? "✓ " : "") + esc(st.label) + "</button></li>";
+    }).join("") + "</ol>";
+
+  Array.prototype.forEach.call($("scenarioBody").querySelectorAll("button[data-i]"), function (b) {
+    b.onclick = function () {
+      var i = Number(b.dataset.i);
+      s.steps[i].run();
+      walk.ptr = Math.max(walk.ptr, i + 1);
+      render();
+    };
+  });
+}
+
+/* --- boot ------------------------------------------------------------------ */
+
+$("startOver").onclick = function () { resetWorld(); walk.ptr = 0; render(); };
+resetWorld();
+render();
+</script>
+</body>
+</html>
