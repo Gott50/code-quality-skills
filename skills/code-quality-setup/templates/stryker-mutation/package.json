@@ -1,0 +1,9 @@
+{
+  "scripts": {
+    "test:mutation": "stryker run"
+  },
+  "devDependencies": {
+    "@hughescr/stryker-bun-runner": "^1.3.8",
+    "@stryker-mutator/core": "^10.0.0"
+  }
+}

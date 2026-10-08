@@ -1,0 +1,6 @@
+[test]
+coverage = true
+# Exclude process entrypoints: thin `import.meta.main` bootstraps that only run
+# as a subprocess, which bun cannot coverage-instrument. All logic lives in the
+# covered sibling modules.
+coveragePathIgnorePatterns = ["**/tmp/**", "**/*-bin.ts"]

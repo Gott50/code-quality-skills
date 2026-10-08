@@ -9,4 +9,4 @@ Placeholder. This body is replaced by the real skill during the "Repo delivery: 
 
 It exists now only to prove the `skills` CLI install contract for a multi-file skill: nested reference files, lockfile entry, update path, and discovery filtering.
 
-The recipe library has started: [references/recipes/biome-assist.md](references/recipes/biome-assist.md) and [references/recipes/agent-guidance.md](references/recipes/agent-guidance.md), both obeying [RECIPE-CONTRACT.md](RECIPE-CONTRACT.md).
+The recipe library lives in [references/recipes/](references/recipes/), every recipe obeying [RECIPE-CONTRACT.md](RECIPE-CONTRACT.md).

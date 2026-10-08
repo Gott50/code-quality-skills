@@ -1,0 +1,3 @@
+# code-quality:bun-test-coverage:start
+coverage/
+# code-quality:bun-test-coverage:end

@@ -1,0 +1,3 @@
+# code-quality:tsconfig-strict:start
+bun run typecheck || exit 1
+# code-quality:tsconfig-strict:end

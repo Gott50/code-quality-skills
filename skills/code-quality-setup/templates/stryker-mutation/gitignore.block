@@ -1,0 +1,4 @@
+# code-quality:stryker-mutation:start
+reports/
+.stryker-tmp/
+# code-quality:stryker-mutation:end
