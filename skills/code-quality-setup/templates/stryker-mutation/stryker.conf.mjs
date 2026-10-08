@@ -15,7 +15,9 @@ export default {
   ignorePatterns: ["node_modules", ".git", "reports", "coverage", "tmp"],
   jsonReporter: { fileName: "reports/mutation/report.json" },
   // The mutation scope. `scripts/` and `tools/` are deliberately outside it:
-  // they have no covering test, so instrumenting them fails the dry run.
+  // the bun runner eagerly imports every file in the mutation set into the test
+  // process ("eager modules from mutate globs"), so a script whose top-level
+  // code exits non-zero aborts the dry run for the whole push.
   mutate: [
     "src/**/*.ts",
     "!**/test/**",
