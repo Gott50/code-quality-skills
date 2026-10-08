@@ -31,12 +31,13 @@ const BAD_STATUSES = {
   TimedOut: true,
 } as const satisfies Record<string, boolean>;
 
-// Directory prefix -> scoped Stryker config covering that area. One catch-all
-// entry for a single-package repo; a workspace adds one entry per member
-// (prefix -> that member's config), which is why the mapping is a list.
-const AREA_CONFIGS: ReadonlyArray<readonly [string, string]> = [["", "stryker.conf.mjs"]];
-
 const FULL_CONFIG = "stryker.conf.mjs";
+
+// The workspace root the gate was invoked from. Stryker runs in each area's
+// directory (so a member config's own globs resolve against the member), while
+// the report and incremental cache stay rooted here, where `.gitignore` covers
+// them.
+const ROOT = process.cwd();
 
 // The Stryker CLI, run through whichever package manager the project uses:
 // `bunx` under Bun, `npx` under npm and pnpm. Derived from the lockfile — the
@@ -44,18 +45,18 @@ const FULL_CONFIG = "stryker.conf.mjs";
 // disagree — which lets one gate script serve every package manager.
 const RUNNER = existsSync("bun.lock") || existsSync("bun.lockb") ? "bunx" : "npx";
 
-/** Short name of a config, used for its report and incremental-cache files. */
+/** Short name of a config, used for its incremental-cache file. */
 function areaOf(config: string): string {
   if (config === FULL_CONFIG) return "full";
   return config.replace(/^stryker\./, "").replace(/\.conf\.mjs$/, "") || "full";
 }
 
-/** Report file each config writes (jsonReporter.fileName). */
-function reportFileFor(config: string): string {
-  const area = areaOf(config);
-  if (area === "full") return "reports/mutation/report.json";
-  return `reports/mutation/report.${area}.json`;
-}
+// The report every config writes, at the workspace root. A member config runs
+// with cwd = the member directory, so its `jsonReporter.fileName` names
+// `{{root}}/reports/mutation/report.json` — the root, whatever the member's
+// depth — and the gate reads this same root path for every config. The
+// incremental cache stays per-area, so members do not share cache state.
+const REPORT_FILE = "reports/mutation/report.json";
 
 /**
  * Count bad-status mutants for the changed files in a Stryker report.
@@ -127,6 +128,13 @@ function globToRegExp(glob: string): RegExp {
   return new RegExp(`^${body}$`);
 }
 
+// Directory prefix -> scoped Stryker config covering that area. One catch-all
+// entry for a single-package repo; a workspace adds one entry per member
+// (prefix -> that member's config), which is why the mapping is a list. The
+// plan renderer substitutes this literal from the detector's member list, so
+// the mapping never drifts from the members on disk.
+const AREA_CONFIGS: ReadonlyArray<readonly [string, string]> = {{plan.areas}};
+
 /**
  * The config's own `mutate` globs are the mutation scope, and the gate must
  * respect them: `--mutate` on the command line OVERRIDES the config, so a
@@ -161,21 +169,31 @@ function inMutationScope(file: string, scope: MutateScope): boolean {
 function scopeFor(files: string[], scopes: Map<string, MutateScope>): Map<string, string[]> {
   const scope = new Map<string, string[]>();
   for (const file of files) {
-    for (const [prefix, config] of AREA_CONFIGS) {
-      if (!file.startsWith(prefix)) continue;
-      const mutateScope = scopes.get(config);
-      if (!mutateScope || !inMutationScope(file, mutateScope)) continue;
-      const list = scope.get(config) ?? [];
-      list.push(file);
-      scope.set(config, list);
-    }
+    // The most specific prefix wins: a member file belongs to its member's
+    // config, not to the root catch-all.
+    const match = AREA_CONFIGS.filter(([prefix]) => file.startsWith(prefix)).sort(
+      (a, b) => b[0].length - a[0].length,
+    )[0];
+    if (!match) continue;
+    const [prefix, config] = match;
+    const mutateScope = scopes.get(config);
+    // The config's globs are relative to the area directory, so match the
+    // file's path within that area.
+    if (!mutateScope || !inMutationScope(file.slice(prefix.length), mutateScope)) continue;
+    const list = scope.get(config) ?? [];
+    list.push(file.slice(prefix.length));
+    scope.set(config, list);
   }
   return scope;
 }
 
 function runStryker(config: string, files: string[]): boolean {
-  const incrementalFile = `reports/mutation/incremental.${areaOf(config)}.json`;
-  const reportFile = reportFileFor(config);
+  const area = areaOf(config);
+  // Stryker runs in the area's directory so a member config's own globs resolve
+  // against the member; the report and cache stay rooted at the workspace root.
+  const areaDir = AREA_CONFIGS.find(([, c]) => c === config)?.[0] ?? "";
+  const incrementalFile = resolve(ROOT, `reports/mutation/incremental.${area}.json`);
+  const reportFile = resolve(ROOT, REPORT_FILE);
   console.log(
     `\n[mutation-gate] ${config}: mutating ${files.length} changed file(s) ` +
       `(${files.join(", ")}) with incremental cache ${incrementalFile}`,
@@ -190,14 +208,14 @@ function runStryker(config: string, files: string[]): boolean {
     [
       "stryker",
       "run",
-      config,
+      resolve(ROOT, config),
       "--mutate",
       files.join(","),
       "--incremental",
       "--incrementalFile",
       incrementalFile,
     ],
-    { encoding: "utf8" },
+    { cwd: resolve(ROOT, areaDir), encoding: "utf8" },
   );
   process.stdout.write(r.stdout ?? "");
   process.stderr.write(r.stderr ?? "");

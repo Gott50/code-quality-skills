@@ -87,7 +87,7 @@ files:
 - In a **single** workspace, `root`, `member` and `both` resolve to the same directory. A `member`-scoped entry is skipped when a `root`-scoped entry writes the same `path`; nothing is written twice.
 - `memberMode` (only meaningful for `member`/`both`):
   - `standalone` — the member file stands alone.
-  - `extends-root` — the member file is a stub that inherits the root file (Biome `{ root: false, extends: ["//"] }`, oxlint `extends`, tsconfig `extends`).
+  - `extends-root` — the member file is a stub that inherits the root file (Biome `{ root: false, extends: ["//"] }`, oxlint `extends`, tsconfig `extends`). Where the inheritance mechanism needs a path relative to the member (oxlint, tsconfig, a Stryker `import`), the stub names `{{root}}` — see [Substitution](#root--the-members-path-back-to-the-workspace-root).
   - `copy` — the member file is the root template verbatim.
 - `action`:
   - `create` — write the rendered template when the target is absent; when present and byte-identical it is a no-op; when present and different it is drift.
@@ -149,8 +149,27 @@ Templates and body may use `{{plan.<key>}}` placeholders, substituted from the d
 |---|---|
 | `{{plan.gates}}` | one complete Markdown table of every selected recipe's gates, or `_No gates wired._` when the selection has none |
 | `{{plan.details}}` | one Markdown section per selected recipe: `title`, `purpose`, its gates, and its undo bullets (the detector extracts the body's `## Undo` section; a recipe file is otherwise never read to render) |
+| `{{plan.areas}}` | the `AREA_CONFIGS` literal for a recipe that maps directory prefixes to per-area configs: `[["", "stryker.conf.mjs"]]` in a single repo, or that catch-all plus one `[<member>/, <member>/stryker.conf.mjs]` per `stack.workspace.members` entry. **Rendered already formatted** — each entry `["<prefix>", "<config>"]`, single-line when the list holds one entry, and otherwise one entry per line, two-space indented with a trailing comma — because the file it lands in must satisfy the formatter gate the selection installs. Rendered from the detector's member list, so the mapping never drifts from the members on disk |
 
 This is what lets a recipe whose output describes the *whole selection* — the agent-guidance recipe — stay a static template.
+
+### `{{root}}` — the member's path back to the workspace root
+
+A `member`-scoped template that inherits the root file (`memberMode: extends-root`) needs a specifier
+relative to the member, and the member's depth is not known until the detector runs. `{{root}}` is
+that specifier: the relative path from the target file's directory to the workspace root, e.g. `../..`
+for `packages/a` and `../../..` for `packages/group/b`. It is a **per-file** token, not a
+`{{plan.<key>}}` key: its value changes with the member the file is rendered for.
+
+The detector reports it, so the renderer never does path arithmetic: each entry of
+`stack.workspace.members` carries `rootPrefix` (the same string). For a `root`-scoped file `{{root}}`
+is `.`. A template that uses `{{root}}` MUST be `member`- or `both`-scoped; a `root`-scoped template
+that names it is a contract violation.
+
+```jsonc
+// templates/tsconfig-strict/tsconfig.member.json
+{ "extends": "{{root}}/tsconfig.json" }
+```
 
 ## Idempotency (library-wide)
 

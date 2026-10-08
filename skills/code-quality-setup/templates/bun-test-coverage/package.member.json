@@ -1,0 +1,5 @@
+{
+  "scripts": {
+    "test": "bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage && bun {{root}}/scripts/coverage-gate.ts --lcov coverage/lcov.info --threshold 100"
+  }
+}

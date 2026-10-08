@@ -61,7 +61,9 @@ from `package.json#packageManager` only as a fallback. `source` is `"lockfile"` 
 - Globs are expanded with a dependency-free matcher: `*` = one path segment, `**` = any depth,
   leading `!` = exclude. A matched directory counts as a member only if it holds a `package.json`.
   Dot-directories are skipped.
-- `members` is `[{ path, name }]`, `path` relative to the root, sorted.
+- `members` is `[{ path, name, rootPrefix }]`, `path` relative to the root, sorted. `rootPrefix` is
+  the relative path from the member back to the workspace root (`../..` for `packages/a`), the value
+  a `memberMode: extends-root` stub substitutes for `{{root}}` (RECIPE-CONTRACT.md → Substitution).
 
 ## `packages[]`
 

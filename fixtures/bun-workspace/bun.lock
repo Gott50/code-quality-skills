@@ -1,0 +1,19 @@
+{
+  "lockfileVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "bun-workspace-fixture",
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.6.0"
+      }
+    },
+    "packages/a": {
+      "name": "@fixture/a"
+    },
+    "packages/nested/b": {
+      "name": "@fixture/b"
+    }
+  },
+  "packages": {}
+}

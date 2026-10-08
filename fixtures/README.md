@@ -1,6 +1,6 @@
 # Fixtures
 
-Four throwaway projects the detector is run against, and the projects a recipe is verified by
+Five throwaway projects the detector is run against, and the projects a recipe is verified by
 applying to. No `node_modules`, no `SKILL.md` (a nested `SKILL.md` would be discovered as a skill of
 its own by the `skills` CLI).
 
@@ -16,6 +16,7 @@ node skills/code-quality-setup/scripts/detect.mjs fixtures/<name>
 |---|---|---|
 | `plain-ts` | npm, single package, strict `tsconfig.json`, no tooling | the **full npm path** — every npm recipe applies (`repo-hygiene-npm` … `ci-workflow-npm`), no collisions, no hold-backs |
 | `bun-ts` | Bun, single package, `biome.json` + `.husky/pre-commit` already present | the **Bun happy path** — every Bun recipe applies; the apply target for a Bun recipe |
+| `bun-workspace` | Bun, `workspaces` in the root `package.json`, two members at different depths (`packages/a`, `packages/nested/b`), no tooling | the **workspace form** — the apply target for the workspace-scoped recipes: `{{root}}` substitution at two depths (`../..`, `../../..`) and per-member config placement |
 | `pnpm-workspace` | pnpm, `pnpm-workspace.yaml`, two members, CI workflow at the root | **workspace enumeration** and per-package tooling: vitest + coverage in `packages/a`, eslint + prettier in `packages/b`, a solution-style root `tsconfig.json` over a strict `tsconfig.base.json`; plus the **`conflicts.tools` collision** and the **`conflicts.recipes` hold-back** (member-level evidence) |
 | `npm-eslint-prettier` | npm, single package, eslint + prettier at the root | the **`conflicts.tools` collision** and the **`conflicts.recipes` hold-back** at root level: `biome-assist-npm` collides with the project's prettier + eslint, and `eslint-prettier` is held back |
 

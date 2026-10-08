@@ -1,3 +1,7 @@
+// The shared Stryker base. In a single-package repo this file is the config
+// Stryker runs; in a workspace each member's `stryker.conf.mjs` imports it and
+// overrides `mutate`/`testFiles`/`bun.testFiles` with its own member-relative
+// scope (see `stryker.member.conf.mjs`).
 export default {
   bun: {
     inspectorTimeout: 10000,
