@@ -52,10 +52,15 @@ function areaOf(config: string): string {
 }
 
 // The report every config writes, at the workspace root. A member config runs
-// with cwd = the member directory, so its `jsonReporter.fileName` names
-// `{{root}}/reports/mutation/report.json` — the root, whatever the member's
-// depth — and the gate reads this same root path for every config. The
-// incremental cache stays per-area, so members do not share cache state.
+// with cwd = the member directory, so its `jsonReporter.fileName` names the
+// member's path back to the workspace root followed by this path — the root,
+// whatever the member's depth — and the gate reads this same root path for
+// every config. The incremental cache stays per-area, so members do not share
+// cache state.
+//
+// This template is root-scoped, so it must not carry a substitution token: the
+// renderer would rewrite it and `create`'s byte-compare would report drift on a
+// file nobody edited. Name the mechanism, never the token.
 const REPORT_FILE = "reports/mutation/report.json";
 
 /**
