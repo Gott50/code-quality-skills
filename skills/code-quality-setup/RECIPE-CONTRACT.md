@@ -87,7 +87,7 @@ files:
 - In a **single** workspace, `root`, `member` and `both` resolve to the same directory. A `member`-scoped entry is skipped when a `root`-scoped entry writes the same `path`; nothing is written twice.
 - `memberMode` (only meaningful for `member`/`both`):
   - `standalone` — the member file stands alone.
-  - `extends-root` — the member file is a stub that inherits the root file (Biome `{ root: false, extends: ["//"] }`, oxlint `extends`, tsconfig `extends`). Where the inheritance mechanism needs a path relative to the member (oxlint, tsconfig, a Stryker `import`), the stub names `{{root}}` — see [Substitution](#root--the-members-path-back-to-the-workspace-root).
+  - `extends-root` — the member file is a stub that inherits the root file. Every mechanism counts: Biome `{ root: false, extends: ["//"] }`, tsconfig `extends`, a Stryker `import` of the base, and oxlint **spreading** the base's `rules`/`overrides` — a config reached through `extends` rejects a relative `jsPlugins` specifier, and the root base carries one, so a spread is the only inheritance oxlint allows there. Where the mechanism needs a path relative to the member (tsconfig, oxlint, a Stryker `import`), the stub names `{{root}}` — see [Substitution](#root--the-members-path-back-to-the-workspace-root).
   - `copy` — the member file is the root template verbatim.
 - `action`:
   - `create` — write the rendered template when the target is absent; when present and byte-identical it is a no-op; when present and different it is drift.
