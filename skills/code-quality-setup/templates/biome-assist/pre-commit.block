@@ -1,0 +1,4 @@
+# code-quality:biome-assist:start
+bunx @biomejs/biome check --staged --write --unsafe --linter-enabled=false --no-errors-on-unmatched || exit 1
+git add -u || exit 1
+# code-quality:biome-assist:end

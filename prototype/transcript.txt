@@ -1,0 +1,88 @@
+##### 1. scratch project
+
+##### 2. apply both recipes (first run)
+biome-assist: create biome.json -> created
+biome-assist: biome.json skipped (same path already written this run)
+biome-assist: merge package.json -> updated
+biome-assist: merge .husky/pre-commit -> created
+biome-assist: command (silent) bun install -> ok
+biome-assist: command bunx @biomejs/biome check --write --unsafe --linter-enabled=false . -> ok
+biome-assist: verify bun run format:check -> exit 0
+agent-guidance: merge AGENTS.md -> created
+agent-guidance: create docs/code-quality.md -> created
+agent-guidance: verify test -f docs/code-quality.md && grep -q "code-quality:agent-guidance:start" AGENTS.md -> exit 0
+apply exit=0
+
+##### 3. apply again (idempotency)
+biome-assist: create biome.json -> no-op (identical)
+biome-assist: biome.json skipped (same path already written this run)
+biome-assist: merge package.json -> no-op (identical)
+biome-assist: merge .husky/pre-commit -> no-op (identical)
+biome-assist: command (silent) bun install -> ok
+biome-assist: command bunx @biomejs/biome check --write --unsafe --linter-enabled=false . -> ok
+biome-assist: verify bun run format:check -> exit 0
+agent-guidance: merge AGENTS.md -> no-op (identical)
+agent-guidance: create docs/code-quality.md -> no-op (identical)
+agent-guidance: verify test -f docs/code-quality.md && grep -q "code-quality:agent-guidance:start" AGENTS.md -> exit 0
+apply exit=0
+
+##### 4. the pre-commit hook, end to end
+Checked 1 file in 2ms. Fixed 1 file.
+--- committed content of src/unsorted.ts ---
+import { a } from "a";
+import { b } from "z";
+export const o = { a: 2, z: 1 };
+--- worktree content ---
+import { a } from "a";
+import { b } from "z";
+export const o = { a: 2, z: 1 };
+--- is the commit clean under the gate? ---
+Checked 1 file in 2ms. No fixes applied.
+clean
+
+##### 5. resulting tree
+A  .husky/pre-commit
+A  AGENTS.md
+A  biome.json
+A  bun.lock
+A  docs/code-quality.md
+A  node_modules/.bin/biome
+A  node_modules/.bin/husky
+A  node_modules/@biomejs/biome/LICENSE-APACHE
+A  node_modules/@biomejs/biome/LICENSE-MIT
+A  node_modules/@biomejs/biome/README.es.md
+A  node_modules/@biomejs/biome/README.fr.md
+A  node_modules/@biomejs/biome/README.hi.md
+A  node_modules/@biomejs/biome/README.ja.md
+A  node_modules/@biomejs/biome/README.kr.md
+A  node_modules/@biomejs/biome/README.md
+A  node_modules/@biomejs/biome/README.pl.md
+A  node_modules/@biomejs/biome/README.pt-BR.md
+A  node_modules/@biomejs/biome/README.ru.md
+A  node_modules/@biomejs/biome/README.uk.md
+A  node_modules/@biomejs/biome/README.zh-CN.md
+A  node_modules/@biomejs/biome/README.zh-TW.md
+A  node_modules/@biomejs/biome/ROME-LICENSE-MIT
+A  node_modules/@biomejs/biome/bin/biome
+A  node_modules/@biomejs/biome/configuration_schema.json
+A  node_modules/@biomejs/biome/package.json
+A  node_modules/@biomejs/cli-darwin-arm64/CHANGELOG.md
+A  node_modules/@biomejs/cli-darwin-arm64/biome
+A  node_modules/@biomejs/cli-darwin-arm64/package.json
+A  node_modules/husky/LICENSE
+A  node_modules/husky/README.md
+A  node_modules/husky/bin.js
+A  node_modules/husky/husky
+A  node_modules/husky/index.d.ts
+A  node_modules/husky/index.js
+A  node_modules/husky/package.json
+./.husky/pre-commit
+./AGENTS.md
+./biome.json
+./bun.lock
+./docs/code-quality.md
+./package.json
+./src/index.ts
+./src/unsorted.ts
+./test/index.test.ts
+./tsconfig.json
