@@ -23,7 +23,7 @@ files:
     scope: root
     template: templates/fallow-audit-npm/pre-push.block
 commands:
-  - run: sh -c 'test -f pnpm-lock.yaml && pnpm install || npm install'
+  - run: sh -c 'if test -f pnpm-lock.yaml; then pnpm install; else npm install; fi'
     scope: root
     showInPlan: false
 gates:
@@ -43,7 +43,7 @@ verify:
 1. **`.fallowrc.json`** — create from `templates/fallow-audit/.fallowrc.json`, the same config the Bun recipe writes: it is package-manager-neutral. `audit.gate: new-only` is what makes the audit usable on a repo with existing debt: it fails on issues the change *introduces*, not on the ones already there. `entry` names `stryker.conf.mjs`, which is referenced only by the Stryker CLI and would otherwise be reported as an unused file.
 2. **`package.json`** — merge from `templates/fallow-audit-npm/package.json`: add the `fallow` devDependency and the `fallow`, `fallow:audit` and `fallow:coverage` scripts.
 3. **`.husky/pre-push`** — merge from `templates/fallow-audit-npm/pre-push.block`, inside this recipe's marker pair: the Bun recipe's block with `bun run fallow:audit` → `npm run fallow:audit`.
-4. **The install** — `sh -c 'test -f pnpm-lock.yaml && pnpm install || npm install'`, installing `fallow`.
+4. **The install** — `sh -c 'if test -f pnpm-lock.yaml; then pnpm install; else npm install; fi'`, installing `fallow`.
 
 **The Bun recipe's `scripts/lcov-to-istanbul.ts` bridge is deliberately not written here.** It exists because bun's coverage reporter emits only `text` and `lcov` while fallow's `--coverage` needs Istanbul JSON; Vitest's `istanbul` provider writes `coverage/coverage-final.json` directly, so `fallow` reads it with no conversion step. `fallow:coverage` therefore runs `test` and then `fallow`, with nothing in between.
 

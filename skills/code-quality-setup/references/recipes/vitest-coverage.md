@@ -29,7 +29,7 @@ files:
     scope: root
     template: templates/vitest-coverage/gitignore.block
 commands:
-  - run: sh -c 'test -f pnpm-lock.yaml && pnpm install || npm install'
+  - run: sh -c 'if test -f pnpm-lock.yaml; then pnpm install; else npm install; fi'
     scope: root
     showInPlan: false
 gates:
@@ -50,7 +50,7 @@ verify:
 2. **`package.json`** — merge from `templates/vitest-coverage/package.json`: add the `vitest` and `@vitest/coverage-istanbul` devDependencies and the `test` script. A project that already has a `test` script with a different value is a collision the plan must show.
 3. **`.husky/pre-commit`** — merge from `templates/vitest-coverage/pre-commit.block`, inside this recipe's marker pair.
 4. **`.gitignore`** — merge from `templates/vitest-coverage/gitignore.block`, inside this recipe's marker pair: `coverage/`.
-5. **The install** — `sh -c 'test -f pnpm-lock.yaml && pnpm install || npm install'`, installing the two devDependencies.
+5. **The install** — `sh -c 'if test -f pnpm-lock.yaml; then pnpm install; else npm install; fi'`, installing the two devDependencies.
 
 The gate is a wall, not a slope: on a repo that is not already at 100% per file, `npm run test` fails and lists the files. That is the gate working. The recipe's files are correct, the plan shows the gap before applying, and the recipe stays unrecorded until the project climbs to 100%.
 

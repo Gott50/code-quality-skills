@@ -31,7 +31,7 @@ files:
     scope: root
     template: templates/stryker-mutation-vitest/gitignore.block
 commands:
-  - run: sh -c 'test -f pnpm-lock.yaml && pnpm install || npm install'
+  - run: sh -c 'if test -f pnpm-lock.yaml; then pnpm install; else npm install; fi'
     scope: root
     showInPlan: false
 gates:
@@ -50,7 +50,7 @@ verify:
 3. **`package.json`** — merge from `templates/stryker-mutation-vitest/package.json`: add the `@stryker-mutator/core`, `@stryker-mutator/vitest-runner` and `tsx` devDependencies and the `test:mutation` script. `tsx` is what the hook uses to run the TypeScript gate under Node.
 4. **`.husky/pre-push`** — merge from `templates/stryker-mutation-vitest/pre-push.block`, inside this recipe's marker pair: the Bun recipe's block with `bun scripts/mutation-gate.ts` → `npx tsx scripts/mutation-gate.ts`.
 5. **`.gitignore`** — merge from `templates/stryker-mutation-vitest/gitignore.block`, inside this recipe's marker pair: `reports/` and `.stryker-tmp/`. The incremental cache lives under `reports/`, so it is never committed.
-6. **The install** — `sh -c 'test -f pnpm-lock.yaml && pnpm install || npm install'`, installing the three devDependencies.
+6. **The install** — `sh -c 'if test -f pnpm-lock.yaml; then pnpm install; else npm install; fi'`, installing the three devDependencies.
 
 Four things the gate does that a bare `stryker run` does not, unchanged from the Bun recipe: it **scopes to the changed files** (and filters them through the config's own `mutate` globs first, because `--mutate` on the command line overrides the config); it **fails on timeouts**, not just the score (Stryker counts `TimedOut` as killed); it **resets the report before each run** and scopes the counts to the pushed files (the `jsonReporter` accumulates across runs and `--incremental` re-emits cached files); and it **fails closed on a missing report** unless Stryker's own "Instrumented <N> source file(s) with 0 mutant" line confirms a genuinely zero-mutant run.
 

@@ -23,7 +23,7 @@ files:
     scope: root
     template: templates/tsconfig-strict-npm/pre-commit.block
 commands:
-  - run: sh -c 'test -f pnpm-lock.yaml && pnpm install || npm install'
+  - run: sh -c 'if test -f pnpm-lock.yaml; then pnpm install; else npm install; fi'
     scope: root
     showInPlan: false
 gates:
@@ -40,7 +40,7 @@ verify:
 1. **`tsconfig.json`** — merge from `templates/tsconfig-strict-npm/tsconfig.json`. The merge is recursive, so the fragment's `compilerOptions` leaves are added to whatever the project already declares and nothing else is touched. The options are the proven set, with one package-manager difference from the Bun recipe: `types: ["node"]` instead of `["bun"]`, because the runtime is Node and the ambient types come from `@types/node`.
 2. **`package.json`** — merge from `templates/tsconfig-strict-npm/package.json`: add the `typescript` and `@types/node` devDependencies and the `typecheck` script.
 3. **`.husky/pre-commit`** — merge from `templates/tsconfig-strict-npm/pre-commit.block`, inside this recipe's marker pair: the Bun recipe's block with `bun run typecheck` → `npm run typecheck`.
-4. **The install** — `sh -c 'test -f pnpm-lock.yaml && pnpm install || npm install'`, installing the two devDependencies.
+4. **The install** — `sh -c 'if test -f pnpm-lock.yaml; then pnpm install; else npm install; fi'`, installing the two devDependencies.
 
 Two things the fragment deliberately does not name, and why:
 

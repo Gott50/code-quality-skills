@@ -19,7 +19,7 @@ files:
     scope: root
     template: templates/eslint-prettier/pre-commit.block
 commands:
-  - run: sh -c 'test -f pnpm-lock.yaml && pnpm install || npm install'
+  - run: sh -c 'if test -f pnpm-lock.yaml; then pnpm install; else npm install; fi'
     scope: root
     showInPlan: false
 gates:
@@ -40,7 +40,7 @@ verify:
 
 1. **`package.json`** — merge from `templates/eslint-prettier/package.json`: add the `eslint` and `prettier` devDependencies and the `lint` and `format:check` scripts. Existing keys are never overwritten; a differing value is a collision the plan must show.
 2. **`.husky/pre-commit`** — merge from `templates/eslint-prettier/pre-commit.block`, inside this recipe's marker pair.
-3. **The install** — `sh -c 'test -f pnpm-lock.yaml && pnpm install || npm install'`.
+3. **The install** — `sh -c 'if test -f pnpm-lock.yaml; then pnpm install; else npm install; fi'`.
 
 **This recipe writes no ESLint or Prettier config.** The project already has one — that is what its `when` matches on (`{ dep: eslint }`, `{ dep: prettier }`) — and a `create` of a config the project owns would be permanent drift from the first run. The recipe only turns the existing setup into a gate and a pre-commit hook.
 

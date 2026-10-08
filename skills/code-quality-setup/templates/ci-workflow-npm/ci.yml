@@ -30,7 +30,7 @@ jobs:
       # One step for both managers: the lockfile names the manager, the same
       # evidence the detector uses. corepack makes pnpm available.
       - name: Install dependencies
-        run: sh -c 'test -f pnpm-lock.yaml && (corepack enable && pnpm install --frozen-lockfile) || npm ci'
+        run: sh -c 'if test -f pnpm-lock.yaml; then corepack enable && pnpm install --frozen-lockfile; else npm ci; fi'
 
       - name: Lint
         run: npm run lint
@@ -62,7 +62,7 @@ jobs:
         with:
           node-version-file: .node-version
       - name: Install dependencies
-        run: sh -c 'test -f pnpm-lock.yaml && (corepack enable && pnpm install --frozen-lockfile) || npm ci'
+        run: sh -c 'if test -f pnpm-lock.yaml; then corepack enable && pnpm install --frozen-lockfile; else npm ci; fi'
       - name: Run mutation gate (scoped to PR changes)
         run: |
           echo "refs/heads/head ${{ github.event.pull_request.head.sha }} refs/heads/base ${{ github.event.pull_request.base.sha }}" | npx tsx scripts/mutation-gate.ts
@@ -83,7 +83,7 @@ jobs:
         with:
           node-version-file: .node-version
       - name: Install dependencies
-        run: sh -c 'test -f pnpm-lock.yaml && (corepack enable && pnpm install --frozen-lockfile) || npm ci'
+        run: sh -c 'if test -f pnpm-lock.yaml; then corepack enable && pnpm install --frozen-lockfile; else npm ci; fi'
       - name: Produce coverage + run fallow health
         run: npm run fallow:coverage
         continue-on-error: true

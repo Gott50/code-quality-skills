@@ -22,7 +22,7 @@ files:
     scope: root
     template: templates/repo-hygiene/package.json
 commands:
-  - run: sh -c 'test -f pnpm-lock.yaml && pnpm install || npm install'
+  - run: sh -c 'if test -f pnpm-lock.yaml; then pnpm install; else npm install; fi'
     scope: root
     showInPlan: false
 gates: []
@@ -36,7 +36,7 @@ verify:
 1. **`.node-version`** — create from `templates/repo-hygiene-npm/node-version`. `actions/setup-node`'s `node-version-file` reads it, so CI and the local runtime agree. A pnpm project pins pnpm itself through `packageManager` + Corepack, not through this file.
 2. **`.gitignore`** — merge from `templates/repo-hygiene-npm/gitignore.block`, inside this recipe's marker pair. The entries are package-manager-neutral and identical to the Bun recipe's, but the block is written twice: a merged block's marker must name the recipe that owns it, so the two siblings cannot share one file.
 3. **`package.json`** — merge from `templates/repo-hygiene/package.json`: add the `husky` devDependency and the `prepare: husky` script. `prepare` runs on `npm install`/`npm ci` and on a pnpm full install, so a fresh checkout wires `.husky/` without a manual step. It does **not** run on `pnpm add <pkg>` or under `--ignore-scripts`; a project that installs with `--ignore-scripts` in CI must run `husky` explicitly.
-4. **The install** — `sh -c 'test -f pnpm-lock.yaml && pnpm install || npm install'`. The contract's `run` is a literal command line and the two managers have no common install verb, so the recipe picks by the lockfile the detector already used to name the manager. It installs `husky` and runs `prepare`.
+4. **The install** — `sh -c 'if test -f pnpm-lock.yaml; then pnpm install; else npm install; fi'`. The contract's `run` is a literal command line and the two managers have no common install verb, so the recipe picks by the lockfile the detector already used to name the manager. It is an `if`/`else` on the lockfile's **existence**, deliberately not the shorter `test -f pnpm-lock.yaml && pnpm install || npm install`: with the `||` form a *failing* `pnpm install` silently falls through to `npm install`, which writes a `package-lock.json` into a pnpm project. pnpm makes that failure realistic — from pnpm 10 it exits non-zero (`ERR_PNPM_IGNORED_BUILDS`) when a dependency's build script is not allowlisted — so a failed pnpm install must never be read as "use npm instead". It installs `husky` and runs `prepare`.
 
 ## Idempotency
 
