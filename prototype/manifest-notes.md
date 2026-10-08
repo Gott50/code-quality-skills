@@ -165,16 +165,15 @@ artifact to click through; the transcript is the proof.
 `false` — the recipe's `.md` hash does not cover its templates. So `recipeHash` is only a coarse
 "which recipe revision" marker; the **per-file recorded hash** is the authoritative update signal.
 If the recipe version is meant to answer "did this recipe's output shape change", it must cover the
-templates too (or be dropped in favour of the per-file hashes). **Open for the human.**
+templates too — which is the decision taken below.
 
-## Open questions for the human
+## Decisions taken with the human
 
-1. **Recipe version: content hash or a `version:` frontmatter field?** The prototype uses the hash.
-   And the hash must cover the recipe's **templates**, not just the `.md` — scenario 6 shows a
-   template-only change leaves the `.md` hash untouched.
-2. **`declined[]` — keep it, or let a decline be a plain absence?** Keeping it means a re-run can
-   say "you declined this before"; dropping it means a re-run re-proposes it as new every time.
-3. **Does the manifest belong in the skill's own drift report at all, or is it purely an
-   optimization the plan may ignore?** The ADR says optimization; the prototype makes the plan
-   *better* with it (it can say "the skill wrote this" and "the library changed") and correct
-   without it.
+1. **The recipe version is a content hash covering the recipe `.md` *and* its templates.** Not a
+   hand-maintained `version:` frontmatter field (it goes stale), and not dropped (the per-file
+   hashes answer "did the output change"; the recipe-level version answers "which revision of the
+   recipe produced this"). Finding 2 above is why the hash must cover the templates.
+2. **`declined[]` stays.** A decline is a decision, not an absence: a re-run says "previously
+   declined" and asks again.
+3. **The manifest is an optimization only.** The plan degrades gracefully without it (ADR 0001);
+   it makes the plan *better*, never correct.
