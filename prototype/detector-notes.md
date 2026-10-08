@@ -10,7 +10,7 @@ lives in that ticket's resolution comment.
 |---|---|
 | The detector | `skills/code-quality-setup/scripts/detect.mjs` |
 | The output schema and evaluation rules | `skills/code-quality-setup/scripts/DETECT-SCHEMA.md` |
-| Fixtures | `skills/code-quality-setup/fixtures/{plain-ts,bun-ts,pnpm-workspace}/` |
+| Fixtures | `fixtures/{plain-ts,bun-ts,pnpm-workspace}/` (repo root, deliberately outside the skill) |
 | Throwaway harness (this branch only) | `prototype/transcript.sh` |
 | Evidence | `prototype/transcript.txt` |
 
@@ -82,23 +82,24 @@ Each was wrong in the first draft; the evidence is the run, not an opinion.
 - **`--compact` for machine consumption, pretty JSON by default** — the ticket says the script
   "prints a JSON applicability matrix", and a human reads it first.
 
-## Open questions for the human
+## Decisions taken with the human
 
-1. **Where do the fixtures live?** The ticket says `skills/code-quality-setup/fixtures/`, and they
-   are there. But the `skills` CLI copies the whole skill directory into every consumer's
-   `.agents/skills/code-quality-setup/`, so the fixtures ship to every install, and the lockfile's
-   `computedHash` covers every file — fixture churn invalidates it. `fixtures/` at the repo root
-   would keep them out of the install and out of the hash. The ticket's "free of any `SKILL.md`
-   file" rule shows the author was already thinking about discovery; this is the other half.
-2. **Should `conflicts.tools` look at `PATH`?** The contract says a tool is detected "as a
-   dependency, a config file, or a binary on `PATH`". A globally installed `prettier` is not a
-   property of the project, so the same repo would collide on one machine and not another, and the
-   plan stops being reproducible. The detector implements it as written and labels the evidence
-   `binary on PATH at …`, but it is the one signal that is not project-local.
-3. **Should a malformed recipe fail the whole run?** The detector exits 1 on bad frontmatter or a
-   missing `## Undo`. That is the contract's "hard error", and a malformed recipe is a skill bug
-   rather than a project bug — but it means one broken recipe file yields no matrix at all, instead
-   of a matrix with one recipe marked broken.
+1. **The fixtures live at the repo root**, not inside the skill. The ticket said
+   `skills/code-quality-setup/fixtures/`, but the `skills` CLI copies the whole skill directory into
+   every consumer's `.agents/skills/code-quality-setup/`, so the fixtures would ship to every
+   install, and the lockfile's `computedHash` covers every file in the skill directory. Moved to
+   `fixtures/`; the ticket's "free of any `SKILL.md` file" rule still applies, since a nested
+   `SKILL.md` is discovered as a skill of its own wherever it sits.
+2. **`conflicts.tools` is project-local evidence only.** The contract said "a dependency, a config
+   file, or a binary on `PATH`". A globally installed `prettier` is a property of the machine, not
+   the repo, so the same project would collide on one laptop and not in CI. `PATH` is dropped from
+   the detector and from `RECIPE-CONTRACT.md`; the collision now scans every package's dependencies
+   and tooling, naming the package in the evidence.
+3. **A malformed recipe is reported per recipe, not fatal.** Bad frontmatter, an `id` that does not
+   match the filename, or a missing/empty `## Undo` section yields
+   `{ "id": "<stem>", "error": "…" }` in `recipes[]`; the recipe is never selected and the rest of
+   the matrix and the plan still render. The run exits 1 only when there is nothing to report at
+   all — the target is not a directory, or `references/recipes/` is missing.
 
 ## Gaps this prototype does not close
 
@@ -109,6 +110,9 @@ Each was wrong in the first draft; the evidence is the run, not an opinion.
 - **The collision path has no committed fixture.** The only formatter recipe is Bun-gated, so
   `pnpm-workspace`'s prettier + eslint cannot reach it. Proven on a scratch copy instead
   (`transcript.txt` §2); a committed fixture should arrive with the npm variants.
+- **`error` is a new field on `recipes[]`.** Nothing downstream reads it yet — the plan renderer
+  (ticket **Invocation surface, plan rendering, and the drift report**) has to decide what a plan
+  looks like when one recipe in the library is broken.
 - **`patch` is still unexercised** — unchanged from the recipe-contract prototype.
 - **`unresolvedExtends` is reported but never acted on.** A `tsconfig.json` extending
   `@tsconfig/strictest` reports `strict: "unknown"`; whether a recipe should treat that as "needs

@@ -6,10 +6,10 @@ node v26.8.1 on Darwin
 
 ### fixtures/plain-ts
 
-$ node skills/code-quality-setup/scripts/detect.mjs skills/code-quality-setup/fixtures/plain-ts
+$ node skills/code-quality-setup/scripts/detect.mjs fixtures/plain-ts
 {
   "schemaVersion": 1,
-  "root": "/Users/timomorawitz/Documents/code-quality-skills/skills/code-quality-setup/fixtures/plain-ts",
+  "root": "/Users/timomorawitz/Documents/code-quality-skills/fixtures/plain-ts",
   "stack": {
     "languages": {
       "typescript": true,
@@ -74,6 +74,7 @@ $ node skills/code-quality-setup/scripts/detect.mjs skills/code-quality-setup/fi
   "recipes": [
     {
       "id": "agent-guidance",
+      "error": null,
       "title": "Agent guidance — a lean AGENTS.md section pointing at docs/code-quality.md",
       "purpose": "Tell coding agents which gates exist, how to run them, and where the detail lives.",
       "cost": "fast",
@@ -117,6 +118,7 @@ $ node skills/code-quality-setup/scripts/detect.mjs skills/code-quality-setup/fi
     },
     {
       "id": "biome-assist",
+      "error": null,
       "title": "Biome format and assist, wired to pre-commit",
       "purpose": "Format and sort TypeScript with Biome (linter off), applied to staged files on every commit.",
       "cost": "fast",
@@ -223,10 +225,10 @@ $ node skills/code-quality-setup/scripts/detect.mjs skills/code-quality-setup/fi
 
 ### fixtures/bun-ts
 
-$ node skills/code-quality-setup/scripts/detect.mjs skills/code-quality-setup/fixtures/bun-ts
+$ node skills/code-quality-setup/scripts/detect.mjs fixtures/bun-ts
 {
   "schemaVersion": 1,
-  "root": "/Users/timomorawitz/Documents/code-quality-skills/skills/code-quality-setup/fixtures/bun-ts",
+  "root": "/Users/timomorawitz/Documents/code-quality-skills/fixtures/bun-ts",
   "stack": {
     "languages": {
       "typescript": true,
@@ -315,6 +317,7 @@ $ node skills/code-quality-setup/scripts/detect.mjs skills/code-quality-setup/fi
   "recipes": [
     {
       "id": "agent-guidance",
+      "error": null,
       "title": "Agent guidance — a lean AGENTS.md section pointing at docs/code-quality.md",
       "purpose": "Tell coding agents which gates exist, how to run them, and where the detail lives.",
       "cost": "fast",
@@ -358,6 +361,7 @@ $ node skills/code-quality-setup/scripts/detect.mjs skills/code-quality-setup/fi
     },
     {
       "id": "biome-assist",
+      "error": null,
       "title": "Biome format and assist, wired to pre-commit",
       "purpose": "Format and sort TypeScript with Biome (linter off), applied to staged files on every commit.",
       "cost": "fast",
@@ -467,10 +471,10 @@ $ node skills/code-quality-setup/scripts/detect.mjs skills/code-quality-setup/fi
 
 ### fixtures/pnpm-workspace
 
-$ node skills/code-quality-setup/scripts/detect.mjs skills/code-quality-setup/fixtures/pnpm-workspace
+$ node skills/code-quality-setup/scripts/detect.mjs fixtures/pnpm-workspace
 {
   "schemaVersion": 1,
-  "root": "/Users/timomorawitz/Documents/code-quality-skills/skills/code-quality-setup/fixtures/pnpm-workspace",
+  "root": "/Users/timomorawitz/Documents/code-quality-skills/fixtures/pnpm-workspace",
   "stack": {
     "languages": {
       "typescript": true,
@@ -640,6 +644,7 @@ $ node skills/code-quality-setup/scripts/detect.mjs skills/code-quality-setup/fi
   "recipes": [
     {
       "id": "agent-guidance",
+      "error": null,
       "title": "Agent guidance — a lean AGENTS.md section pointing at docs/code-quality.md",
       "purpose": "Tell coding agents which gates exist, how to run them, and where the detail lives.",
       "cost": "fast",
@@ -683,6 +688,7 @@ $ node skills/code-quality-setup/scripts/detect.mjs skills/code-quality-setup/fi
     },
     {
       "id": "biome-assist",
+      "error": null,
       "title": "Biome format and assist, wired to pre-commit",
       "purpose": "Format and sort TypeScript with Biome (linter off), applied to staged files on every commit.",
       "cost": "fast",
@@ -790,19 +796,269 @@ $ node skills/code-quality-setup/scripts/detect.mjs skills/code-quality-setup/fi
 ## 2. The collision path (scratch: bun-ts + prettier)
 
 $ node skills/code-quality-setup/scripts/detect.mjs /tmp/cqs-detect-collide --compact
-{"schemaVersion":1,"root":"/tmp/cqs-detect-collide","stack":{"languages":{"typescript":true,"javascript":false,"sourceExtensions":[".ts"],"typescriptStrict":true,"typescriptStrictSource":"tsconfig.json","tsconfig":"tsconfig.json"},"packageManager":{"name":"bun","source":"lockfile","evidence":"bun.lock"},"workspace":{"kind":"single","declaration":null,"patterns":[],"members":[]}},"packages":[{"path":".","name":"bun-ts","role":"root","hasManifest":true,"scripts":["format:check","prepare"],"dependencies":["@biomejs/biome","husky","prettier","typescript"],"typescript":{"configFile":"tsconfig.json","strict":true,"strictSource":"tsconfig.json","solutionStyle":false,"unresolvedExtends":[]},"tooling":{"formatter":[{"tool":"biome","files":["biome.json"]},{"tool":"prettier","files":[".prettierrc"]}],"linter":[{"tool":"biome","files":["biome.json"]}],"typechecker":[{"tool":"typescript","files":["tsconfig.json"]}],"testRunner":[],"mutation":[],"gitHooks":[{"tool":"husky","files":[".husky/pre-commit"]}],"ci":[],"coverage":[]}}],"recipes":[{"id":"agent-guidance","title":"Agent guidance — a lean AGENTS.md section pointing at docs/code-quality.md","purpose":"Tell coding agents which gates exist, how to run them, and where the detail lives.","cost":"fast","priority":0,"applicable":true,"selected":true,"reasons":[{"predicate":"requires {\"recipe\":\"*\"}","pass":true,"detail":"other recipes selected: biome-assist"}],"files":[{"path":"AGENTS.md","action":"merge","scope":"root","template":"templates/agent-guidance/AGENTS.md"},{"path":"docs/code-quality.md","action":"create","scope":"root","template":"templates/agent-guidance/docs/code-quality.md"}],"commands":[],"gates":[],"verify":[{"run":"test -f docs/code-quality.md && grep -q \"code-quality:agent-guidance:start\" AGENTS.md","scope":"root"}],"undo":["Delete `docs/code-quality.md`; delete `docs/` if it is empty.","Remove the `code-quality:agent-guidance` block from `AGENTS.md`; delete the file if the block is all it holds."],"conflicts":{}},{"id":"biome-assist","title":"Biome format and assist, wired to pre-commit","purpose":"Format and sort TypeScript with Biome (linter off), applied to staged files on every commit.","cost":"fast","priority":50,"applicable":true,"selected":true,"reasons":[{"predicate":"language","pass":true,"detail":"needs one of [typescript, javascript]; detected typescript"},{"predicate":"packageManager","pass":true,"detail":"needs one of [bun]; detected bun"},{"predicate":"requires {\"file\":\"package.json\"}","pass":true,"detail":"package.json exists at the workspace root"}],"files":[{"path":"biome.json","action":"create","scope":"root","template":"templates/biome-assist/biome.json"},{"path":"biome.json","action":"create","scope":"member","memberMode":"extends-root","template":"templates/biome-assist/biome.member.json"},{"path":"package.json","action":"merge","scope":"root","template":"templates/biome-assist/package.json"},{"path":".husky/pre-commit","action":"merge","scope":"root","template":"templates/biome-assist/pre-commit.block"},{"path":".gitignore","action":"merge","scope":"root","template":"templates/biome-assist/gitignore.block"}],"commands":[{"run":"bun install","scope":"root","showInPlan":false},{"run":"bunx @biomejs/biome check --write --unsafe --linter-enabled=false .","scope":"root","showInPlan":true}],"gates":[{"id":"format-check","run":"bun run format:check","description":"Biome format and assist, linter off"}],"verify":[{"gate":"format-check","scope":"root"}],"undo":["Delete `biome.json` (and the member `biome.json` in a workspace).","Remove the `@biomejs/biome` and `husky` devDependencies, the `format:check` script, and `prepare` from `package.json` — only where this recipe added them.","Remove the `code-quality:biome-assist` block from `.husky/pre-commit`; delete the file if the block is all it holds.","Remove the `code-quality:biome-assist` block from `.gitignore`; delete the file if the block is all it holds.","`bun install` to drop the packages and the hook. The sweep is not reversible: the formatted files stay formatted."],"conflicts":{"recipes":["eslint-prettier"],"tools":["prettier","eslint"]}}],"selection":["biome-assist","agent-guidance"],"heldBack":[],"collisions":[{"recipe":"biome-assist","tool":"prettier","evidence":["root/package.json declares prettier","formatter: .prettierrc"]}]}
+{"schemaVersion":1,"root":"/tmp/cqs-detect-collide","stack":{"languages":{"typescript":true,"javascript":false,"sourceExtensions":[".ts"],"typescriptStrict":true,"typescriptStrictSource":"tsconfig.json","tsconfig":"tsconfig.json"},"packageManager":{"name":"bun","source":"lockfile","evidence":"bun.lock"},"workspace":{"kind":"single","declaration":null,"patterns":[],"members":[]}},"packages":[{"path":".","name":"bun-ts","role":"root","hasManifest":true,"scripts":["format:check","prepare"],"dependencies":["@biomejs/biome","husky","prettier","typescript"],"typescript":{"configFile":"tsconfig.json","strict":true,"strictSource":"tsconfig.json","solutionStyle":false,"unresolvedExtends":[]},"tooling":{"formatter":[{"tool":"biome","files":["biome.json"]},{"tool":"prettier","files":[".prettierrc"]}],"linter":[{"tool":"biome","files":["biome.json"]}],"typechecker":[{"tool":"typescript","files":["tsconfig.json"]}],"testRunner":[],"mutation":[],"gitHooks":[{"tool":"husky","files":[".husky/pre-commit"]}],"ci":[],"coverage":[]}}],"recipes":[{"id":"agent-guidance","error":null,"title":"Agent guidance — a lean AGENTS.md section pointing at docs/code-quality.md","purpose":"Tell coding agents which gates exist, how to run them, and where the detail lives.","cost":"fast","priority":0,"applicable":true,"selected":true,"reasons":[{"predicate":"requires {\"recipe\":\"*\"}","pass":true,"detail":"other recipes selected: biome-assist"}],"files":[{"path":"AGENTS.md","action":"merge","scope":"root","template":"templates/agent-guidance/AGENTS.md"},{"path":"docs/code-quality.md","action":"create","scope":"root","template":"templates/agent-guidance/docs/code-quality.md"}],"commands":[],"gates":[],"verify":[{"run":"test -f docs/code-quality.md && grep -q \"code-quality:agent-guidance:start\" AGENTS.md","scope":"root"}],"undo":["Delete `docs/code-quality.md`; delete `docs/` if it is empty.","Remove the `code-quality:agent-guidance` block from `AGENTS.md`; delete the file if the block is all it holds."],"conflicts":{}},{"id":"biome-assist","error":null,"title":"Biome format and assist, wired to pre-commit","purpose":"Format and sort TypeScript with Biome (linter off), applied to staged files on every commit.","cost":"fast","priority":50,"applicable":true,"selected":true,"reasons":[{"predicate":"language","pass":true,"detail":"needs one of [typescript, javascript]; detected typescript"},{"predicate":"packageManager","pass":true,"detail":"needs one of [bun]; detected bun"},{"predicate":"requires {\"file\":\"package.json\"}","pass":true,"detail":"package.json exists at the workspace root"}],"files":[{"path":"biome.json","action":"create","scope":"root","template":"templates/biome-assist/biome.json"},{"path":"biome.json","action":"create","scope":"member","memberMode":"extends-root","template":"templates/biome-assist/biome.member.json"},{"path":"package.json","action":"merge","scope":"root","template":"templates/biome-assist/package.json"},{"path":".husky/pre-commit","action":"merge","scope":"root","template":"templates/biome-assist/pre-commit.block"},{"path":".gitignore","action":"merge","scope":"root","template":"templates/biome-assist/gitignore.block"}],"commands":[{"run":"bun install","scope":"root","showInPlan":false},{"run":"bunx @biomejs/biome check --write --unsafe --linter-enabled=false .","scope":"root","showInPlan":true}],"gates":[{"id":"format-check","run":"bun run format:check","description":"Biome format and assist, linter off"}],"verify":[{"gate":"format-check","scope":"root"}],"undo":["Delete `biome.json` (and the member `biome.json` in a workspace).","Remove the `@biomejs/biome` and `husky` devDependencies, the `format:check` script, and `prepare` from `package.json` — only where this recipe added them.","Remove the `code-quality:biome-assist` block from `.husky/pre-commit`; delete the file if the block is all it holds.","Remove the `code-quality:biome-assist` block from `.gitignore`; delete the file if the block is all it holds.","`bun install` to drop the packages and the hook. The sweep is not reversible: the formatted files stay formatted."],"conflicts":{"recipes":["eslint-prettier"],"tools":["prettier","eslint"]}}],"selection":["biome-assist","agent-guidance"],"heldBack":[],"collisions":[{"recipe":"biome-assist","tool":"prettier","evidence":["root/package.json declares prettier","root formatter: .prettierrc"]}]}
 
 ## 3. A real repo (omp-factory: Bun workspace, biome + oxlint + stryker + husky + CI)
 
 $ node skills/code-quality-setup/scripts/detect.mjs /Users/timomorawitz/Documents/omp-factory --compact
-{"schemaVersion":1,"root":"/Users/timomorawitz/Documents/omp-factory","stack":{"languages":{"typescript":true,"javascript":true,"sourceExtensions":[".mjs",".ts"],"typescriptStrict":true,"typescriptStrictSource":"tsconfig.json","tsconfig":"tsconfig.json"},"packageManager":{"name":"bun","source":"lockfile","evidence":"bun.lock"},"workspace":{"kind":"workspace","declaration":"package.json#workspaces","patterns":["factory-control","factory-runner"],"members":[{"path":"factory-control","name":"factory-control"},{"path":"factory-runner","name":"factory-runner"}]}},"packages":[{"path":".","name":"omp-factory","role":"root","hasManifest":true,"scripts":["biome:staged","fallow","fallow:audit","fallow:coverage","format","format:check","lint","prepare","smoke","test","test:mutation","typecheck"],"dependencies":["@biomejs/biome","@hughescr/stryker-bun-runner","@oxlint/plugins","@stryker-mutator/core","@temporalio/activity","@temporalio/client","@temporalio/worker","@temporalio/workflow","@types/bun","fallow","husky","oxlint","typescript","zod"],"typescript":{"configFile":"tsconfig.json","strict":true,"strictSource":"tsconfig.json","solutionStyle":false,"unresolvedExtends":[]},"tooling":{"formatter":[{"tool":"biome","files":["biome.json"]}],"linter":[{"tool":"biome","files":["biome.json"]},{"tool":"oxlint","files":["oxlint.config.ts"]}],"typechecker":[{"tool":"typescript","files":["tsconfig.json"]}],"testRunner":[{"tool":"bun-test","files":["bunfig.toml"]}],"mutation":[{"tool":"stryker","files":["stryker.conf.mjs"]}],"gitHooks":[{"tool":"husky","files":[".husky/pre-commit",".husky/pre-push"]}],"ci":[{"tool":"github-actions","files":[".github/workflows/evals.yml"]}],"coverage":[{"tool":"bunfig","files":["bunfig.toml"]}]}},{"path":"factory-control","name":"factory-control","role":"member","hasManifest":true,"scripts":["test","typecheck","worker"],"dependencies":[],"typescript":null,"tooling":{"formatter":[],"linter":[],"typechecker":[],"testRunner":[],"mutation":[],"gitHooks":[],"ci":[],"coverage":[]}},{"path":"factory-runner","name":"factory-runner","role":"member","hasManifest":true,"scripts":["test","typecheck"],"dependencies":[],"typescript":null,"tooling":{"formatter":[],"linter":[],"typechecker":[],"testRunner":[],"mutation":[],"gitHooks":[],"ci":[],"coverage":[]}}],"recipes":[{"id":"agent-guidance","title":"Agent guidance — a lean AGENTS.md section pointing at docs/code-quality.md","purpose":"Tell coding agents which gates exist, how to run them, and where the detail lives.","cost":"fast","priority":0,"applicable":true,"selected":true,"reasons":[{"predicate":"requires {\"recipe\":\"*\"}","pass":true,"detail":"other recipes selected: biome-assist"}],"files":[{"path":"AGENTS.md","action":"merge","scope":"root","template":"templates/agent-guidance/AGENTS.md"},{"path":"docs/code-quality.md","action":"create","scope":"root","template":"templates/agent-guidance/docs/code-quality.md"}],"commands":[],"gates":[],"verify":[{"run":"test -f docs/code-quality.md && grep -q \"code-quality:agent-guidance:start\" AGENTS.md","scope":"root"}],"undo":["Delete `docs/code-quality.md`; delete `docs/` if it is empty.","Remove the `code-quality:agent-guidance` block from `AGENTS.md`; delete the file if the block is all it holds."],"conflicts":{}},{"id":"biome-assist","title":"Biome format and assist, wired to pre-commit","purpose":"Format and sort TypeScript with Biome (linter off), applied to staged files on every commit.","cost":"fast","priority":50,"applicable":true,"selected":true,"reasons":[{"predicate":"language","pass":true,"detail":"needs one of [typescript, javascript]; detected typescript, javascript"},{"predicate":"packageManager","pass":true,"detail":"needs one of [bun]; detected bun"},{"predicate":"requires {\"file\":\"package.json\"}","pass":true,"detail":"package.json exists at the workspace root"}],"files":[{"path":"biome.json","action":"create","scope":"root","template":"templates/biome-assist/biome.json"},{"path":"biome.json","action":"create","scope":"member","memberMode":"extends-root","template":"templates/biome-assist/biome.member.json"},{"path":"package.json","action":"merge","scope":"root","template":"templates/biome-assist/package.json"},{"path":".husky/pre-commit","action":"merge","scope":"root","template":"templates/biome-assist/pre-commit.block"},{"path":".gitignore","action":"merge","scope":"root","template":"templates/biome-assist/gitignore.block"}],"commands":[{"run":"bun install","scope":"root","showInPlan":false},{"run":"bunx @biomejs/biome check --write --unsafe --linter-enabled=false .","scope":"root","showInPlan":true}],"gates":[{"id":"format-check","run":"bun run format:check","description":"Biome format and assist, linter off"}],"verify":[{"gate":"format-check","scope":"root"}],"undo":["Delete `biome.json` (and the member `biome.json` in a workspace).","Remove the `@biomejs/biome` and `husky` devDependencies, the `format:check` script, and `prepare` from `package.json` — only where this recipe added them.","Remove the `code-quality:biome-assist` block from `.husky/pre-commit`; delete the file if the block is all it holds.","Remove the `code-quality:biome-assist` block from `.gitignore`; delete the file if the block is all it holds.","`bun install` to drop the packages and the hook. The sweep is not reversible: the formatted files stay formatted."],"conflicts":{"recipes":["eslint-prettier"],"tools":["prettier","eslint"]}}],"selection":["biome-assist","agent-guidance"],"heldBack":[],"collisions":[]}
+{"schemaVersion":1,"root":"/Users/timomorawitz/Documents/omp-factory","stack":{"languages":{"typescript":true,"javascript":true,"sourceExtensions":[".mjs",".ts"],"typescriptStrict":true,"typescriptStrictSource":"tsconfig.json","tsconfig":"tsconfig.json"},"packageManager":{"name":"bun","source":"lockfile","evidence":"bun.lock"},"workspace":{"kind":"workspace","declaration":"package.json#workspaces","patterns":["factory-control","factory-runner"],"members":[{"path":"factory-control","name":"factory-control"},{"path":"factory-runner","name":"factory-runner"}]}},"packages":[{"path":".","name":"omp-factory","role":"root","hasManifest":true,"scripts":["biome:staged","fallow","fallow:audit","fallow:coverage","format","format:check","lint","prepare","smoke","test","test:mutation","typecheck"],"dependencies":["@biomejs/biome","@hughescr/stryker-bun-runner","@oxlint/plugins","@stryker-mutator/core","@temporalio/activity","@temporalio/client","@temporalio/worker","@temporalio/workflow","@types/bun","fallow","husky","oxlint","typescript","zod"],"typescript":{"configFile":"tsconfig.json","strict":true,"strictSource":"tsconfig.json","solutionStyle":false,"unresolvedExtends":[]},"tooling":{"formatter":[{"tool":"biome","files":["biome.json"]}],"linter":[{"tool":"biome","files":["biome.json"]},{"tool":"oxlint","files":["oxlint.config.ts"]}],"typechecker":[{"tool":"typescript","files":["tsconfig.json"]}],"testRunner":[{"tool":"bun-test","files":["bunfig.toml"]}],"mutation":[{"tool":"stryker","files":["stryker.conf.mjs"]}],"gitHooks":[{"tool":"husky","files":[".husky/pre-commit",".husky/pre-push"]}],"ci":[{"tool":"github-actions","files":[".github/workflows/evals.yml"]}],"coverage":[{"tool":"bunfig","files":["bunfig.toml"]}]}},{"path":"factory-control","name":"factory-control","role":"member","hasManifest":true,"scripts":["test","typecheck","worker"],"dependencies":[],"typescript":null,"tooling":{"formatter":[],"linter":[],"typechecker":[],"testRunner":[],"mutation":[],"gitHooks":[],"ci":[],"coverage":[]}},{"path":"factory-runner","name":"factory-runner","role":"member","hasManifest":true,"scripts":["test","typecheck"],"dependencies":[],"typescript":null,"tooling":{"formatter":[],"linter":[],"typechecker":[],"testRunner":[],"mutation":[],"gitHooks":[],"ci":[],"coverage":[]}}],"recipes":[{"id":"agent-guidance","error":null,"title":"Agent guidance — a lean AGENTS.md section pointing at docs/code-quality.md","purpose":"Tell coding agents which gates exist, how to run them, and where the detail lives.","cost":"fast","priority":0,"applicable":true,"selected":true,"reasons":[{"predicate":"requires {\"recipe\":\"*\"}","pass":true,"detail":"other recipes selected: biome-assist"}],"files":[{"path":"AGENTS.md","action":"merge","scope":"root","template":"templates/agent-guidance/AGENTS.md"},{"path":"docs/code-quality.md","action":"create","scope":"root","template":"templates/agent-guidance/docs/code-quality.md"}],"commands":[],"gates":[],"verify":[{"run":"test -f docs/code-quality.md && grep -q \"code-quality:agent-guidance:start\" AGENTS.md","scope":"root"}],"undo":["Delete `docs/code-quality.md`; delete `docs/` if it is empty.","Remove the `code-quality:agent-guidance` block from `AGENTS.md`; delete the file if the block is all it holds."],"conflicts":{}},{"id":"biome-assist","error":null,"title":"Biome format and assist, wired to pre-commit","purpose":"Format and sort TypeScript with Biome (linter off), applied to staged files on every commit.","cost":"fast","priority":50,"applicable":true,"selected":true,"reasons":[{"predicate":"language","pass":true,"detail":"needs one of [typescript, javascript]; detected typescript, javascript"},{"predicate":"packageManager","pass":true,"detail":"needs one of [bun]; detected bun"},{"predicate":"requires {\"file\":\"package.json\"}","pass":true,"detail":"package.json exists at the workspace root"}],"files":[{"path":"biome.json","action":"create","scope":"root","template":"templates/biome-assist/biome.json"},{"path":"biome.json","action":"create","scope":"member","memberMode":"extends-root","template":"templates/biome-assist/biome.member.json"},{"path":"package.json","action":"merge","scope":"root","template":"templates/biome-assist/package.json"},{"path":".husky/pre-commit","action":"merge","scope":"root","template":"templates/biome-assist/pre-commit.block"},{"path":".gitignore","action":"merge","scope":"root","template":"templates/biome-assist/gitignore.block"}],"commands":[{"run":"bun install","scope":"root","showInPlan":false},{"run":"bunx @biomejs/biome check --write --unsafe --linter-enabled=false .","scope":"root","showInPlan":true}],"gates":[{"id":"format-check","run":"bun run format:check","description":"Biome format and assist, linter off"}],"verify":[{"gate":"format-check","scope":"root"}],"undo":["Delete `biome.json` (and the member `biome.json` in a workspace).","Remove the `@biomejs/biome` and `husky` devDependencies, the `format:check` script, and `prepare` from `package.json` — only where this recipe added them.","Remove the `code-quality:biome-assist` block from `.husky/pre-commit`; delete the file if the block is all it holds.","Remove the `code-quality:biome-assist` block from `.gitignore`; delete the file if the block is all it holds.","`bun install` to drop the packages and the hook. The sweep is not reversible: the formatted files stay formatted."],"conflicts":{"recipes":["eslint-prettier"],"tools":["prettier","eslint"]}}],"selection":["biome-assist","agent-guidance"],"heldBack":[],"collisions":[]}
 
 ## 4. A directory with no package.json (this repo's root)
 
 $ node skills/code-quality-setup/scripts/detect.mjs . --compact
-{"schemaVersion":1,"root":"/Users/timomorawitz/Documents/code-quality-skills","stack":{"languages":{"typescript":true,"javascript":true,"sourceExtensions":[".mjs",".ts"],"typescriptStrict":"unknown","typescriptStrictSource":null,"tsconfig":null},"packageManager":{"name":null,"source":null,"evidence":null},"workspace":{"kind":"single","declaration":null,"patterns":[],"members":[]}},"packages":[{"path":".","name":null,"role":"root","hasManifest":false,"scripts":[],"dependencies":[],"typescript":null,"tooling":{"formatter":[],"linter":[],"typechecker":[],"testRunner":[],"mutation":[],"gitHooks":[],"ci":[],"coverage":[]}}],"recipes":[{"id":"agent-guidance","title":"Agent guidance — a lean AGENTS.md section pointing at docs/code-quality.md","purpose":"Tell coding agents which gates exist, how to run them, and where the detail lives.","cost":"fast","priority":0,"applicable":false,"selected":false,"reasons":[{"predicate":"requires {\"recipe\":\"*\"}","pass":false,"detail":"no other recipe is selected"}],"files":[{"path":"AGENTS.md","action":"merge","scope":"root","template":"templates/agent-guidance/AGENTS.md"},{"path":"docs/code-quality.md","action":"create","scope":"root","template":"templates/agent-guidance/docs/code-quality.md"}],"commands":[],"gates":[],"verify":[{"run":"test -f docs/code-quality.md && grep -q \"code-quality:agent-guidance:start\" AGENTS.md","scope":"root"}],"undo":["Delete `docs/code-quality.md`; delete `docs/` if it is empty.","Remove the `code-quality:agent-guidance` block from `AGENTS.md`; delete the file if the block is all it holds."],"conflicts":{}},{"id":"biome-assist","title":"Biome format and assist, wired to pre-commit","purpose":"Format and sort TypeScript with Biome (linter off), applied to staged files on every commit.","cost":"fast","priority":50,"applicable":false,"selected":false,"reasons":[{"predicate":"language","pass":true,"detail":"needs one of [typescript, javascript]; detected typescript, javascript"},{"predicate":"packageManager","pass":false,"detail":"needs one of [bun]; detected none"},{"predicate":"requires {\"file\":\"package.json\"}","pass":false,"detail":"package.json is absent at the workspace root"}],"files":[{"path":"biome.json","action":"create","scope":"root","template":"templates/biome-assist/biome.json"},{"path":"biome.json","action":"create","scope":"member","memberMode":"extends-root","template":"templates/biome-assist/biome.member.json"},{"path":"package.json","action":"merge","scope":"root","template":"templates/biome-assist/package.json"},{"path":".husky/pre-commit","action":"merge","scope":"root","template":"templates/biome-assist/pre-commit.block"},{"path":".gitignore","action":"merge","scope":"root","template":"templates/biome-assist/gitignore.block"}],"commands":[{"run":"bun install","scope":"root","showInPlan":false},{"run":"bunx @biomejs/biome check --write --unsafe --linter-enabled=false .","scope":"root","showInPlan":true}],"gates":[{"id":"format-check","run":"bun run format:check","description":"Biome format and assist, linter off"}],"verify":[{"gate":"format-check","scope":"root"}],"undo":["Delete `biome.json` (and the member `biome.json` in a workspace).","Remove the `@biomejs/biome` and `husky` devDependencies, the `format:check` script, and `prepare` from `package.json` — only where this recipe added them.","Remove the `code-quality:biome-assist` block from `.husky/pre-commit`; delete the file if the block is all it holds.","Remove the `code-quality:biome-assist` block from `.gitignore`; delete the file if the block is all it holds.","`bun install` to drop the packages and the hook. The sweep is not reversible: the formatted files stay formatted."],"conflicts":{"recipes":["eslint-prettier"],"tools":["prettier","eslint"]}}],"selection":[],"heldBack":[],"collisions":[]}
+{"schemaVersion":1,"root":"/Users/timomorawitz/Documents/code-quality-skills","stack":{"languages":{"typescript":true,"javascript":true,"sourceExtensions":[".mjs",".ts"],"typescriptStrict":"unknown","typescriptStrictSource":null,"tsconfig":null},"packageManager":{"name":null,"source":null,"evidence":null},"workspace":{"kind":"single","declaration":null,"patterns":[],"members":[]}},"packages":[{"path":".","name":null,"role":"root","hasManifest":false,"scripts":[],"dependencies":[],"typescript":null,"tooling":{"formatter":[],"linter":[],"typechecker":[],"testRunner":[],"mutation":[],"gitHooks":[],"ci":[],"coverage":[]}}],"recipes":[{"id":"agent-guidance","error":null,"title":"Agent guidance — a lean AGENTS.md section pointing at docs/code-quality.md","purpose":"Tell coding agents which gates exist, how to run them, and where the detail lives.","cost":"fast","priority":0,"applicable":false,"selected":false,"reasons":[{"predicate":"requires {\"recipe\":\"*\"}","pass":false,"detail":"no other recipe is selected"}],"files":[{"path":"AGENTS.md","action":"merge","scope":"root","template":"templates/agent-guidance/AGENTS.md"},{"path":"docs/code-quality.md","action":"create","scope":"root","template":"templates/agent-guidance/docs/code-quality.md"}],"commands":[],"gates":[],"verify":[{"run":"test -f docs/code-quality.md && grep -q \"code-quality:agent-guidance:start\" AGENTS.md","scope":"root"}],"undo":["Delete `docs/code-quality.md`; delete `docs/` if it is empty.","Remove the `code-quality:agent-guidance` block from `AGENTS.md`; delete the file if the block is all it holds."],"conflicts":{}},{"id":"biome-assist","error":null,"title":"Biome format and assist, wired to pre-commit","purpose":"Format and sort TypeScript with Biome (linter off), applied to staged files on every commit.","cost":"fast","priority":50,"applicable":false,"selected":false,"reasons":[{"predicate":"language","pass":true,"detail":"needs one of [typescript, javascript]; detected typescript, javascript"},{"predicate":"packageManager","pass":false,"detail":"needs one of [bun]; detected none"},{"predicate":"requires {\"file\":\"package.json\"}","pass":false,"detail":"package.json is absent at the workspace root"}],"files":[{"path":"biome.json","action":"create","scope":"root","template":"templates/biome-assist/biome.json"},{"path":"biome.json","action":"create","scope":"member","memberMode":"extends-root","template":"templates/biome-assist/biome.member.json"},{"path":"package.json","action":"merge","scope":"root","template":"templates/biome-assist/package.json"},{"path":".husky/pre-commit","action":"merge","scope":"root","template":"templates/biome-assist/pre-commit.block"},{"path":".gitignore","action":"merge","scope":"root","template":"templates/biome-assist/gitignore.block"}],"commands":[{"run":"bun install","scope":"root","showInPlan":false},{"run":"bunx @biomejs/biome check --write --unsafe --linter-enabled=false .","scope":"root","showInPlan":true}],"gates":[{"id":"format-check","run":"bun run format:check","description":"Biome format and assist, linter off"}],"verify":[{"gate":"format-check","scope":"root"}],"undo":["Delete `biome.json` (and the member `biome.json` in a workspace).","Remove the `@biomejs/biome` and `husky` devDependencies, the `format:check` script, and `prepare` from `package.json` — only where this recipe added them.","Remove the `code-quality:biome-assist` block from `.husky/pre-commit`; delete the file if the block is all it holds.","Remove the `code-quality:biome-assist` block from `.gitignore`; delete the file if the block is all it holds.","`bun install` to drop the packages and the hook. The sweep is not reversible: the formatted files stay formatted."],"conflicts":{"recipes":["eslint-prettier"],"tools":["prettier","eslint"]}}],"selection":[],"heldBack":[],"collisions":[]}
 
-## 5. Hard errors
+## 5. A malformed recipe is reported, not fatal
+
+$ node /tmp/cqs-detect-skill/scripts/detect.mjs fixtures/bun-ts
+{
+  "schemaVersion": 1,
+  "root": "/Users/timomorawitz/Documents/code-quality-skills/fixtures/bun-ts",
+  "stack": {
+    "languages": {
+      "typescript": true,
+      "javascript": false,
+      "sourceExtensions": [
+        ".ts"
+      ],
+      "typescriptStrict": true,
+      "typescriptStrictSource": "tsconfig.json",
+      "tsconfig": "tsconfig.json"
+    },
+    "packageManager": {
+      "name": "bun",
+      "source": "lockfile",
+      "evidence": "bun.lock"
+    },
+    "workspace": {
+      "kind": "single",
+      "declaration": null,
+      "patterns": [],
+      "members": []
+    }
+  },
+  "packages": [
+    {
+      "path": ".",
+      "name": "bun-ts",
+      "role": "root",
+      "hasManifest": true,
+      "scripts": [
+        "format:check",
+        "prepare"
+      ],
+      "dependencies": [
+        "@biomejs/biome",
+        "husky",
+        "typescript"
+      ],
+      "typescript": {
+        "configFile": "tsconfig.json",
+        "strict": true,
+        "strictSource": "tsconfig.json",
+        "solutionStyle": false,
+        "unresolvedExtends": []
+      },
+      "tooling": {
+        "formatter": [
+          {
+            "tool": "biome",
+            "files": [
+              "biome.json"
+            ]
+          }
+        ],
+        "linter": [
+          {
+            "tool": "biome",
+            "files": [
+              "biome.json"
+            ]
+          }
+        ],
+        "typechecker": [
+          {
+            "tool": "typescript",
+            "files": [
+              "tsconfig.json"
+            ]
+          }
+        ],
+        "testRunner": [],
+        "mutation": [],
+        "gitHooks": [
+          {
+            "tool": "husky",
+            "files": [
+              ".husky/pre-commit"
+            ]
+          }
+        ],
+        "ci": [],
+        "coverage": []
+      }
+    }
+  ],
+  "recipes": [
+    {
+      "id": "agent-guidance",
+      "error": null,
+      "title": "Agent guidance — a lean AGENTS.md section pointing at docs/code-quality.md",
+      "purpose": "Tell coding agents which gates exist, how to run them, and where the detail lives.",
+      "cost": "fast",
+      "priority": 0,
+      "applicable": true,
+      "selected": true,
+      "reasons": [
+        {
+          "predicate": "requires {\"recipe\":\"*\"}",
+          "pass": true,
+          "detail": "other recipes selected: biome-assist"
+        }
+      ],
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/agent-guidance/AGENTS.md"
+        },
+        {
+          "path": "docs/code-quality.md",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/agent-guidance/docs/code-quality.md"
+        }
+      ],
+      "commands": [],
+      "gates": [],
+      "verify": [
+        {
+          "run": "test -f docs/code-quality.md && grep -q \"code-quality:agent-guidance:start\" AGENTS.md",
+          "scope": "root"
+        }
+      ],
+      "undo": [
+        "Delete `docs/code-quality.md`; delete `docs/` if it is empty.",
+        "Remove the `code-quality:agent-guidance` block from `AGENTS.md`; delete the file if the block is all it holds."
+      ],
+      "conflicts": {}
+    },
+    {
+      "id": "biome-assist",
+      "error": null,
+      "title": "Biome format and assist, wired to pre-commit",
+      "purpose": "Format and sort TypeScript with Biome (linter off), applied to staged files on every commit.",
+      "cost": "fast",
+      "priority": 50,
+      "applicable": true,
+      "selected": true,
+      "reasons": [
+        {
+          "predicate": "language",
+          "pass": true,
+          "detail": "needs one of [typescript, javascript]; detected typescript"
+        },
+        {
+          "predicate": "packageManager",
+          "pass": true,
+          "detail": "needs one of [bun]; detected bun"
+        },
+        {
+          "predicate": "requires {\"file\":\"package.json\"}",
+          "pass": true,
+          "detail": "package.json exists at the workspace root"
+        }
+      ],
+      "files": [
+        {
+          "path": "biome.json",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/biome-assist/biome.json"
+        },
+        {
+          "path": "biome.json",
+          "action": "create",
+          "scope": "member",
+          "memberMode": "extends-root",
+          "template": "templates/biome-assist/biome.member.json"
+        },
+        {
+          "path": "package.json",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/biome-assist/package.json"
+        },
+        {
+          "path": ".husky/pre-commit",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/biome-assist/pre-commit.block"
+        },
+        {
+          "path": ".gitignore",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/biome-assist/gitignore.block"
+        }
+      ],
+      "commands": [
+        {
+          "run": "bun install",
+          "scope": "root",
+          "showInPlan": false
+        },
+        {
+          "run": "bunx @biomejs/biome check --write --unsafe --linter-enabled=false .",
+          "scope": "root",
+          "showInPlan": true
+        }
+      ],
+      "gates": [
+        {
+          "id": "format-check",
+          "run": "bun run format:check",
+          "description": "Biome format and assist, linter off"
+        }
+      ],
+      "verify": [
+        {
+          "gate": "format-check",
+          "scope": "root"
+        }
+      ],
+      "undo": [
+        "Delete `biome.json` (and the member `biome.json` in a workspace).",
+        "Remove the `@biomejs/biome` and `husky` devDependencies, the `format:check` script, and `prepare` from `package.json` — only where this recipe added them.",
+        "Remove the `code-quality:biome-assist` block from `.husky/pre-commit`; delete the file if the block is all it holds.",
+        "Remove the `code-quality:biome-assist` block from `.gitignore`; delete the file if the block is all it holds.",
+        "`bun install` to drop the packages and the hook. The sweep is not reversible: the formatted files stay formatted."
+      ],
+      "conflicts": {
+        "recipes": [
+          "eslint-prettier"
+        ],
+        "tools": [
+          "prettier",
+          "eslint"
+        ]
+      }
+    },
+    {
+      "id": "broken",
+      "error": "references/recipes/broken.md: no \"## Undo\" section"
+    }
+  ],
+  "selection": [
+    "biome-assist",
+    "agent-guidance"
+  ],
+  "heldBack": [],
+  "collisions": []
+}
+
+## 6. Hard errors
 
 $ node skills/code-quality-setup/scripts/detect.mjs /nonexistent
 detect.mjs: not a directory: /nonexistent

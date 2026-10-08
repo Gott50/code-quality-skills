@@ -97,6 +97,8 @@ One entry per `references/recipes/*.md`, carrying the parsed frontmatter plus th
 ```jsonc
 {
   "id": "biome-assist",
+  "error": null,          // a string when the recipe file could not be read; then this is the only
+                          // other field present, and the recipe is never selected
   "title": "…", "purpose": "…", "cost": "fast", "priority": 50,
   "applicable": true,     // every `when` check passed
   "selected": true,       // applicable AND survived conflicts
@@ -148,8 +150,10 @@ the order the plan applies them in.
 
 ### `collisions`
 
-For each **selected** recipe, each `conflicts.tools` entry is looked for as a dependency, a config
-file, or a binary on `PATH`. A hit is reported, never silently dropped:
+For each **selected** recipe, each `conflicts.tools` entry is looked for as a dependency or a config
+file **in the project** — never a binary on `PATH`, which is a property of the machine rather than
+the repo, and would make the same project collide on one laptop and not in CI. A hit is reported,
+never silently dropped:
 
 ```jsonc
 { "recipe": "biome-assist", "tool": "prettier",
@@ -168,10 +172,11 @@ file, or a binary on `PATH`. A hit is reported, never silently dropped:
 
 ## Hard errors
 
-The detector refuses to guess. It exits 1 when:
+The detector refuses to guess, but one broken recipe file must not cost the user the whole matrix.
+A recipe that cannot be read — a frontmatter line outside the strict subset, an `id` that does not
+equal the filename stem, a missing or empty `## Undo` section — is reported as
+`{ "id": "<filename stem>", "error": "<what is wrong>" }` in `recipes[]`, is never selected, and
+does not stop the other recipes from producing a matrix and a plan. Loud, never a silent skip.
 
-- a recipe's frontmatter has a line outside the strict subset, or its `id` does not equal the
-  filename stem;
-- a recipe has no `## Undo` section, or the section has no bullets — a silent blank renders an
-  empty "Undo:" in the guidance doc;
-- the target is not a directory, or `references/recipes/` is missing.
+The run itself exits 1 only when there is nothing to report: the target is not a directory, or
+`references/recipes/` is missing.

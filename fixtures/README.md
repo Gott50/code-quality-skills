@@ -4,8 +4,12 @@ Three throwaway projects the detector is run against, and the projects a recipe 
 applying to. No `node_modules`, no `SKILL.md` (a nested `SKILL.md` would be discovered as a skill of
 its own by the `skills` CLI).
 
+They live at the repo root, not inside `skills/code-quality-setup/`: the `skills` CLI copies the
+whole skill directory into every consumer's install, and the lockfile's `computedHash` covers every
+file in it, so fixtures in there would ship to every user and churn the hash.
+
 ```
-node scripts/detect.mjs fixtures/<name>
+node skills/code-quality-setup/scripts/detect.mjs fixtures/<name>
 ```
 
 | Fixture | Shape | What it exercises |

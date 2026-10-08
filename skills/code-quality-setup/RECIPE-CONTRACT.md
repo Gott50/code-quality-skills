@@ -54,7 +54,7 @@ A recipe with no `when` keys applies to every stack. Prose judgement belongs her
 ### `conflicts` — what must not be applied alongside
 
 - `recipes`: ids that must not both be selected. If both match, the plan keeps the higher `priority` one and reports the other as *held back*.
-- `tools`: pre-existing tools (detected as a dependency, a config file, or a binary on `PATH`) that must not coexist with this recipe. A match does not silently drop the recipe: the plan surfaces the collision and requires an explicit override before applying.
+- `tools`: pre-existing tools (detected as a dependency or a config file **in the project**) that must not coexist with this recipe. A match does not silently drop the recipe: the plan surfaces the collision and requires an explicit override before applying. A binary on `PATH` is deliberately not evidence: it is a property of the machine, not of the project, so the same repo would collide on one developer's laptop and not in CI.
 
 This is deliberately not `when.excludes`: `excludes` means *not applicable* (silently skipped), `conflicts` means *applicable but colliding* (loud, needs a decision).
 

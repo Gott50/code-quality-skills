@@ -10,6 +10,7 @@
 set -u
 
 SKILL=skills/code-quality-setup
+FIXTURES=fixtures
 SCRATCH=/tmp/cqs-detect-collide
 
 run() {
@@ -26,13 +27,13 @@ echo "## 1. The three fixtures"
 for f in plain-ts bun-ts pnpm-workspace; do
   echo
   echo "### fixtures/$f"
-  run node "$SKILL/scripts/detect.mjs" "$SKILL/fixtures/$f"
+  run node "$SKILL/scripts/detect.mjs" "$FIXTURES/$f"
 done
 
 echo
 echo "## 2. The collision path (scratch: bun-ts + prettier)"
 rm -rf "$SCRATCH"
-cp -R "$SKILL/fixtures/bun-ts" "$SCRATCH"
+cp -R "$FIXTURES/bun-ts" "$SCRATCH"
 node -e '
   const fs = require("node:fs");
   const p = process.argv[1] + "/package.json";
@@ -52,5 +53,24 @@ echo "## 4. A directory with no package.json (this repo's root)"
 run node "$SKILL/scripts/detect.mjs" . --compact
 
 echo
-echo "## 5. Hard errors"
+echo "## 5. A malformed recipe is reported, not fatal"
+SKILLCOPY=/tmp/cqs-detect-skill
+rm -rf "$SKILLCOPY"
+cp -R "$SKILL" "$SKILLCOPY"
+cat > "$SKILLCOPY/references/recipes/broken.md" <<'EOF'
+---
+id: broken
+title: A recipe with no Undo section
+when:
+  language: [typescript]
+---
+
+## Apply
+
+Nothing.
+EOF
+run node "$SKILLCOPY/scripts/detect.mjs" "$FIXTURES/bun-ts"
+
+echo
+echo "## 6. Hard errors"
 run node "$SKILL/scripts/detect.mjs" /nonexistent

@@ -138,33 +138,40 @@ function extractUndo(body, label) {
   return bullets;
 }
 
+// A malformed recipe is reported, never fatal: one broken file must not cost the user the whole
+// matrix. Its entry carries `id` and `error` and nothing else, and it is never selected.
 function loadRecipes() {
   if (!existsSync(RECIPES_DIR)) throw new Error(`no recipe directory at ${RECIPES_DIR}`);
   const files = readdirSync(RECIPES_DIR)
     .filter((f) => f.endsWith(".md"))
     .sort();
   return files.map((file) => {
-    const label = `references/recipes/${file}`;
-    const text = readFileSync(join(RECIPES_DIR, file), "utf8");
-    const fm = parseFrontmatter(text, label);
     const stem = basename(file, ".md");
-    if (fm.id !== stem) throw new Error(`${label}: id "${fm.id}" must equal the filename stem`);
-    if (!/^[a-z][a-z0-9-]*$/.test(fm.id)) throw new Error(`${label}: id "${fm.id}" is not kebab-case`);
-    const body = text.slice(text.indexOf("\n---", 3) + 4);
-    return {
-      id: fm.id,
-      title: fm.title ?? fm.id,
-      purpose: fm.purpose ?? "",
-      when: fm.when ?? {},
-      conflicts: fm.conflicts ?? {},
-      cost: fm.cost ?? "fast",
-      priority: fm.priority ?? 0,
-      files: fm.files ?? [],
-      commands: fm.commands ?? [],
-      gates: fm.gates ?? [],
-      verify: fm.verify ?? [],
-      undo: extractUndo(body, label),
-    };
+    const label = `references/recipes/${file}`;
+    try {
+      const text = readFileSync(join(RECIPES_DIR, file), "utf8");
+      const fm = parseFrontmatter(text, label);
+      if (fm.id !== stem) throw new Error(`${label}: id "${fm.id}" must equal the filename stem`);
+      if (!/^[a-z][a-z0-9-]*$/.test(fm.id)) throw new Error(`${label}: id "${fm.id}" is not kebab-case`);
+      const body = text.slice(text.indexOf("\n---", 3) + 4);
+      return {
+        id: fm.id,
+        error: null,
+        title: fm.title ?? fm.id,
+        purpose: fm.purpose ?? "",
+        when: fm.when ?? {},
+        conflicts: fm.conflicts ?? {},
+        cost: fm.cost ?? "fast",
+        priority: fm.priority ?? 0,
+        files: fm.files ?? [],
+        commands: fm.commands ?? [],
+        gates: fm.gates ?? [],
+        verify: fm.verify ?? [],
+        undo: extractUndo(body, label),
+      };
+    } catch (err) {
+      return { id: stem, error: err.message };
+    }
   });
 }
 
@@ -583,17 +590,18 @@ function evaluateWhen(recipe, ctx) {
 // Selection is a fixpoint: `requires: [{ recipe: X }]` makes applicability depend on the selection,
 // and `conflicts.recipes` can remove a recipe another one requires. Grow, then shrink, until stable.
 function selectRecipes(recipes, ctx) {
-  const byId = new Map(recipes.map((r) => [r.id, r]));
+  const usable = recipes.filter((r) => r.error === null);
+  const byId = new Map(usable.map((r) => [r.id, r]));
   const base = new Set();
-  for (const r of recipes) {
+  for (const r of usable) {
     const { applicable } = evaluateWhen(r, { ...ctx, selection: new Set(), recipeId: r.id });
     if (applicable) base.add(r.id);
   }
 
   const selection = new Set(base);
-  for (let guard = 0; guard < recipes.length + 2; guard++) {
+  for (let guard = 0; guard < usable.length + 2; guard++) {
     let changed = false;
-    for (const r of recipes) {
+    for (const r of usable) {
       if (selection.has(r.id)) continue;
       const { applicable } = evaluateWhen(r, { ...ctx, selection, recipeId: r.id });
       if (applicable) {
@@ -605,7 +613,7 @@ function selectRecipes(recipes, ctx) {
   }
 
   const heldBack = [];
-  for (let guard = 0; guard < recipes.length + 2; guard++) {
+  for (let guard = 0; guard < usable.length + 2; guard++) {
     let changed = false;
     for (const id of [...selection]) {
       const r = byId.get(id);
@@ -633,36 +641,25 @@ function selectRecipes(recipes, ctx) {
   return { selection, heldBack };
 }
 
+// Project-local evidence only: a dependency or a config file in the repo. A binary on PATH is not a
+// property of the project, so the same repo would collide on one machine and not another.
 function detectToolCollisions(recipes, selection, ctx) {
   const collisions = [];
   for (const r of recipes) {
-    if (!selection.has(r.id)) continue;
+    if (r.error !== null || !selection.has(r.id)) continue;
     for (const tool of r.conflicts?.tools ?? []) {
       const evidence = [];
       for (const p of ctx.packages) {
-        if (p.dependencies.includes(tool)) evidence.push(`${p.path === "." ? "root" : p.path}/package.json declares ${tool}`);
+        const where = p.path === "." ? "root" : p.path;
+        if (p.dependencies.includes(tool)) evidence.push(`${where}/package.json declares ${tool}`);
+        for (const [category, hits] of Object.entries(p.tooling)) {
+          for (const h of hits) if (h.tool === tool) evidence.push(`${where} ${category}: ${h.files.join(", ")}`);
+        }
       }
-      for (const [category, hits] of Object.entries(ctx.rootPackage.tooling)) {
-        for (const h of hits) if (h.tool === tool) evidence.push(`${category}: ${h.files.join(", ")}`);
-      }
-      const onPath = findOnPath(tool);
-      if (onPath) evidence.push(`binary on PATH at ${onPath}`);
       if (evidence.length > 0) collisions.push({ recipe: r.id, tool, evidence });
     }
   }
   return collisions;
-}
-
-function findOnPath(bin) {
-  const dirs = (process.env.PATH ?? "").split(":").filter(Boolean);
-  for (const d of dirs) {
-    try {
-      if (existsSync(join(d, bin))) return join(d, bin);
-    } catch {
-      /* unreadable PATH entry */
-    }
-  }
-  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -703,9 +700,11 @@ function detect(projectDir) {
   const collisions = detectToolCollisions(recipes, selection, ctx);
 
   const matrix = recipes.map((r) => {
+    if (r.error !== null) return { id: r.id, error: r.error };
     const { applicable, reasons } = evaluateWhen(r, { ...ctx, selection, recipeId: r.id });
     return {
       id: r.id,
+      error: null,
       title: r.title,
       purpose: r.purpose,
       cost: r.cost,
