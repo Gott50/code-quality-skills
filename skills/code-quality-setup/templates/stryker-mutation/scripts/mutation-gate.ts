@@ -125,7 +125,9 @@ function globToRegExp(glob: string): RegExp {
  * The config's own `mutate` globs are the mutation scope, and the gate must
  * respect them: `--mutate` on the command line OVERRIDES the config, so a
  * changed file the config would never mutate (a build script, a vendored
- * plugin) would be instrumented, have no covering test, and fail the dry run.
+ * plugin) would land in the mutation set — and the bun runner's preload
+ * imports every file in that set so its module-level code runs during the dry
+ * run, where a script that exits non-zero kills the whole push.
  */
 async function mutateScopeOf(config: string): Promise<MutateScope> {
   // Dynamic import: the specifier is the config path the gate was invoked with
