@@ -91,15 +91,18 @@ Without a manifest, from the filesystem alone:
 `loss` is a `create` target the repo has customized (#36): the repo's file carries content the
 template does not, so overwriting it drops that content. A `create` target has no marker, so the
 skill cannot tell "the repo added content" from "the repo is behind the library" by ownership; it
-compares content instead. For a JSON target the comparison is structural (#42): a leaf path the repo
-declares and the template does not is content the template lacks — the loss; a leaf present in both
+compares content instead. For a JSON target the comparison is structural (#42, #44): a path the repo
+declares and the template does not is content the template lacks — the loss; a path present in both
 is not lost whatever its value, because a differing value is the library moving (a version bump, a
-changed default), which is drift, not the repo's content. For any other target it is line-based: a
-non-blank line of the repo's file that does not appear in the template (after normalizing
-whitespace, the same normalization `duplicate` uses) is content the template lacks — the loss. When
-nothing is lost the repo is a subset (behind), the verdict is `drift`, and the overwrite drops
-nothing. The apply MUST NOT overwrite a `loss` without an explicit override (`--force`); the plan
-shows the diff and the lost items (SKILL.md → Apply). A `create` file the manifest records as
+changed default), which is drift, not the repo's content. An array is compared by element, not as a
+leaf (#44): a repo element no template element covers is a loss, so a repo that extends an array is
+not overwritten, and a reordered array is not a loss. An array element's path is
+`<array>[<canonical element>]` (e.g. `ignorePatterns["prototype/**"]`). For any other target it is
+line-based: a non-blank line of the repo's file that does not appear in the template (after
+normalizing whitespace, the same normalization `duplicate` uses) is content the template lacks — the
+loss. When nothing is lost the repo is a subset (behind), the verdict is `drift`, and the overwrite
+drops nothing. The apply MUST NOT overwrite a `loss` without an explicit override (`--force`); the
+plan shows the diff and the lost items (SKILL.md → Apply). A `create` file the manifest records as
 `update` is the skill's own recorded content — the difference is the library's, not the repo's — so
 it is not a loss.
 
