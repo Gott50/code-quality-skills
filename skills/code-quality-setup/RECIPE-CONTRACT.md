@@ -64,7 +64,7 @@ This is deliberately not `when.excludes`: `excludes` means *not applicable* (sil
 
 ### `priority`
 
-Integer. The detector sorts the selected recipes descending and applies them in that order. Use it to put a recipe that documents others last (e.g. agent guidance).
+Integer. The detector sorts the selected recipes descending and applies them in that order *within each phase* (see [Apply order](#apply-order--three-phases-never-one-recipe-at-a-time)). Use it to put a recipe that documents others last (e.g. agent guidance).
 
 ## `files` — templates to write
 
@@ -87,7 +87,7 @@ files:
 - In a **single** workspace, `root`, `member` and `both` resolve to the same directory. A `member`-scoped entry is skipped when a `root`-scoped entry writes the same `path`; nothing is written twice.
 - `memberMode` (only meaningful for `member`/`both`):
   - `standalone` — the member file stands alone.
-  - `extends-root` — the member file is a stub that inherits the root file. Every mechanism counts: Biome `{ root: false, extends: ["//"] }`, tsconfig `extends`, a Stryker `import` of the base, and oxlint **spreading** the base's `rules`/`overrides` — a config reached through `extends` rejects a relative `jsPlugins` specifier, and the root base carries one, so a spread is the only inheritance oxlint allows there. Where the mechanism needs a path relative to the member (tsconfig, oxlint, a Stryker `import`), the stub names `{{root}}` — see [Substitution](#root--the-members-path-back-to-the-workspace-root).
+  - `extends-root` — the member file is a stub that inherits the root file. Every mechanism counts: Biome `{ root: false, extends: "//" }` (the **bare string** microsyntax — `"extends": ["//"]` is resolved as a *path* and Biome refuses to load the config), tsconfig `extends`, a Stryker `import` of the base, and oxlint **spreading** the base's `rules`/`overrides` — a config reached through `extends` rejects a relative `jsPlugins` specifier, and the root base carries one, so a spread is the only inheritance oxlint allows there. Where the mechanism needs a path relative to the member (tsconfig, oxlint, a Stryker `import`), the stub names `{{root}}` — see [Substitution](#root--the-members-path-back-to-the-workspace-root).
   - `copy` — the member file is the root template verbatim.
 - `action`:
   - `create` — write the rendered template when the target is absent; when present and byte-identical it is a no-op; when present and different it is drift.
@@ -106,6 +106,7 @@ commands:
 ```
 
 - `run` is a literal command line, executed from the scope's directory. `each-member` runs it once per member.
+- Every command runs in the **commands phase** — after every selected recipe's `files` are written, whatever the priorities (see [Apply order](#apply-order--three-phases-never-one-recipe-at-a-time)). A one-time format sweep therefore runs after the merges of every recipe in the selection, not only its own.
 - These are the commands **the skill itself runs**. A command the recipe merely *writes into* a file — a pre-commit hook body, a `package.json` script — is template content, not a `command`.
 - `showInPlan: false` only for a command whose effect the plan already states (e.g. an install implied by a declared dependency). Any command that touches files the recipe did not author — a first format sweep is the common case — MUST be shown.
 - The skill runs nothing that is not listed here.
@@ -129,9 +130,36 @@ verify:
     scope: root          # root | member | each-member
 ```
 
-Each entry either **references a gate** by id (the common case: the proof *is* the gate, stated once) or carries a literal `run` for a recipe with no gate. Run once after applying; every entry MUST exit 0. A non-zero verify is reported as-is: it is not retried, and it does not roll back. A recipe whose verify cannot pass on a pre-existing repo is missing an apply step, not a `verify` exception.
+Each entry either **references a gate** by id (the common case: the proof *is* the gate, stated once) or carries a literal `run` for a recipe with no gate. Run once, in the **verify phase** after every command (see [Apply order](#apply-order--three-phases-never-one-recipe-at-a-time)); every entry MUST exit 0. A non-zero verify is reported as-is: it is not retried, and it does not roll back. A recipe whose verify cannot pass on a pre-existing repo is missing an apply step, not a `verify` exception.
 
 The one case that is not a missing apply step: a gate the project must *climb* — a 100% coverage threshold, a zero-survivor mutation score. The recipe's apply step is complete and its files are correct; the project simply does not meet the gate yet. `verify` fails as-is, the recipe stays unrecorded, and the plan reports the gap, so a re-run resumes there once the project complies. The recipe's body MUST say so, and the plan MUST show the gap before applying.
+
+## Apply order — three phases, never one recipe at a time
+
+The skill applies the selection in three phases, not by running one recipe to completion before the
+next:
+
+1. **Files** — every selected recipe's `files` entries are written, in priority order.
+2. **Commands** — every selected recipe's `commands` run, in priority order.
+3. **Verify** — every selected recipe's `verify` runs, in priority order; a recipe is recorded in
+   the manifest after its own verify passes.
+
+`priority` still orders the selection and the order *within* a phase, but a phase is global: no
+recipe's command runs until the last selected recipe's files are written, and no verify runs until
+every command has.
+
+This is what makes a one-time formatter sweep safe. `biome-assist` installs Biome's `useSortedKeys`
+/ `useSortedPackageJson` and carries the first sweep as a `commands` entry; the recipes applied
+after it (`tsconfig-strict`, `oxlint-anti-slop`, `bun-test-coverage`, `stryker-mutation`) merge new
+keys into `package.json`, and a JSON `merge` appends the leaves its fragment names. If the sweep ran
+together with `biome-assist` — before those merges — the merged `package.json` would never be
+sorted, and `biome-assist`'s own `format:check` `verify` would fail on the state the run just
+produced. Under the phased order the sweep runs in the commands phase, after every recipe's files
+exist, so it sorts the merged files and the verify passes.
+
+A recipe's `## Apply` body still lists that recipe's own steps in order; the phases above order
+those steps against the rest of the selection. A body that needs to point at the cross-recipe order
+cites this section rather than restating it.
 
 ## The body
 
