@@ -158,6 +158,18 @@ function resolveWrites(recipe, workspace) {
   return writes;
 }
 
+// Resolve a `commands`/`verify` scope to the directories the entry runs in (RECIPE-CONTRACT.md →
+// Scope resolution). A single workspace has no members, so `member` and `each-member` collapse to
+// one implicit member at the root — the same collapse `resolveWrites` makes for `files`. Without it
+// an `each-member` entry would resolve to zero directories and run zero times, recording the recipe
+// as applied without its gate ever executing (#33).
+function resolveScopes(scope, workspace) {
+  if (scope === "member" || scope === "each-member") {
+    return workspace.members.length === 0 ? ["."] : workspace.members.map((m) => m.path);
+  }
+  return ["."];
+}
+
 function readTemplate(skillRelPath) {
   return readFileSync(join(SKILL_DIR, skillRelPath), "utf8");
 }
@@ -726,7 +738,7 @@ function renderFiles(plan, opts) {
   return lines.join("\n").trimEnd();
 }
 
-function renderCommands(selected) {
+function renderCommands(selected, workspace) {
   const lines = ["## Commands (phase 2 — commands, priority order)", ""];
   const rows = [];
   for (const r of selected) {
@@ -740,12 +752,13 @@ function renderCommands(selected) {
     return lines.join("\n");
   }
   rows.forEach((c, i) => {
-    lines.push(`${i + 1}. [${c.recipe}] \`${c.run}\` (${c.scope ?? "root"})`);
+    const scope = c.scope ?? "root";
+    lines.push(`${i + 1}. [${c.recipe}] \`${c.run}\` (${scope} → ${resolveScopes(scope, workspace).join(", ")})`);
   });
   return lines.join("\n");
 }
 
-function renderGatesAndVerify(selected) {
+function renderGatesAndVerify(selected, workspace) {
   const lines = ["## Gates and verify (phase 3 — verify, priority order)", ""];
   if (selected.length === 0) {
     lines.push("_None._");
@@ -762,7 +775,9 @@ function renderGatesAndVerify(selected) {
     if ((r.verify ?? []).length > 0) {
       lines.push("Verify:");
       for (const v of r.verify) {
-        lines.push(`- ${v.gate ? `gate \`${v.gate}\`` : `\`${v.run}\``} (${v.scope ?? "root"})`);
+        const scope = v.scope ?? "root";
+        const dirs = resolveScopes(scope, workspace).join(", ");
+        lines.push(`- ${v.gate ? `gate \`${v.gate}\`` : `\`${v.run}\``} (${scope} → ${dirs})`);
       }
     } else {
       lines.push("Verify: _none_");
@@ -825,8 +840,8 @@ function renderPlan(plan, opts) {
   out.push(renderHeldBack(plan.heldBack), "");
   out.push(renderCollisions(plan.collisions, opts.force), "");
   out.push(renderFiles(plan, opts), "");
-  out.push(renderCommands(plan.selected), "");
-  out.push(renderGatesAndVerify(plan.selected), "");
+  out.push(renderCommands(plan.selected, plan.stack.workspace), "");
+  out.push(renderGatesAndVerify(plan.selected, plan.stack.workspace), "");
   out.push(renderWarnings(plan.errored, plan.templateErrors), "");
 
   if (plan.manifestPresent && plan.drift) {
