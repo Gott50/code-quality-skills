@@ -1,2 +1,8 @@
 packages:
   - 'packages/*'
+  - 'packages/nested/*'
+
+# pnpm 12 blocks dependency build scripts unless they are allowlisted. esbuild
+# (via vite/vitest) needs its postinstall to fetch the platform binary.
+allowBuilds:
+  esbuild: true
