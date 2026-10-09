@@ -96,6 +96,25 @@ files:
 - **A merge that would change an existing value is a collision**: it is reported in the plan and applied only on approval. Adding a missing key is not.
 - **Every merged block is attributable to its recipe.** The marker line names the `<id>`, so a reader of `.husky/pre-commit` or `.gitignore` can see which recipe owns which lines and update or remove exactly that block. A recipe MUST NOT write into a shared file without markers, and MUST NOT write a block whose marker omits its id.
 
+## Scope resolution
+
+`commands` and `verify` entries carry a `scope` naming the directories the entry runs in. The three
+values resolve the same way for both:
+
+| Scope | Directories |
+|---|---|
+| `root` | the workspace root, once |
+| `member`, `each-member` | once per workspace member |
+
+**A single workspace resolves `member` and `each-member` to one implicit member at the workspace
+root** — the same collapse `files` makes (see [`files`](#files--templates-to-write)). `detect.mjs`
+reports `workspace.members: []` for a single-package repo, so an entry that resolved to zero
+directories would run zero times and the recipe would be recorded as applied without its gate ever
+executing. In a single workspace every scope therefore resolves to exactly one directory, the
+workspace root (`.`).
+
+The plan prints the resolved directory beside each entry, so the agent never re-derives it.
+
 ## `commands` — what the skill runs while applying
 
 ```yaml
@@ -105,7 +124,7 @@ commands:
     showInPlan: true   # default true
 ```
 
-- `run` is a literal command line, executed from the scope's directory. `each-member` runs it once per member.
+- `run` is a literal command line, executed from the scope's directory (see [Scope resolution](#scope-resolution)).
 - Every command runs in the **commands phase** — after every selected recipe's `files` are written, whatever the priorities (see [Apply order](#apply-order--three-phases-never-one-recipe-at-a-time)). A one-time format sweep therefore runs after the merges of every recipe in the selection, not only its own.
 - These are the commands **the skill itself runs**. A command the recipe merely *writes into* a file — a pre-commit hook body, a `package.json` script — is template content, not a `command`.
 - `showInPlan: false` only for a command whose effect the plan already states (e.g. an install implied by a declared dependency). Any command that touches files the recipe did not author — a first format sweep is the common case — MUST be shown.
@@ -130,7 +149,7 @@ verify:
     scope: root          # root | member | each-member
 ```
 
-Each entry either **references a gate** by id (the common case: the proof *is* the gate, stated once) or carries a literal `run` for a recipe with no gate. Run once, in the **verify phase** after every command (see [Apply order](#apply-order--three-phases-never-one-recipe-at-a-time)); every entry MUST exit 0. A non-zero verify is reported as-is: it is not retried, and it does not roll back. A recipe whose verify cannot pass on a pre-existing repo is missing an apply step, not a `verify` exception.
+Each entry either **references a gate** by id (the common case: the proof *is* the gate, stated once) or carries a literal `run` for a recipe with no gate. It runs in the directory its `scope` resolves to (see [Scope resolution](#scope-resolution)) — `each-member` runs it once per member, and in a single workspace that is one implicit member at the root, so the gate always runs at least once. It runs in the **verify phase** after every command (see [Apply order](#apply-order--three-phases-never-one-recipe-at-a-time)); every entry MUST exit 0. A non-zero verify is reported as-is: it is not retried, and it does not roll back. A recipe whose verify cannot pass on a pre-existing repo is missing an apply step, not a `verify` exception.
 
 The one case that is not a missing apply step: a gate the project must *climb* — a 100% coverage threshold, a zero-survivor mutation score. The recipe's apply step is complete and its files are correct; the project simply does not meet the gate yet. `verify` fails as-is, the recipe stays unrecorded, and the plan reports the gap, so a re-run resumes there once the project complies. The recipe's body MUST say so, and the plan MUST show the gap before applying.
 
@@ -202,6 +221,7 @@ that names it is a contract violation.
 ## Idempotency (library-wide)
 
 - The filesystem is the source of truth. `.code-quality.json` records what was applied and is an optimization only; no recipe may depend on it.
+- The manifest is gitignored: the formatter recipes' `.gitignore` blocks name `.code-quality.json`, so the project's own gates never check the skill's own artifact. The manifest is written after the verify phase, so a gate that ran before it existed would otherwise fail on the next run.
 - A recipe re-runs safely: `create` is a no-op on an identical file, `merge` replaces its own marked block, `patch` re-applies to the same before-state.
 - **Drift** is a target that differs from its rendered template with no marker to replace it. Drift is *reported*, never silently overwritten: the plan shows the diff and applies only on approval.
 

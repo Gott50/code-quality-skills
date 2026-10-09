@@ -1,3 +1,4 @@
 # code-quality:biome-assist-npm:start
 node_modules/
+.code-quality.json
 # code-quality:biome-assist-npm:end

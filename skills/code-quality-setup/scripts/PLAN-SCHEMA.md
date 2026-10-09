@@ -46,11 +46,17 @@ The first line after the title is the state:
    A `merge`/`patch`/collision shows its unified diff inline; a `create` is `new` / `no-op` / `drift`.
    `--diff` adds the rest.
 7. **Commands (phase 2 — commands, priority order)** — the selected recipes' `commands` with
-   `showInPlan !== false`, in selection order.
+   `showInPlan !== false`, in selection order: `N. [<recipe>] \`<run>\` (<scope> → <dirs>)`.
 8. **Gates and verify (phase 3 — verify, priority order)** — per selected recipe, its `gates` and its
-   `verify` entries.
+   `verify` entries: `- gate \`<id>\` (<scope> → <dirs>)` (or the literal `run` in place of the gate).
 9. **Warnings** — one `{ id, error }` line per unreadable recipe (or unreadable template).
 10. **Drift (manifest)** — the per-recipe state from the manifest, or a degraded note.
+
+`<dirs>` is the scope resolved to the directories the entry runs in (RECIPE-CONTRACT.md → Scope
+resolution): `.` for `root`, and for `member`/`each-member` the member paths — or `.` in a single
+workspace, where the scope collapses to one implicit member at the root. The plan prints the
+resolution so the agent never re-derives it; an `each-member` entry that resolved to zero
+directories would run zero times and record the recipe as applied without its gate ever executing.
 
 The plan closes with the approval line, which states the three-phase apply order: *phase 1 writes
 every file, phase 2 runs every command, phase 3 runs every verify* (RECIPE-CONTRACT.md → Apply
