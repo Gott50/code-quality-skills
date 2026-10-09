@@ -1,6 +1,8 @@
 # code-quality-skills
 
-A bundle of engineering skills (Matt Pocock's `mattpocock/skills`), vendored under `.agents/skills/` and pinned in `skills-lock.json`.
+A skill source. The repo's product is `skills/code-quality-setup/` — an installable agent skill that wires code-quality gates into a TypeScript repo. It is installed with `npx skills@latest add Gott50/code-quality-skills`; the skills CLI copies the whole `skills/code-quality-setup/` directory into the consumer's `.agents/skills/`, so anything inside it ships to every user and churns the lockfile hash. Fixtures and other non-shipping assets live at the repo root.
+
+The repo also vendors Matt Pocock's `mattpocock/skills` under `.agents/skills/`, pinned in `skills-lock.json`. Those are inputs, not the product.
 
 ## Agent skills
 
