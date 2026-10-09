@@ -1,4 +1,3 @@
 {
-  "files": [],
-  "references": [{ "path": "packages/a" }, { "path": "packages/b" }]
+  "extends": "./tsconfig.base.json"
 }

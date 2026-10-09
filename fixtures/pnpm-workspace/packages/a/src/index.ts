@@ -1,10 +1,7 @@
-export interface Range {
-  min: number;
-  max: number;
-}
-
-export function clamp(value: number, { min, max }: Range): number {
-  if (value < min) return min;
-  if (value > max) return max;
-  return value;
+export function double(values: number[]): number[] {
+  const doubled: number[] = [];
+  for (const value of values) {
+    doubled.push(value * 2);
+  }
+  return doubled;
 }
