@@ -35,6 +35,8 @@ export default {
   symlinkNodeModules: false,
   testFiles: ["test/**/*.test.ts"],
   testRunner: "bun",
-  // Hard gate: any survivor (or no-coverage file) fails the run.
-  thresholds: { high: 100, low: 100 },
+  // Hard gate: any survivor (or no-coverage file) fails the run. `break` is
+  // the threshold that sets the exit code (Stryker 10); `high`/`low` only
+  // colour the report, so a config with `high`/`low` alone never fails a build.
+  thresholds: { break: 100, high: 100, low: 100 },
 };
