@@ -1,4 +1,10 @@
 # code-quality:biome-assist:start
+# Refuse to run when a staged file also has unstaged changes: Biome rewrites the
+# worktree, and re-staging would commit a blend of reviewed and unreviewed content.
+if git status --short | grep -qE '^[^ ?][^ ?]'; then
+  echo "ERROR: Some staged files have unstaged changes" >&2
+  exit 1
+fi
 bunx @biomejs/biome check --staged --write --unsafe --linter-enabled=false --no-errors-on-unmatched || exit 1
-git add -u || exit 1
+git update-index --again || exit 1
 # code-quality:biome-assist:end
