@@ -27,7 +27,7 @@ commands:
     showInPlan: false
 gates: []
 verify:
-  - run: test -f .node-version && grep -q "code-quality:repo-hygiene:start" .gitignore && node -e "const p=require('./package.json'); if (p.scripts?.prepare !== 'husky') process.exit(1)"
+  - run: test -f .node-version && grep -q "code-quality:repo-hygiene-npm:start" .gitignore && node -e "const p=require('./package.json'); if (p.scripts?.prepare !== 'husky') process.exit(1)"
     scope: root
 ---
 
