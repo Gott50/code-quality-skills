@@ -60,6 +60,10 @@ The first line after the title is the state:
    `showInPlan !== false`, in selection order: `N. [<recipe>] \`<run>\` (<scope> → <dirs>)`.
 10. **Gates and verify (phase 3 — verify, priority order)** — per selected recipe, its `gates` and its
    `verify` entries: `- gate \`<id>\` (<scope> → <dirs>)` (or the literal `run` in place of the gate).
+   A literal `run` that greps for a skipped duplicate block's marker is rendered with that grep
+   replaced by `true` (#49): the plan has already proven the block's content is present (the
+   `duplicate` verdict), so the verify passes and the recipe is recorded. The agent runs the verify
+   **as rendered**, not as the recipe's frontmatter states it (RECIPE-CONTRACT.md → `verify`).
 11. **Warnings** — one `{ id, error }` line per unreadable recipe (or unreadable template).
 12. **Drift (manifest)** — the per-recipe state from the manifest, or a degraded note. The state is
    the worst file verdict (`missing` > `loss` > `drifted` > `update` > `intact`), so a recipe whose
