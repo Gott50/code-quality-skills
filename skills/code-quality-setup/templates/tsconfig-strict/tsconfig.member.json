@@ -1,4 +1,5 @@
 {
   "exclude": ["node_modules"],
-  "extends": "{{root}}/tsconfig.json"
+  "extends": "{{root}}/tsconfig.json",
+  "include": ["**/*"]
 }
