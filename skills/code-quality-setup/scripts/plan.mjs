@@ -196,7 +196,136 @@ function mergeKind(entry, recipeId) {
   return "markers";
 }
 
+// A marker merge block whose own marker is absent may still be redundant: the target file already
+// carries what the block contributes. This is the hand-set-up repo (#35) — the harness is there,
+// the manifest is not, so the marker is absent and the block reads `new` while the file already
+// runs the gate. Two signals, both requiring the WHOLE block to be present (a partial match is not
+// a duplicate: biome-assist's `.gitignore` block adds `node_modules/` (present) and
+// `.code-quality.json` (absent), and must still apply):
+//   - line presence: every non-blank payload line already appears in the file, compared after
+//     normalizing whitespace (a hand-written hook aligns its `||` with spaces);
+//   - command presence: the payload is a documentation section (it carries a heading) and every
+//     gate command it names already appears in the file (a hand-written AGENTS.md documents the
+//     same gates in a different shape — bullets and arrows, not the rendered table).
+// Returns a human-readable evidence string, or null when the block contributes something new.
+function blockAlreadyPresent(existing, content, recipeId) {
+  const norm = (s) => s.trim().replace(/\s+/g, " ");
+  const payload = content
+    .split("\n")
+    .filter((line) => !line.includes(`code-quality:${recipeId}:start`) && !line.includes(`code-quality:${recipeId}:end`));
+  const fileLines = new Set(existing.split("\n").map(norm));
+  const significant = payload.map(norm).filter((l) => l !== "");
+  if (significant.length > 0 && significant.every((l) => fileLines.has(l))) {
+    return "every line already present";
+  }
+  if (payload.some((l) => /^#{1,6}\s/.test(l.trim()))) {
+    const commands = [
+      ...new Set([...content.matchAll(/\b(?:bunx?|npm|pnpm|npx)\s+(?:run\s+)?([A-Za-z0-9:_@./-]+)/g)].map((m) => m[1])),
+    ];
+    const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (commands.length > 0 && commands.every((c) => new RegExp(`\\b${escape(c)}\\b`).test(existing))) {
+      return `already documents: ${commands.join(", ")}`;
+    }
+  }
+  return null;
+}
+
+// A `patch` has no marker, so the recipe cannot own the whole file — it owns the keys its template
+// declares, the after-state the recipe body states (#37). The plan reads them with a minimal
+// line-based reader (the shape a config patch targets: `[section]` headers and `key = value`, with
+// a multi-line array joined and comments stripped) and canonicalizes them to a sorted list: `path =
+// <value>` for a scalar, `path` alone for a collection. A collection is the repo's to extend — the
+// recipe body's `coveragePathIgnorePatterns` is the case, where the project adds its own patterns —
+// so the recipe owns only its presence; a scalar is the recipe's to set, so its value is compared.
+function stripConfigComment(line) {
+  let basic = false;
+  let literal = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (basic) {
+      if (c === "\\") i++;
+      else if (c === '"') basic = false;
+    } else if (literal) {
+      if (c === "'") literal = false;
+    } else if (c === '"') basic = true;
+    else if (c === "'") literal = true;
+    else if (c === "#") return line.slice(0, i);
+  }
+  return line;
+}
+
+// The bracket/brace depth of a value, ignoring brackets inside strings: a multi-line array is
+// joined until the depth returns to zero.
+function configDepth(value) {
+  let depth = 0;
+  let basic = false;
+  let literal = false;
+  for (let i = 0; i < value.length; i++) {
+    const c = value[i];
+    if (basic) {
+      if (c === "\\") i++;
+      else if (c === '"') basic = false;
+    } else if (literal) {
+      if (c === "'") literal = false;
+    } else if (c === '"') basic = true;
+    else if (c === "'") literal = true;
+    else if (c === "[" || c === "{") depth++;
+    else if (c === "]" || c === "}") depth--;
+  }
+  return depth;
+}
+
+// The keys a config declares, as a Map from dotted path to { value, collection }. Only the shapes a
+// recipe template uses are read: `[section]` headers, `key = value` scalars, and arrays/inline
+// tables (single- or multi-line). Anything else is ignored, not fatal.
+function configPairs(text) {
+  const pairs = new Map();
+  let section = "";
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = stripConfigComment(lines[i]).trim();
+    if (line === "") continue;
+    const header = /^\[([^\]]+)\]$/.exec(line);
+    if (header) {
+      section = header[1].trim();
+      continue;
+    }
+    const eq = line.indexOf("=");
+    if (eq === -1) continue;
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1).trim();
+    while (configDepth(value) > 0 && i + 1 < lines.length) {
+      i++;
+      value += " " + stripConfigComment(lines[i]).trim();
+    }
+    const path = section ? `${section}.${key}` : key;
+    pairs.set(path, {
+      value: value.replace(/\s+/g, " ").trim(),
+      collection: value.startsWith("[") || value.startsWith("{"),
+    });
+  }
+  return pairs;
+}
+
+// The canonical owned content of a `patch`: the template's declared keys, sorted, each rendered as
+// `path = <value>` for a scalar and `path` for a collection. `target` supplies the values; a key
+// the target does not declare makes the whole thing null (the after-state does not hold), while a
+// scalar whose value differs is returned as-is so the caller reads it as drift, not absence.
+function patchOwned(template, target) {
+  const tpl = configPairs(template);
+  const tgt = configPairs(target);
+  const lines = [];
+  for (const path of [...tpl.keys()].sort()) {
+    const t = tpl.get(path);
+    const g = tgt.get(path);
+    if (g === undefined) return null;
+    lines.push(t.collection ? path : `${path} = ${g.value}`);
+  }
+  return lines.join("\n");
+}
+
 function currentOwned(entry, recipeId) {
+  if (entry.action === "patch") return patchOwned(entry.content, entry.content);
   if (entry.action !== "merge") return entry.content;
   if (mergeKind(entry, recipeId) === "json") return JSON.stringify(JSON.parse(entry.content));
   return entry.content.replace(/\n+$/, "");
@@ -219,6 +348,7 @@ function pick(doc, frag) {
 
 function ownedContent(fileContent, entry, recipeId) {
   if (fileContent === null || fileContent === undefined) return null;
+  if (entry.action === "patch") return patchOwned(entry.content, fileContent);
   if (entry.action !== "merge") return fileContent;
   if (mergeKind(entry, recipeId) === "json") {
     let doc;
@@ -362,7 +492,23 @@ function tryParseJson(text) {
   }
 }
 
-// The verdict for one write, from the filesystem alone (no manifest): create → new/no-op/drift,
+// A `create` target the repo has customized (#36): the repo's file carries content the template
+// does not, so overwriting it would drop that content. A `create` target has no marker, so the
+// skill cannot tell "the repo added content" from "the repo is behind the library" by ownership;
+// it compares content instead. A non-blank line of the repo's file that does not appear in the
+// template (after whitespace normalization, the same normalization `blockAlreadyPresent` uses) is
+// content the template lacks — the loss. When every repo line appears in the template the repo is
+// a subset (behind), and the overwrite drops nothing. Returns the lost lines, or [] when none.
+function lostLines(existing, content) {
+  const norm = (s) => s.trim().replace(/\s+/g, " ");
+  const templateLines = new Set(content.split("\n").map(norm));
+  return existing
+    .split("\n")
+    .map(norm)
+    .filter((line) => line !== "" && !templateLines.has(line));
+}
+
+// The verdict for one write, from the filesystem alone (no manifest): create → new/no-op/drift/loss,
 // merge → new/no-op/add/replace/collision, patch → new/patch. `diff` is the inline unified diff.
 function filesystemVerdict(write, content, projectRoot, recipeId) {
   const abs = join(projectRoot, write.target);
@@ -372,6 +518,15 @@ function filesystemVerdict(write, content, projectRoot, recipeId) {
   if (write.action === "create") {
     if (existing === null) return { verdict: "new", diff: unifiedDiff("", content, write.target) };
     if (existing === content) return { verdict: "no-op" };
+    const lost = lostLines(existing, content);
+    if (lost.length > 0) {
+      return {
+        verdict: "loss",
+        note: `the repo's file carries ${lost.length} line(s) the template does not — overwriting drops them`,
+        lost,
+        diff: unifiedDiff(existing, content, write.target),
+      };
+    }
     return { verdict: "drift", diff: unifiedDiff(existing, content, write.target) };
   }
 
@@ -394,13 +549,25 @@ function filesystemVerdict(write, content, projectRoot, recipeId) {
     }
     const block = existing === null ? null : extractBlock(existing, recipeId);
     const target = content.replace(/\n+$/, "");
-    if (block === null) return { verdict: "new", diff: unifiedDiff("", target, write.target) };
+    if (block === null) {
+      const evidence = existing === null ? null : blockAlreadyPresent(existing, content, recipeId);
+      if (evidence !== null) {
+        return { verdict: "duplicate", note: `already present — ${evidence}; skip this block`, diff: unifiedDiff("", target, write.target) };
+      }
+      return { verdict: "new", diff: unifiedDiff("", target, write.target) };
+    }
     if (block === target) return { verdict: "no-op" };
     return { verdict: "replace", diff: unifiedDiff(block, target, write.target) };
   }
 
   if (write.action === "patch") {
     if (existing === null) return { verdict: "new", note: "created from the template" };
+    // The after-state the recipe body states already holds (#37): the target declares every key the
+    // template declares, with the template's scalar values. The patch is a no-op, so the plan says
+    // so instead of showing the template as the target.
+    if (patchOwned(content, existing) === patchOwned(content, content)) {
+      return { verdict: "no-op", note: "the after-state already holds" };
+    }
     return {
       verdict: "patch",
       note: "unverifiable — the recipe body states the before/after",
@@ -462,8 +629,18 @@ function classify(manifest, { library, files }) {
       const currentHash = hash(currentOwned(f, lib.id));
       const present = ownedContent(files[f.path] ?? null, f, lib.id);
       const presentHash = present === null ? null : hash(present);
+      // A marker block the file already carries without a marker (#35) is not `missing`: the
+      // content is present, the recipe just does not own it. Treat it as intact so a re-run does
+      // not reinstate a second block.
+      const duplicate =
+        present === null &&
+        f.action === "merge" &&
+        mergeKind(f, lib.id) === "markers" &&
+        files[f.path] != null &&
+        blockAlreadyPresent(files[f.path], f.content, lib.id) !== null;
       let verdict;
-      if (presentHash === null) verdict = "missing";
+      if (duplicate) verdict = "intact";
+      else if (presentHash === null) verdict = "missing";
       else if (presentHash === currentHash) verdict = "intact";
       else if (recordedHash !== null && presentHash === recordedHash) verdict = "update";
       else verdict = "drifted";
@@ -698,6 +875,10 @@ function renderCollisions(collisions, force) {
 }
 
 function verdictLabel(row) {
+  if (row.fs.verdict === "duplicate") return "duplicate";
+  // A `create` file the manifest records as `update` is the skill's own recorded content: the
+  // difference is the library's, not the repo's, so it is not a loss (#36).
+  if (row.fs.verdict === "loss" && row.drift?.verdict !== "update") return "loss";
   if (row.drift) {
     const extra = row.drift.updateAvailable && row.drift.verdict !== "update" ? "+update" : "";
     return `${row.drift.verdict}${extra}`;
@@ -728,7 +909,7 @@ function renderFiles(plan, opts) {
     const showDiff =
       opts.diffPath !== null ||
       opts.diff ||
-      (row.fs.diff && (w.action === "merge" || w.action === "patch" || row.fs.verdict === "collision"));
+      (row.fs.diff && (w.action === "merge" || w.action === "patch" || row.fs.verdict === "collision" || row.fs.verdict === "loss"));
     if (showDiff && row.fs.diff) {
       lines.push("");
       for (const dl of row.fs.diff.split("\n")) lines.push(`    ${dl}`);
@@ -736,6 +917,47 @@ function renderFiles(plan, opts) {
     }
   }
   return lines.join("\n").trimEnd();
+}
+
+// The hand-set-up repo (#35): a marker merge block whose marker is absent but whose content the
+// file already carries. The Files section shows the `duplicate` verdict; this section names the
+// evidence and the decision, so the agent skips the block instead of appending a second one.
+function renderPreExisting(plan) {
+  const rows = plan.fileRows.filter((r) => r.fs.verdict === "duplicate");
+  const lines = ["## Pre-existing content (duplicate blocks)", ""];
+  if (rows.length === 0) {
+    lines.push("_None._");
+    return lines.join("\n");
+  }
+  lines.push("_The file already carries these blocks' content (no marker). Do not append them: the gate is already wired. A recipe whose verify greps for a skipped block's marker fails as-is and stays unrecorded._", "");
+  for (const row of rows) {
+    lines.push(`- \`${row.write.target}\` (${row.recipeId}) — ${row.fs.note}`);
+  }
+  return lines.join("\n");
+}
+
+// A `create` target the repo has customized (#36): the repo's file carries content the template
+// does not, so overwriting it drops that content. The Files section shows the `loss` verdict; this
+// section names the lost lines and the decision, so the agent leaves the file alone unless the
+// human explicitly overrides. A `create` file the manifest records as `update` is the skill's own
+// recorded content — the difference is the library's, not the repo's — so it is not a loss.
+function renderLosses(plan, force) {
+  const rows = plan.fileRows.filter((r) => r.fs.verdict === "loss" && r.drift?.verdict !== "update");
+  const lines = ["## Losses (create drift — the repo's extra content would be dropped)", ""];
+  if (rows.length === 0) {
+    lines.push("_None._");
+    return lines.join("\n");
+  }
+  if (force) {
+    lines.push("_Overridden by `--force` — the files below are overwritten and their extra content dropped._", "");
+  } else {
+    lines.push("_Do not overwrite these files: the repo's file carries content the template does not. Overwrite only on an explicit override (`--force`)._", "");
+  }
+  for (const row of rows) {
+    lines.push(`- \`${row.write.target}\` (${row.recipeId}) — ${row.fs.lost.length} line(s) the template lacks:`);
+    for (const l of row.fs.lost) lines.push(`  - \`${l}\``);
+  }
+  return lines.join("\n");
 }
 
 function renderCommands(selected, workspace) {
@@ -831,7 +1053,11 @@ function renderPlan(plan, opts) {
   } else if (plan.manifestPresent && plan.drift && plan.drift.recipes.every((r) => r.state === "intact")) {
     out.push(`**Already set up** — ${plan.selected.length} recipe(s) applied, every file intact.`, "");
   } else {
-    out.push(`**Plan ready** — ${plan.selected.length} recipe(s) selected.`, "");
+    const dupes = plan.fileRows.filter((r) => r.fs.verdict === "duplicate").length;
+    const losses = plan.fileRows.filter((r) => r.fs.verdict === "loss" && r.drift?.verdict !== "update").length;
+    const dupNote = dupes > 0 ? ` ${dupes} block(s) already present — see Pre-existing content.` : "";
+    const lossNote = losses > 0 ? ` ${losses} file(s) would lose repo content — see Losses.` : "";
+    out.push(`**Plan ready** — ${plan.selected.length} recipe(s) selected.${dupNote}${lossNote}`, "");
   }
 
   out.push(renderStack(plan.stack), "");
@@ -840,6 +1066,8 @@ function renderPlan(plan, opts) {
   out.push(renderHeldBack(plan.heldBack), "");
   out.push(renderCollisions(plan.collisions, opts.force), "");
   out.push(renderFiles(plan, opts), "");
+  out.push(renderLosses(plan, opts.force), "");
+  out.push(renderPreExisting(plan), "");
   out.push(renderCommands(plan.selected, plan.stack.workspace), "");
   out.push(renderGatesAndVerify(plan.selected, plan.stack.workspace), "");
   out.push(renderWarnings(plan.errored, plan.templateErrors), "");
@@ -852,8 +1080,13 @@ function renderPlan(plan, opts) {
   }
 
   if (plan.selected.length > 0) {
+    const losses = plan.fileRows.filter((r) => r.fs.verdict === "loss" && r.drift?.verdict !== "update").length;
+    const lossNote =
+      losses > 0 && !opts.force
+        ? ` ${losses} file(s) would lose repo content and are NOT overwritten without \`--force\` (see Losses).`
+        : "";
     out.push(
-      `Approve? Apply the ${plan.selected.length} recipe(s) above: phase 1 writes every file, phase 2 runs every command, phase 3 runs every verify.`,
+      `Approve? Apply the ${plan.selected.length} recipe(s) above: phase 1 writes every file, phase 2 runs every command, phase 3 runs every verify.${lossNote}`,
     );
   }
   return out.join("\n").trimEnd() + "\n";

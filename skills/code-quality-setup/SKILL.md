@@ -28,7 +28,7 @@ node scripts/plan.mjs [projectDir] [--recipe <id>] [--force] [--diff [path]]   #
 
 ## 2. Read the plan
 
-The plan is fixed-order: the stack; the selection (priority order, each with title / purpose / cost); the applicability matrix for everything not selected; `heldBack`; `collisions`; the files to be written (path, action, scope — diffs inline for `merge` / `patch` / collision, `create` as `new` / `no-op` / `drift`); the commands in order; the gates and `verify` left behind; unreadable recipes.
+The plan is fixed-order: the stack; the selection (priority order, each with title / purpose / cost); the applicability matrix for everything not selected; `heldBack`; `collisions`; the files to be written (path, action, scope — diffs inline for `merge` / `patch` / collision / loss, `create` as `new` / `no-op` / `drift` / `loss`, a `patch` as `new` / `no-op` / `patch`); the commands in order; the gates and `verify` left behind; unreadable recipes.
 
 Ask once, after the plan. `--diff` prints unified diffs for every file; `--diff <path>` for one.
 
@@ -36,16 +36,22 @@ Ask once, after the plan. `--diff` prints unified diffs for every file; `--diff 
 
 There is no `apply.mjs`: the agent applies. Walk the selection in priority order and follow each recipe's `## Apply` in `references/recipes/<id>.md`. The three phases are global — every recipe's files, then every command, then every verify (see [RECIPE-CONTRACT.md](RECIPE-CONTRACT.md) → Apply order).
 
+A file row whose verdict is **`duplicate`** (see the plan's *Pre-existing content* section) is a marker block the target file already carries without a marker — a hand-set-up repo, or one set up by an earlier version. Do **not** append it: the gate is already wired, and appending would run it twice. Skip the block; the recipe's `verify` still runs as-is, so a verify that greps for the skipped block's marker fails and that recipe stays unrecorded (RECIPE-CONTRACT.md → `verify`).
+
+A file row whose verdict is **`loss`** (see the plan's *Losses* section) is a `create` target the repo has customized: the repo's file carries content the template does not, so overwriting it drops that content. Do **not** overwrite it — leave the repo's file as it is — unless the human explicitly overrides (`--force`). The plan shows the diff and the lost lines; the recipe's `verify` still runs as-is, so a verify that depends on the skipped file fails and that recipe stays unrecorded (RECIPE-CONTRACT.md → `files`).
+
+A file row whose verdict is **`no-op`** on a `patch` is the after-state the recipe body states already holding: the target declares every key the template declares, with the template's scalar values. Write nothing for that entry — the patch is done — and record it like any other file (RECIPE-CONTRACT.md → `files`).
+
 Record each recipe in `.code-quality.json` as it completes — recipe-granular, after its `verify` passes. A failed `verify` is reported as-is, not rolled back; that recipe stays unrecorded, so a re-run resumes where it stopped. Declining the plan writes nothing.
 
 ## 4. Re-run: the drift report
 
-The filesystem is the source of truth; `.code-quality.json` is an optimization. Per owned file: **intact**; **drifted** (hand-edited → show the diff, apply only on approval, never silently overwrite); **missing** (deleted by hand → reinstate on approval). A `merge` never drifts — its own marker block is replaced. A re-render the current library changed is an **update**, not drift.
+The filesystem is the source of truth; `.code-quality.json` is an optimization. Per owned file: **intact**; **drifted** (hand-edited → show the diff, apply only on approval, never silently overwrite); **missing** (deleted by hand → reinstate on approval). A `merge` never drifts — its own marker block is replaced. A `patch` whose after-state holds is `intact`, not `drifted`: the recipe owns the keys its template declares, not the file, so the repo's other content and its extended collections are not drift. A re-render the current library changed is an **update**, not drift.
 
 ## 5. Options
 
 - `--recipe <id>` — narrow to one recipe. The plan is still shown and approved; `when` is never bypassed; `conflicts` still surface; a recipe that `requires` another will not apply alone.
-- `--force` — overrides a **collision** only, never a failed `when`.
+- `--force` — overrides a **collision** or a **loss** (a `create` drift that would drop the repo's extra content), never a failed `when`.
 - `--diff [path]` — unified diffs on demand.
 
 ## Reference
