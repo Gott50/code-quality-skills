@@ -46,10 +46,10 @@ The first line after the title is the state:
    A `merge`/`patch`/collision/loss shows its unified diff inline; a `create` is `new` / `no-op` /
    `drift` / `loss`. `--diff` adds the rest.
 7. **Losses (create drift — the repo's extra content would be dropped)** — every `create` target the
-   repo has customized (verdict `loss`), one `- \`<path>\` (<recipe>) — N line(s) the template lacks:`
-   line each followed by the lost lines as `  - \`<line>\`` bullets, or `_None._`. The repo's file
-   carries content the template does not, so overwriting it drops that content (#36). The agent MUST
-   NOT overwrite these files without an explicit override (`--force`); `--force` marks them
+   repo has customized (verdict `loss`), one `- \`<path>\` (<recipe>) — N key(s)/line(s) the template
+   lacks:` line each followed by the lost items as `  - \`<item>\`` bullets, or `_None._`. The repo's
+   file carries content the template does not, so overwriting it drops that content (#36). The agent
+   MUST NOT overwrite these files without an explicit override (`--force`); `--force` marks them
    overridden (SKILL.md → Apply).
 8. **Pre-existing content (duplicate blocks)** — every marker `merge` block the target file already
    carries without a marker (verdict `duplicate`), one `- \`<path>\` (<recipe>) — <evidence>` line
@@ -91,13 +91,17 @@ Without a manifest, from the filesystem alone:
 `loss` is a `create` target the repo has customized (#36): the repo's file carries content the
 template does not, so overwriting it drops that content. A `create` target has no marker, so the
 skill cannot tell "the repo added content" from "the repo is behind the library" by ownership; it
-compares content instead. A non-blank line of the repo's file that does not appear in the template
-(after normalizing whitespace, the same normalization `duplicate` uses) is content the template
-lacks — the loss. When every repo line appears in the template the repo is a subset (behind), the
-verdict is `drift`, and the overwrite drops nothing. The apply MUST NOT overwrite a `loss` without
-an explicit override (`--force`); the plan shows the diff and the lost lines (SKILL.md → Apply). A
-`create` file the manifest records as `update` is the skill's own recorded content — the difference
-is the library's, not the repo's — so it is not a loss.
+compares content instead. For a JSON target the comparison is structural (#42): a leaf path the repo
+declares and the template does not is content the template lacks — the loss; a leaf present in both
+is not lost whatever its value, because a differing value is the library moving (a version bump, a
+changed default), which is drift, not the repo's content. For any other target it is line-based: a
+non-blank line of the repo's file that does not appear in the template (after normalizing
+whitespace, the same normalization `duplicate` uses) is content the template lacks — the loss. When
+nothing is lost the repo is a subset (behind), the verdict is `drift`, and the overwrite drops
+nothing. The apply MUST NOT overwrite a `loss` without an explicit override (`--force`); the plan
+shows the diff and the lost items (SKILL.md → Apply). A `create` file the manifest records as
+`update` is the skill's own recorded content — the difference is the library's, not the repo's — so
+it is not a loss.
 
 `duplicate` is the hand-set-up repo (#35): the recipe's marker is absent, so the block reads `new`,
 but the target file already carries what the block contributes. Two signals, both requiring the

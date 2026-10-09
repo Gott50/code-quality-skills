@@ -492,20 +492,57 @@ function tryParseJson(text) {
   }
 }
 
+// Every path a JSON value declares: the value's own path, plus — for an object — each child's
+// paths. An array is a leaf (the repo extends it, the same boundary a JSON `merge` draws with its
+// named leaves), so its elements are not enumerated. The root's own path is "".
+function jsonPaths(value, prefix) {
+  const paths = [prefix];
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    for (const [key, child] of Object.entries(value)) {
+      paths.push(...jsonPaths(child, prefix ? `${prefix}.${key}` : key));
+    }
+  }
+  return paths;
+}
+
 // A `create` target the repo has customized (#36): the repo's file carries content the template
 // does not, so overwriting it would drop that content. A `create` target has no marker, so the
 // skill cannot tell "the repo added content" from "the repo is behind the library" by ownership;
-// it compares content instead. A non-blank line of the repo's file that does not appear in the
-// template (after whitespace normalization, the same normalization `blockAlreadyPresent` uses) is
-// content the template lacks — the loss. When every repo line appears in the template the repo is
-// a subset (behind), and the overwrite drops nothing. Returns the lost lines, or [] when none.
-function lostLines(existing, content) {
+// it compares content instead.
+//
+// For a JSON target the comparison is structural (#42): a path the repo declares and the template
+// does not is content the template lacks — the loss. A path present in both is not lost whatever
+// its value: a differing value is the library moving (a version bump, a changed default), which is
+// drift, not the repo's content. Only the topmost lost path is reported, so an extra subtree reads
+// as one key, not one per descendant. For any other target it is line-based: a non-blank repo line
+// absent from the template (after whitespace normalization, the same normalization
+// `blockAlreadyPresent` uses) is content the template lacks. When nothing is lost the repo is a
+// subset (behind), and the overwrite drops nothing. Returns the lost items and their unit (dotted
+// paths for JSON, lines otherwise), or an empty list when none.
+function lostContent(existing, content, target) {
+  if (target.endsWith(".json")) {
+    const repo = tryParseJson(existing);
+    const template = tryParseJson(content);
+    if (repo !== null && template !== null) {
+      const templatePaths = new Set(jsonPaths(template, ""));
+      const lost = jsonPaths(repo, "").filter((path) => path !== "" && !templatePaths.has(path));
+      const lostSet = new Set(lost);
+      const topmost = lost.filter((path) => {
+        const parent = path.includes(".") ? path.slice(0, path.lastIndexOf(".")) : "";
+        return !lostSet.has(parent);
+      });
+      return { unit: "key", items: topmost };
+    }
+  }
   const norm = (s) => s.trim().replace(/\s+/g, " ");
   const templateLines = new Set(content.split("\n").map(norm));
-  return existing
-    .split("\n")
-    .map(norm)
-    .filter((line) => line !== "" && !templateLines.has(line));
+  return {
+    unit: "line",
+    items: existing
+      .split("\n")
+      .map(norm)
+      .filter((line) => line !== "" && !templateLines.has(line)),
+  };
 }
 
 // The verdict for one write, from the filesystem alone (no manifest): create → new/no-op/drift/loss,
@@ -518,12 +555,13 @@ function filesystemVerdict(write, content, projectRoot, recipeId) {
   if (write.action === "create") {
     if (existing === null) return { verdict: "new", diff: unifiedDiff("", content, write.target) };
     if (existing === content) return { verdict: "no-op" };
-    const lost = lostLines(existing, content);
+    const { unit, items: lost } = lostContent(existing, content, write.target);
     if (lost.length > 0) {
       return {
         verdict: "loss",
-        note: `the repo's file carries ${lost.length} line(s) the template does not — overwriting drops them`,
+        note: `the repo's file carries ${lost.length} ${unit}(s) the template does not — overwriting drops them`,
         lost,
+        unit,
         diff: unifiedDiff(existing, content, write.target),
       };
     }
@@ -954,7 +992,7 @@ function renderLosses(plan, force) {
     lines.push("_Do not overwrite these files: the repo's file carries content the template does not. Overwrite only on an explicit override (`--force`)._", "");
   }
   for (const row of rows) {
-    lines.push(`- \`${row.write.target}\` (${row.recipeId}) — ${row.fs.lost.length} line(s) the template lacks:`);
+    lines.push(`- \`${row.write.target}\` (${row.recipeId}) — ${row.fs.lost.length} ${row.fs.unit}(s) the template lacks:`);
     for (const l of row.fs.lost) lines.push(`  - \`${l}\``);
   }
   return lines.join("\n");
