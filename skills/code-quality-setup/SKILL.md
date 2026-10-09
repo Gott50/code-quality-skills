@@ -46,7 +46,7 @@ Record each recipe in `.code-quality.json` as it completes — recipe-granular, 
 
 ## 4. Re-run: the drift report
 
-The filesystem is the source of truth; `.code-quality.json` is an optimization. Per owned file: **intact**; **drifted** (hand-edited → show the diff, apply only on approval, never silently overwrite); **missing** (deleted by hand → reinstate on approval). A `merge` never drifts — its own marker block is replaced. A `patch` whose after-state holds is `intact`, not `drifted`: the recipe owns the keys its template declares, not the file, so the repo's other content and its extended collections are not drift. A re-render the current library changed is an **update**, not drift.
+The filesystem is the source of truth; `.code-quality.json` is an optimization. Per owned file: **intact**; **drifted** (hand-edited → show the diff, apply only on approval, never silently overwrite); **missing** (deleted by hand → reinstate on approval); **loss** (a `create` target the repo customized — the repo's file carries content the template does not, so it is skipped, not overwritten). A `merge` never drifts — its own marker block is replaced. A `patch` whose after-state holds is `intact`, not `drifted`: the recipe owns the keys its template declares, not the file, so the repo's other content and its extended collections are not drift. A re-render the current library changed is an **update**, not drift.
 
 ## 5. Options
 

@@ -61,7 +61,9 @@ The first line after the title is the state:
 10. **Gates and verify (phase 3 — verify, priority order)** — per selected recipe, its `gates` and its
    `verify` entries: `- gate \`<id>\` (<scope> → <dirs>)` (or the literal `run` in place of the gate).
 11. **Warnings** — one `{ id, error }` line per unreadable recipe (or unreadable template).
-12. **Drift (manifest)** — the per-recipe state from the manifest, or a degraded note.
+12. **Drift (manifest)** — the per-recipe state from the manifest, or a degraded note. The state is
+   the worst file verdict (`missing` > `loss` > `drifted` > `update` > `intact`), so a recipe whose
+   only non-intact file is a skipped `create` loss reads `loss`, not `drifted` (#46).
 
 `<dirs>` is the scope resolved to the directories the entry runs in (RECIPE-CONTRACT.md → Scope
 resolution): `.` for `root`, and for `member`/`each-member` the member paths — or `.` in a single
@@ -129,15 +131,22 @@ instead of showing the template as the target; a declared key that is absent, or
 value differs, still reads `patch` and the apply performs the edit.
 
 With a manifest (`.code-quality.json`, schemaVersion 1), per file: `intact` · `update` (untouched
-since apply, the library's render changed) · `drifted` (hand-edited since apply) · `missing`
-(absent, or the recipe's own block/leaves are gone). A marker block the file carries without a
-marker (a `duplicate`, above) is `intact`, not `missing`: the content is present, the recipe just
-does not own it, so a re-run does not reinstate a second block. A `patch` whose after-state holds is
-`intact` for the same reason — the recipe's owned content is present, whatever the file's other
-content looks like. Per recipe the worst file verdict wins; a recipe the manifest does not know is
-`new`, one the library no longer selects is `stale`, one the user declined is `declined`. A manifest
-that is absent, corrupt, or from another `schemaVersion` degrades the report to "compare against the
-current library only" and nothing breaks.
+since apply, the library's render changed) · `drifted` (hand-edited since apply) · `loss` (a
+`create` target the repo has customized — see below) · `missing` (absent, or the recipe's own
+block/leaves are gone). A marker block the file carries without a marker (a `duplicate`, above) is
+`intact`, not `missing`: the content is present, the recipe just does not own it, so a re-run does
+not reinstate a second block. A `patch` whose after-state holds is `intact` for the same reason —
+the recipe's owned content is present, whatever the file's other content looks like. A `create`
+target the repo has customized is `loss`, not `drifted` (#46): the apply skipped it, but the
+manifest recorded the rendered template's hash (the apply records what it would have written, even
+for a skipped file), so the hash comparison alone cannot tell the repo's own content from a
+hand-edit of the skill's. The content comparison can — the repo's file carries content the template
+does not — so the drift report reads `loss`, the same verdict the Files section shows. A file the
+manifest records as `update` is the skill's own recorded content, so it stays `update`, not `loss`.
+Per recipe the worst file verdict wins (`missing` > `loss` > `drifted` > `update` > `intact`); a
+recipe the manifest does not know is `new`, one the library no longer selects is `stale`, one the
+user declined is `declined`. A manifest that is absent, corrupt, or from another `schemaVersion`
+degrades the report to "compare against the current library only" and nothing breaks.
 
 ## The manifest hash convention
 
@@ -146,7 +155,9 @@ time after that recipe's `verify` passed. `plan.mjs` only reads it. For the drif
 the apply step MUST hash the content the recipe **owns** in each file, with the same normalization
 `plan.mjs` uses:
 
-- `create` — the whole rendered file.
+- `create` — the whole rendered file. A `create` the apply skipped as a `loss` is recorded the same
+  way — the rendered template's hash, what the apply would have written — so the drift report can
+  still tell the repo's own content from a hand-edit (#46).
 - `merge` (markers) — the marker-delimited block, with trailing newlines stripped.
 - `merge` (JSON) — the fragment's named leaves, canonicalized with `JSON.stringify`.
 - `patch` — the template's declared keys, canonicalized: sorted by dotted path, one per line, each
