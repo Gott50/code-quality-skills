@@ -492,17 +492,54 @@ function tryParseJson(text) {
   }
 }
 
-// Every path a JSON value declares: the value's own path, plus — for an object — each child's
-// paths. An array is a leaf (the repo extends it, the same boundary a JSON `merge` draws with its
-// named leaves), so its elements are not enumerated. The root's own path is "".
-function jsonPaths(value, prefix) {
-  const paths = [prefix];
-  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-    for (const [key, child] of Object.entries(value)) {
-      paths.push(...jsonPaths(child, prefix ? `${prefix}.${key}` : key));
-    }
+// A JSON value that is a plain object (not null, not an array).
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+// Whether `repo` is a structural subset of `template`: every key/element the repo declares is
+// declared by the template too, recursively. A scalar matches only itself. This is the "the repo
+// element is present in the template" test for an array element (#44): a repo element the template
+// covers is not lost, whether it is equal (no-op) or behind (drift).
+function covers(template, repo) {
+  if (isPlainObject(template) && isPlainObject(repo)) {
+    return Object.entries(repo).every(([key, value]) => Object.hasOwn(template, key) && covers(template[key], value));
   }
-  return paths;
+  if (Array.isArray(template) && Array.isArray(repo)) {
+    return repo.every((element) => template.some((candidate) => covers(candidate, element)));
+  }
+  return template === repo;
+}
+
+// The paths where `repo` carries content `template` does not (#44). Objects recurse by key: a key
+// the template lacks is lost whole, and a key present in both is compared deeper. Arrays compare by
+// element, not by position: a repo element no template element covers is lost, so a reordered array
+// is not a loss and an extended one is. A scalar, or a type mismatch, is never lost — a differing
+// value is the library moving (a version bump, a changed default), which is drift, not the repo's
+// content. `prefix` is the dotted path of the value being compared; an array element's path is
+// `<array>[<canonical element>]`, so the lost item names the element, not a position. Only the
+// topmost lost path is reported, so an extra subtree reads as one key, not one per descendant.
+function lostPaths(repo, template, prefix) {
+  if (isPlainObject(repo)) {
+    const lost = [];
+    for (const [key, value] of Object.entries(repo)) {
+      const child = prefix ? `${prefix}.${key}` : key;
+      if (!isPlainObject(template) || !Object.hasOwn(template, key)) lost.push(child);
+      else lost.push(...lostPaths(value, template[key], child));
+    }
+    return lost;
+  }
+  if (Array.isArray(repo)) {
+    if (!Array.isArray(template)) return [];
+    const lost = [];
+    for (const element of repo) {
+      if (!template.some((candidate) => covers(candidate, element))) {
+        lost.push(`${prefix}[${JSON.stringify(element)}]`);
+      }
+    }
+    return lost;
+  }
+  return [];
 }
 
 // A `create` target the repo has customized (#36): the repo's file carries content the template
@@ -510,28 +547,23 @@ function jsonPaths(value, prefix) {
 // skill cannot tell "the repo added content" from "the repo is behind the library" by ownership;
 // it compares content instead.
 //
-// For a JSON target the comparison is structural (#42): a path the repo declares and the template
-// does not is content the template lacks — the loss. A path present in both is not lost whatever
-// its value: a differing value is the library moving (a version bump, a changed default), which is
-// drift, not the repo's content. Only the topmost lost path is reported, so an extra subtree reads
-// as one key, not one per descendant. For any other target it is line-based: a non-blank repo line
-// absent from the template (after whitespace normalization, the same normalization
-// `blockAlreadyPresent` uses) is content the template lacks. When nothing is lost the repo is a
-// subset (behind), and the overwrite drops nothing. Returns the lost items and their unit (dotted
-// paths for JSON, lines otherwise), or an empty list when none.
+// For a JSON target the comparison is structural (#42, #44): a path the repo declares and the
+// template does not is content the template lacks — the loss. A path present in both is not lost
+// whatever its value: a differing value is the library moving (a version bump, a changed default),
+// which is drift, not the repo's content. An array is compared by element, not as a leaf (#44): a
+// repo element no template element covers is a loss, so a repo that extends an array is not
+// overwritten. Only the topmost lost path is reported, so an extra subtree reads as one key, not
+// one per descendant. For any other target it is line-based: a non-blank repo line absent from the
+// template (after whitespace normalization, the same normalization `blockAlreadyPresent` uses) is
+// content the template lacks. When nothing is lost the repo is a subset (behind), and the overwrite
+// drops nothing. Returns the lost items and their unit (dotted paths for JSON, lines otherwise), or
+// an empty list when none.
 function lostContent(existing, content, target) {
   if (target.endsWith(".json")) {
     const repo = tryParseJson(existing);
     const template = tryParseJson(content);
     if (repo !== null && template !== null) {
-      const templatePaths = new Set(jsonPaths(template, ""));
-      const lost = jsonPaths(repo, "").filter((path) => path !== "" && !templatePaths.has(path));
-      const lostSet = new Set(lost);
-      const topmost = lost.filter((path) => {
-        const parent = path.includes(".") ? path.slice(0, path.lastIndexOf(".")) : "";
-        return !lostSet.has(parent);
-      });
-      return { unit: "key", items: topmost };
+      return { unit: "key", items: lostPaths(repo, template, "") };
     }
   }
   const norm = (s) => s.trim().replace(/\s+/g, " ");
