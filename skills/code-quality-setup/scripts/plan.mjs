@@ -852,11 +852,23 @@ function buildPlan(report, opts) {
     }
   }
 
+  // A verify that greps for a skipped duplicate block's marker would fail even though the block's
+  // content is present (#49). The plan has already proven the content is present (the `duplicate`
+  // verdict), so it renders that verify with the marker grep replaced by `true` — see
+  // `adjustVerifyRun`. Keyed by recipe id, the paths of the recipe's duplicate blocks.
+  const duplicatePathsByRecipe = new Map();
+  for (const row of fileRows) {
+    if (row.fs.verdict !== "duplicate") continue;
+    if (!duplicatePathsByRecipe.has(row.recipeId)) duplicatePathsByRecipe.set(row.recipeId, []);
+    duplicatePathsByRecipe.get(row.recipeId).push(row.write.target);
+  }
+
   return {
     stack,
     selected,
     selectedIds,
     narrowNote,
+    duplicatePathsByRecipe,
     notSelected: usable
       .filter((r) => !selectedIds.includes(r.id))
       .map((r) => ({
@@ -1064,7 +1076,22 @@ function renderCommands(selected, workspace) {
   return lines.join("\n");
 }
 
-function renderGatesAndVerify(selected, workspace) {
+// A verify that greps for a skipped duplicate block's marker would fail even though the block's
+// content is present (#49). The plan has already proven the content is present (the `duplicate`
+// verdict), so it renders that verify with the marker grep replaced by `true`. The clause is the
+// recipe's own marker grep — `grep -q "code-quality:<id>:start" <path>` — and `<path>` is the
+// duplicate block's file, so the replacement is exact (an optional `./` prefix is tolerated).
+function adjustVerifyRun(run, recipeId, duplicatePaths) {
+  let out = run;
+  for (const path of duplicatePaths) {
+    const escaped = path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const re = new RegExp(`grep -q "code-quality:${recipeId}:start" \\.?/?${escaped}(?=\\s|$)`);
+    out = out.replace(re, "true");
+  }
+  return out;
+}
+
+function renderGatesAndVerify(selected, workspace, duplicatePathsByRecipe) {
   const lines = ["## Gates and verify (phase 3 — verify, priority order)", ""];
   if (selected.length === 0) {
     lines.push("_None._");
@@ -1083,7 +1110,8 @@ function renderGatesAndVerify(selected, workspace) {
       for (const v of r.verify) {
         const scope = v.scope ?? "root";
         const dirs = resolveScopes(scope, workspace).join(", ");
-        lines.push(`- ${v.gate ? `gate \`${v.gate}\`` : `\`${v.run}\``} (${scope} → ${dirs})`);
+        const run = v.gate ? null : adjustVerifyRun(v.run, r.id, duplicatePathsByRecipe.get(r.id) ?? []);
+        lines.push(`- ${v.gate ? `gate \`${v.gate}\`` : `\`${run}\``} (${scope} → ${dirs})`);
       }
     } else {
       lines.push("Verify: _none_");
@@ -1153,7 +1181,7 @@ function renderPlan(plan, opts) {
   out.push(renderLosses(plan, opts.force), "");
   out.push(renderPreExisting(plan), "");
   out.push(renderCommands(plan.selected, plan.stack.workspace), "");
-  out.push(renderGatesAndVerify(plan.selected, plan.stack.workspace), "");
+  out.push(renderGatesAndVerify(plan.selected, plan.stack.workspace, plan.duplicatePathsByRecipe), "");
   out.push(renderWarnings(plan.errored, plan.templateErrors), "");
 
   if (plan.manifestPresent && plan.drift) {
