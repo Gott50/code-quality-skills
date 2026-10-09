@@ -577,6 +577,16 @@ function lostContent(existing, content, target) {
   };
 }
 
+// Whether a `create` file's on-disk content is a loss (#36, #46): the repo's file carries content
+// the template does not, so the apply skipped it. The manifest recorded the rendered template's
+// hash — the apply records what it would have written, even for a skipped file — so the hash
+// comparison alone reads `drifted`, as if the repo had hand-edited the skill's own bytes. It did
+// not: the file is the repo's, the library has not moved, and the Files section already shows
+// `loss`. The content comparison is what tells the two apart, so the drift report uses it too.
+function isCreateLoss(f, files) {
+  return f.action === "create" && files[f.path] != null && lostContent(files[f.path], f.content, f.path).items.length > 0;
+}
+
 // The verdict for one write, from the filesystem alone (no manifest): create → new/no-op/drift/loss,
 // merge → new/no-op/add/replace/collision, patch → new/patch. `diff` is the inline unified diff.
 function filesystemVerdict(write, content, projectRoot, recipeId) {
@@ -670,7 +680,7 @@ function readManifest(projectRoot) {
   return { manifest: parsed, degraded: false, reason: null };
 }
 
-const RANK = { missing: 4, drifted: 3, update: 2, intact: 1 };
+const RANK = { missing: 5, loss: 4, drifted: 3, update: 2, intact: 1 };
 
 function rollUp(fileVerdicts) {
   let worst = "intact";
@@ -708,11 +718,15 @@ function classify(manifest, { library, files }) {
         mergeKind(f, lib.id) === "markers" &&
         files[f.path] != null &&
         blockAlreadyPresent(files[f.path], f.content, lib.id) !== null;
+      // A `create` target the repo has customized (#36, #46) reads `loss`, not `drifted`: the
+      // manifest recorded the rendered template's hash, so the hash comparison alone cannot tell
+      // the repo's own content from a hand-edit of the skill's. See `isCreateLoss`.
       let verdict;
       if (duplicate) verdict = "intact";
       else if (presentHash === null) verdict = "missing";
       else if (presentHash === currentHash) verdict = "intact";
       else if (recordedHash !== null && presentHash === recordedHash) verdict = "update";
+      else if (isCreateLoss(f, files)) verdict = "loss";
       else verdict = "drifted";
       return {
         path: f.path,
