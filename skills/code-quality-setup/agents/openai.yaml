@@ -1,0 +1,5 @@
+interface:
+  display_name: "Code Quality Setup"
+  short_description: "Set up or repair code-quality gates in a TypeScript repo"
+policy:
+  allow_implicit_invocation: false
