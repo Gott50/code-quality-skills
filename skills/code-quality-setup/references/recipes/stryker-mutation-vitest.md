@@ -76,7 +76,7 @@ This recipe requires `vitest-coverage`: the vitest runner needs `vitest` install
 
 The gate diffs committed SHAs, so it only runs on files present in a commit. To prove the wiring, make a throwaway commit, run the gate against `HEAD~1..HEAD`, then `git reset --mixed HEAD~1`; a `HEAD..HEAD` diff prints "no mutation-scoped source changed, skipping" and proves nothing.
 
-`npm run test:mutation` over the whole scope is slow, and on a repo below its recorded floor it fails. That is the gate working: the plan shows the gap before applying, and the recipe stays unrecorded until the project climbs to its floor (zero survivors when no baseline is recorded). In a workspace the gate is per member: `verify` runs it once per member, so a member below its floor fails on its own and the others still pass.
+`npm run test:mutation` over the whole scope is slow, and on a repo below its recorded floor it fails. That is the gate working: the adoption flow writes the baseline at the level the gate measures, so the recipe is recorded on day one — the plan's Measurement section shows the level, the apply runs the gate and then `score.mjs --raise` writes the floor at it, and the verify passes. A repo that never raised a baseline is gated exactly as before — zero survivors, the wall. In a workspace the gate is per member: `verify` runs it once per member, so a member below its floor fails on its own and the others still pass.
 
 ## Idempotency
 
