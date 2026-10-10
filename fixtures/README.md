@@ -1,6 +1,6 @@
 # Fixtures
 
-Five throwaway projects the detector is run against, and the projects a recipe is verified by
+Six throwaway projects the detector is run against, and the projects a recipe is verified by
 applying to. No `node_modules`, no `SKILL.md` (a nested `SKILL.md` would be discovered as a skill of
 its own by the `skills` CLI).
 
@@ -19,6 +19,7 @@ node skills/code-quality-setup/scripts/detect.mjs fixtures/<name>
 | `bun-workspace` | Bun, `workspaces` in the root `package.json`, two members at different depths (`packages/a`, `packages/nested/b`), no tooling | the **workspace form** — the apply target for the workspace-scoped recipes: `{{root}}` substitution at two depths (`../..`, `../../..`) and per-member config placement |
 | `pnpm-workspace` | pnpm, `pnpm-workspace.yaml`, two members at different depths (`packages/a`, `packages/nested/b`), CI workflow at the root | **workspace enumeration** and per-package tooling: eslint + prettier in `packages/nested/b`, a root `tsconfig.json` extending a strict `tsconfig.base.json`; plus the **`conflicts.tools` collision** and the **`conflicts.recipes` hold-back** (member-level evidence); the apply target for the npm/pnpm workspace variants |
 | `npm-eslint-prettier` | npm, single package, eslint + prettier at the root | the **`conflicts.tools` collision** and the **`conflicts.recipes` hold-back** at root level: `biome-assist-npm` collides with the project's prettier + eslint, and `eslint-prettier` is held back |
+| `debt-ts` | Bun, single package, strict `tsconfig.json`, one covered function plus deliberate debt under `src/` | the **debt-carrying apply target** — the five shapes the quality ratchet measures: **coverage** (`src/index.ts` at 56.67% lines; `src/unused.ts` never imported), **mutation** (`formatDuration`'s `< 60` boundary and its uncovered minutes branch leave survivors), **lint** (`anti-slop/no-runtime-typeof` at `src/index.ts:14`), **dead code** (`src/unused.ts` and the `legacyFormat` export), and **complexity** (`describeHttpStatus`, cyclomatic complexity 14) |
 
 The two conflict paths are reachable because the npm/pnpm formatter variant landed: `biome-assist-npm`
 declares `conflicts.tools: [prettier, eslint]` and `conflicts.recipes: [eslint-prettier]`, so a
