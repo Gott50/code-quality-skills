@@ -1,0 +1,13 @@
+{
+  "lockfileVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "debt-ts",
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "5.9.3"
+      }
+    }
+  },
+  "packages": {}
+}
