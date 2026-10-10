@@ -21,7 +21,7 @@ Capture the artifacts the gates produce, then print the ranking verbatim. Never 
 node scripts/rank.mjs [projectDir] [--json]   # default projectDir: .
 ```
 
-`rank.mjs` reads the artifacts and writes nothing. It never runs a gate and never invokes a package manager. The ranking is fallow's own `--targets` ranking first, then the coverage gaps, mutation gaps, lint violations and typecheck errors folded in as additional candidates. A missing artifact is a reported gap, not a crash — the gap names the capture command.
+`rank.mjs` reads the artifacts and writes nothing. It never runs a gate and never invokes a package manager. The ranking is ordered by **effort tier, cheap first**: the coverage gaps, mutation gaps, lint violations and typecheck errors are folded in as candidates and lead — they are repo-owned, the artifact already exists and the fix needs no new harness — then fallow's own `--targets` ranking follows by its `effort` estimate, keeping fallow's own order within a tier. Every candidate prints its `effort` and `confidence` (`—` where the source has none), and each fallow line prints fallow's own rank. A missing artifact is a reported gap, not a crash — the gap names the capture command.
 
 The artifacts it reads, all relative to the project root:
 

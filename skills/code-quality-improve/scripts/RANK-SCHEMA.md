@@ -1,10 +1,10 @@
 # `rank.mjs` — the ranking view
 
 `node scripts/rank.mjs [projectDir] [--json]` reads the artifacts the gates already produced and
-prints the ranked improvement targets: fallow's own `--targets` ranking first, then the coverage
-gaps, the mutation gaps, lint violations and typecheck errors folded in as additional candidates.
-Zero dependencies, node builtins only, no package manager invoked, **runs no gate**: the artifacts
-must already exist. Exit 0 on a report; exit 1 only when the target is not a directory.
+prints the ranked improvement targets: the coverage gaps, the mutation gaps, lint violations and
+typecheck errors folded in as candidates, then fallow's own `--targets` ranking. Zero dependencies,
+node builtins only, no package manager invoked, **runs no gate**: the artifacts must already exist.
+Exit 0 on a report; exit 1 only when the target is not a directory.
 
 The readers are this skill's own, not an import from the sibling `code-quality-setup` skill: the
 skills CLI copies one skill directory per install, so a relative import across skill directories
@@ -38,26 +38,51 @@ stdout — fallow writes no file of its own — like the score view's captures.
 
 ## The ranking
 
-One list, in this order:
+One list, ordered by **effort tier, cheap first**, then by the source's own order:
 
-1. **fallow targets** — in fallow's own order (fallow sorts by efficiency, `priority / effort`,
-   descending). Each carries fallow's structured ranking: `priority`, `efficiency`, `effort`,
-   `confidence`, `category`, `recommendation`, `factors[]`, `evidence`, `actions[]`.
-2. **coverage gaps** — files with uncovered lines or functions, by uncovered count descending, then
+| Tier | Candidates | Within the tier |
+|---|---|---|
+| 0 | the folded-in candidates — coverage, mutation, lint, typecheck | the group order (coverage, mutation, lint, typecheck), each group already ordered by severity |
+| 1 | fallow targets with `effort: "low"` | fallow's own order — `efficiency` (`priority ÷ effort`) descending, then `confidence` high→medium→low (a further tie keeps fallow's own order) |
+| 2 | fallow targets with `effort: "medium"` | as tier 1 |
+| 3 | fallow targets with `effort: "high"` | as tier 1 |
+| 4 | fallow targets whose capture carried no `effort` | as tier 1 |
+
+**Why the folded-in candidates lead.** They are repo-owned: the artifact already exists and the fix
+needs no new harness, so the repo can take one on the first pass. fallow's `effort` is a static
+estimate of the refactoring, not of the repo's readiness — on a repo with no DOM test harness,
+`add_test_coverage` for a DOM file is estimated `medium` but is in fact the most expensive target on
+the list ([#97](https://github.com/Gott50/code-quality-skills/issues/97)). So the repo-owned
+candidates come first, and fallow's targets follow by their own effort tier.
+
+**Why fallow's own ranking is kept.** Within a tier, fallow's targets keep fallow's own order
+(`efficiency` descending — fallow's default sort), so the reorder only moves a target across effort
+tiers, never within one. Every fallow line also prints fallow's own rank (`fallow #N`), so its
+ranking stays visible even when a target moves down.
+
+**Why confidence is a tiebreaker.** Two targets of the same effort and priority have the same
+`efficiency`; `confidence` (high → medium → low) then decides, so a high-confidence target surfaces
+above a low-confidence one. A further tie keeps fallow's own order — the sort is stable.
+
+The rank is 1-based across the whole list.
+
+The folded-in candidates, in their group order:
+
+1. **coverage gaps** — files with uncovered lines or functions, by uncovered count descending, then
    path. A file at 100% on every metric is not a gap.
-3. **mutation gaps** — one candidate per mutant the suite did not kill, by file (gap count
+2. **mutation gaps** — one candidate per mutant the suite did not kill, by file (gap count
    descending, then path), then line. A mutant whose `status` is `Killed` (the test caught it) or
    `Ignored` (a deliberate exclusion) is not a gap; `Survived`, `NoCoverage`, `Timeout`,
    `RuntimeError` and `CompileError` are. The project's own mutation gate counts `killed` as
    `Killed` only and `total` as every mutant, so a `RuntimeError` mutant holds the file's level
    below 100% exactly like a survivor
    ([#95](https://github.com/Gott50/code-quality-skills/issues/95)).
-4. **lint violations** — files with diagnostics, by count descending, then path.
-5. **typecheck errors** — files with errors, by count descending, then path.
+3. **lint violations** — files with diagnostics, by count descending, then path.
+4. **typecheck errors** — files with errors, by count descending, then path.
 
-fallow's targets keep fallow's order because fallow's is the structured ranking; the folded-in
-candidates have no comparable score, so they follow, each group ordered by severity. The rank is
-1-based across the whole list.
+A fallow target carries fallow's structured ranking: `priority`, `efficiency`, `effort`,
+`confidence`, `category`, `recommendation`, `factors[]`, `evidence`, `actions[]`, plus `fallowRank`
+(its 1-based position in fallow's own list).
 
 A coverage target is marked `⚠ below floor` when the file breaches its recorded floor — the
 per-file floor when the baseline records one, else the global floor (a new file gets the project's
@@ -77,18 +102,18 @@ Improvement targets — /tmp/proj
   lint            reports/oxlint.json — 3 diagnostic(s) in 2 file(s)   floor 2   ⚠ above floor
   typecheck       reports/tsc.log — 3 error(s) in 2 file(s)   floor 0   ⚠ above floor
 
-  1. [fallow] src/core.ts   priority 60  efficiency 20  effort high  confidence medium
+  1. [coverage] src/user0.ts   functions 100.0% (1/1)  lines 50.0% (1/2)   uncovered 1   effort —  confidence —   ⚠ below floor
+     raise: node .agents/skills/code-quality-setup/scripts/score.mjs . --raise
+  2. [mutation] src/gate.ts:30   RuntimeError StringLiteral   effort —  confidence —
+     raise: node .agents/skills/code-quality-setup/scripts/score.mjs . --raise
+  3. [lint] src/lintme.ts   2 diagnostic(s)   effort —  confidence —
+     raise: node .agents/skills/code-quality-setup/scripts/score.mjs . --raise
+  4. [fallow] src/core.ts   priority 60  efficiency 20  effort high  confidence medium   fallow #1
      split_high_impact — Split high-impact file (5 LOC), 12 dependents amplify every change
      factors: complexity_density 2.8 > 0.3; fan_in 12 > 12; dead_code_ratio 0.75 > 0.5
      evidence: direct_callers 5
      actions: apply-refactoring; suppress-line
      raise: bun run fallow:raise
-  2. [coverage] src/user0.ts   functions 100.0% (1/1)  lines 50.0% (1/2)   uncovered 1   ⚠ below floor
-     raise: node .agents/skills/code-quality-setup/scripts/score.mjs . --raise
-  3. [mutation] src/gate.ts:30   RuntimeError StringLiteral
-     raise: node .agents/skills/code-quality-setup/scripts/score.mjs . --raise
-  4. [lint] src/lintme.ts   2 diagnostic(s)
-     raise: node .agents/skills/code-quality-setup/scripts/score.mjs . --raise
 ```
 
 `— absent` marks a source whose artifact is missing; `— unreadable: …` marks a malformed one. When
@@ -117,7 +142,7 @@ indent, a trailing newline):
 
 ```jsonc
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "root": "/tmp/proj",
   "sources": {
     "baseline": { "path": ".code-quality-baseline.json", "present": true, "schemaVersion": 1, "error": null },
@@ -131,22 +156,6 @@ indent, a trailing newline):
   "targets": [
     {
       "rank": 1,
-      "source": "fallow",
-      "path": "src/core.ts",
-      "gate": "fallow-health",
-      "detail": "Split high-impact file (5 LOC), 12 dependents amplify every change",
-      "priority": 60,
-      "efficiency": 20,
-      "effort": "high",
-      "confidence": "medium",
-      "category": "split_high_impact",
-      "factors": [{ "metric": "fan_in", "value": 12, "threshold": 12, "detail": "12 files depend on this" }],
-      "evidence": { "direct_callers": [] },
-      "actions": [{ "type": "apply-refactoring", "auto_fixable": false, "description": "…" }],
-      "raise": "bun run fallow:raise"
-    },
-    {
-      "rank": 2,
       "source": "coverage",
       "path": "src/user0.ts",
       "gate": "coverage",
@@ -154,10 +163,12 @@ indent, a trailing newline):
       "metrics": { "functions": { "hit": 1, "found": 1 }, "lines": { "hit": 1, "found": 2 } },
       "uncovered": 1,
       "belowFloor": true,
+      "effort": null,
+      "confidence": null,
       "raise": "node .agents/skills/code-quality-setup/scripts/score.mjs . --raise"
     },
     {
-      "rank": 3,
+      "rank": 2,
       "source": "mutation",
       "path": "src/gate.ts",
       "gate": "mutation",
@@ -166,17 +177,38 @@ indent, a trailing newline):
       "mutatorName": "StringLiteral",
       "detail": "RuntimeError StringLiteral",
       "belowFloor": false,
+      "effort": null,
+      "confidence": null,
       "raise": "node .agents/skills/code-quality-setup/scripts/score.mjs . --raise"
     },
-    { "rank": 4, "source": "lint", "path": "src/lintme.ts", "gate": "lint", "detail": "2 diagnostic(s)", "count": 2, "raise": "…" }
+    { "rank": 3, "source": "lint", "path": "src/lintme.ts", "gate": "lint", "detail": "2 diagnostic(s)", "count": 2, "effort": null, "confidence": null, "raise": "…" },
+    {
+      "rank": 4,
+      "source": "fallow",
+      "path": "src/core.ts",
+      "gate": "fallow-health",
+      "detail": "Split high-impact file (5 LOC), 12 dependents amplify every change",
+      "priority": 60,
+      "efficiency": 20,
+      "effort": "high",
+      "confidence": "medium",
+      "fallowRank": 1,
+      "category": "split_high_impact",
+      "factors": [{ "metric": "fan_in", "value": 12, "threshold": 12, "detail": "12 files depend on this" }],
+      "evidence": { "direct_callers": [] },
+      "actions": [{ "type": "apply-refactoring", "auto_fixable": false, "description": "…" }],
+      "raise": "bun run fallow:raise"
+    }
   ]
 }
 ```
 
 A fallow target's `gate` is `fallow-dead-code` when its `category` is `remove_dead_code`, else
-`fallow-health`. A coverage target carries `metrics` (per metric `{ hit, found }`), `uncovered` and
-`belowFloor`; a mutation target carries `line`, `status`, `mutatorName` and `belowFloor`; a lint or
-typecheck target carries `count`.
+`fallow-health`. Every target carries `effort` and `confidence` — `null` when the source has none
+(the folded-in candidates) — and the array is in the ranking order above. A fallow target also
+carries `fallowRank`, its 1-based position in fallow's own list. A coverage target carries `metrics`
+(per metric `{ hit, found }`), `uncovered` and `belowFloor`; a mutation target carries `line`,
+`status`, `mutatorName` and `belowFloor`; a lint or typecheck target carries `count`.
 
 ## Exit codes
 
