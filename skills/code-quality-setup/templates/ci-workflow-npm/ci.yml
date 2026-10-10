@@ -45,7 +45,7 @@ jobs:
       - name: Test with the coverage gate
         run: npm run test
 
-  # Mutation gate — enforces 0 TimedOut / 0 Survived / 0 NoCoverage mutants on
+  # Mutation gate — enforces 0 Timeout / 0 Survived / 0 NoCoverage mutants on
   # the PR's changed source files. Mirrors the pre-push hook so the strongest
   # quality gate is enforced on PRs, not just local pushes.
   mutation:
