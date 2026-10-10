@@ -51,6 +51,7 @@ verify:
 3. **`package.json`** — merge from `templates/fallow-audit/package.json`: add the `fallow` devDependency and the `fallow`, `fallow:audit`, `fallow:coverage`, `fallow:ratchet` and `fallow:raise` scripts. `fallow:ratchet` is the health gate and `fallow:raise` writes the two committed floor files `.fallow-health-baseline.json` and `.fallow-dead-code-baseline.json` (see the gate paragraph below).
 4. **`.husky/pre-push`** — merge from `templates/fallow-audit/pre-push.block`, inside this recipe's marker pair.
 5. **`bun install`** — installs `fallow`.
+6. **`bun run fallow:raise`** — the adoption flow's baseline write for fallow's floors: it writes `.fallow-health-baseline.json` and `.fallow-dead-code-baseline.json` at the level the gates just measured, so `fallow:ratchet` and `fallow:audit` pass at the current level and the recipe is recorded. Run it after the commands phase (it needs the coverage artifact `bun run test` produces) and before the verify. The floor never rises on its own: only `fallow:raise` (or the improvement skill) raises it.
 
 This recipe requires the `bun-test-coverage` recipe: `fallow:coverage` runs `bun run test` and then converts the lcov it produces, so without that recipe there is no coverage to score against. The detector reports the missing requirement as the failing reason rather than applying a half-wired audit.
 

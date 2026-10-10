@@ -16,7 +16,7 @@ settled in [#62](https://github.com/Gott50/code-quality-skills/issues/62).
 | Option | Effect |
 |---|---|
 | `[projectDir]` | the project to score (default `.`) |
-| `--raise` | re-measure and write `.code-quality-baseline.json` — the current level becomes the new floor. Refuses when any artifact is unreadable, so a floor is never silently dropped. |
+| `--raise` | re-measure and write `.code-quality-baseline.json`, **merging** with the recorded baseline: the floor never falls (see The adoption flow's measure step). Refuses when any artifact is unreadable, so a floor is never silently dropped. |
 | `--json` | print the machine-readable score document (below) instead of the text report |
 
 ## Artifacts
@@ -43,7 +43,7 @@ score. When no artifact at all is found, the run exits 1 with a message.
 
 | Gate | Level | Read |
 |---|---|---|
-| coverage | per file `{ hit, found }`; global = the sum | lcov: `LH`/`LF` (lines). Istanbul: statements hit / statements found from the `s` map. bun's lcov is preferred when both exist. |
+| coverage | per file one `{ hit, found }` per metric; global = the sum per metric | lcov: `lines` from `LH`/`LF`, `functions` from `FNH`/`FNF`. Istanbul: `statements` from the `s` map, `functions` from the `f` map. bun's lcov is preferred when both exist. |
 | mutation | per file `{ killed, total }`; global = the sum | `files[path].mutants[].status`; `killed` = `Killed`, `total` = every mutant in the file. The report carries no score. |
 | lint | one global count | `diagnostics.length` of `oxlint --format json` |
 | typecheck | one global count | the lines of `tsc --noEmit --pretty false` matching `: error TS\d+` |
@@ -61,7 +61,7 @@ Quality score — /tmp/proj
 
   fallow health   70.0 (B)   maintainability 82.3   CRAP max 156   ← headline
 
-  coverage        75.0%  (3/4)
+  coverage        lines 75.0% (3/4)  functions 0.0% (0/1)
   mutation        75.0%  (3/4)
   lint            3
   typecheck       2
@@ -82,8 +82,9 @@ The **verdict** is one of:
 | `baseline stale — a recorded tool version changed; re-measure (--raise)` | a recorded tool version differs from the current one, so the baseline is invalidated (#62) |
 | `no baseline — run --raise to record one` | no `.code-quality-baseline.json` yet |
 
-A regression lists each breach as `coverage src/x.ts: 33.3% (1/3) < floor 66.7% (2/3)` (or
-`lint: 5 > floor 3` for a count). A version mismatch lists `fallow: recorded 3.19.0, current
+A regression lists each breach as `coverage src/x.ts lines: 33.3% (1/3) < floor 66.7% (2/3)` (or
+`lint: 5 > floor 3` for a count). A coverage breach names the metric that fell; a mutation breach
+carries no metric name. A version mismatch lists `fallow: recorded 3.19.0, current
 3.33.1`. `--raise` appends `baseline written: .code-quality-baseline.json`.
 
 ## The baseline schema
@@ -107,8 +108,10 @@ its own format, per [#77](https://github.com/Gott50/code-quality-skills/issues/7
   },
   "gates": {
     "coverage": {
-      "global": { "hit": 34, "found": 60 },
-      "files": { "src/x.ts": { "hit": 34, "found": 60 } }
+      "global": { "lines": { "hit": 34, "found": 60 }, "functions": { "hit": 5, "found": 10 } },
+      "files": {
+        "src/x.ts": { "lines": { "hit": 34, "found": 60 }, "functions": { "hit": 5, "found": 10 } }
+      }
     },
     "mutation": {
       "global": { "killed": 8, "total": 10 },
@@ -124,8 +127,19 @@ its own format, per [#77](https://github.com/Gott50/code-quality-skills/issues/7
 |---|---|
 | `schemaVersion` | `1` |
 | `versions` | the declared version of each tool (below); `null` when the project does not declare it |
-| `gates.coverage` / `gates.mutation` | `global` plus one entry per file, as **exact fractions** — never a rounded ratio |
+| `gates.coverage` | `global` plus one entry per file, each a map of **metric → exact fraction** — never a rounded ratio. The metric names come from the source: `lines`/`functions` for bun's lcov, `statements`/`functions` for vitest's Istanbul |
+| `gates.mutation` | `global` plus one entry per file, as **exact fractions** — never a rounded ratio |
 | `gates.lint` / `gates.typecheck` | one global count |
+
+The coverage floor carries **both metrics** because both gates enforce both: `coverage-gate.ts`
+reads lcov `LH`/`LF` and `FNH`/`FNF`, `coverage-gate.mjs` reads Istanbul's `s` and `f` maps. A
+single recorded fraction would be enforced on two metrics, so a file at 4/10 lines and 0/1
+functions would fail the moment the floor was raised to its own line level. Each metric is recorded
+and enforced on its own.
+
+`schemaVersion` stays `1`: the ratchet is unreleased, so no baseline has ever been written by a
+shipped skill and the shape changes in place. A future shape change after the first release bumps
+it.
 
 A gate whose artifact was absent is omitted from `gates`. The file is written in the canonical form
 a committed JSON file must have to survive the formatter recipes' `biome check .`: **keys sorted,
@@ -137,8 +151,12 @@ bytes.
 
 `>=` on the exact recorded value, no tolerance (#62):
 
-- **coverage / mutation** — per-file floors. A recorded file's fraction must hold
-  (`hit/found >= the recorded fraction`, cross-multiplied so no float rounding creeps in). A
+- **coverage** — per-file floors, one per metric. A recorded file's fraction must hold **for each
+  metric** (`hit/found >= the recorded fraction`, cross-multiplied so no float rounding creeps in).
+  A **new** file must meet the recorded **global** floor on each metric. A **deleted** file is not a
+  regression — its entry drops on the next raise. The global fraction must also hold, per metric.
+- **mutation** — per-file floors. A recorded file's fraction must hold
+  (`killed/total >= the recorded fraction`, cross-multiplied so no float rounding creeps in). A
   **new** file must meet the recorded **global** floor. A **deleted** file is not a regression —
   its entry drops on the next raise. The global fraction must also hold.
 - **lint / typecheck** — one global count; the current count must be `<=` the recorded count.
@@ -168,7 +186,7 @@ counts — an unknown version cannot be said to have moved.
   "root": "/tmp/proj",
   "headline": { "gate": "fallow-health", "score": 70, "grade": "B" },
   "gates": {
-    "coverage": { "source": "lcov", "global": { "hit": 3, "found": 4 }, "files": { "src/x.ts": { "hit": 2, "found": 3 } } },
+    "coverage": { "source": "lcov", "global": { "lines": { "hit": 3, "found": 4 }, "functions": { "hit": 1, "found": 2 } }, "files": { "src/x.ts": { "lines": { "hit": 2, "found": 3 }, "functions": { "hit": 1, "found": 2 } } } },
     "mutation": { "global": { "killed": 3, "total": 4 }, "files": { "src/x.ts": { "killed": 2, "total": 3 } } },
     "lint": { "global": 3 },
     "typecheck": { "global": 2 },
@@ -192,6 +210,44 @@ per-gate warnings. `raised` is true when `--raise` wrote the file.
 |---|---|
 | 0 | a report was printed and no regression was found (including `stale` and `no-baseline`) |
 | 1 | a regression was found; no artifact was found; the target is not a directory; `--raise` was refused |
+
+## The adoption flow's measure step
+
+`plan.mjs` imports `measure` (and the artifact readers) from this file for the plan's **Measurement**
+section (#67): the level each gate the selection will install measures now, and the floor the apply
+will install. The plan reads the artifacts and the baseline that already exist and writes nothing; an
+absent artifact is `_unmeasured_`, and a gate with no recorded floor falls back to the greenfield
+wall. The plan's output is specified in `PLAN-SCHEMA.md` → The measurement.
+
+The apply then produces the authoritative measurement and writes the floor at it:
+
+1. **capture** — run each selected gate's capture command (the Artifacts table above), with the
+   config the apply just wrote, so the artifact is the level the installed gate measures. The
+   recipe's `commands` only install packages; the artifacts come from these captures;
+2. `node scripts/score.mjs <projectDir> --raise` re-measures from those artifacts and writes
+   `.code-quality-baseline.json` — the unified floor for coverage, mutation, lint and typecheck;
+3. the fallow-audit recipe's `fallow:raise` writes fallow's own floor files.
+
+`--raise` **merges** with the recorded baseline, it does not overwrite it: the floor never falls.
+Per gate:
+
+| Gate | Merge rule |
+|---|---|
+| coverage | per file and global, the **larger** of the current and recorded fractions **per metric** (cross-multiplied, the same comparison `atLeast` makes). A recorded file the artifact no longer lists is kept; a new file is added at its current fraction |
+| mutation | per file and global, the **larger** of the current and recorded fractions (cross-multiplied, the same comparison `atLeast` makes). A recorded file the artifact no longer lists is kept; a new file is added at its current fraction |
+| lint / typecheck | the **smaller** of the current and recorded counts (a count is a ceiling) |
+| a recorded gate whose artifact is absent | **kept**, never dropped — dropping it would fall back to the greenfield wall, which is stricter, not a raise |
+| a gate with no recorded floor | the current level |
+
+So a repo that already has a baseline is unchanged by an apply that re-raises: the recorded floor
+holds, and only a gate with no floor yet is raised to its measured level. A repo sitting below its
+recorded floor stays red — `--raise` does not lower the floor to make it green. The floor never
+rises on its own: the apply writes it once, and only `--raise` (or the improvement skill) raises it
+afterwards.
+
+`score.mjs` is importable: `main()` runs only when the file is executed directly
+(`pathToFileURL(process.argv[1]) === import.meta.url`), so `import { measure } from "./score.mjs"`
+does not run the score view.
 
 ## What it does not do
 

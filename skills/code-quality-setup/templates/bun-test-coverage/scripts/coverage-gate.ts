@@ -7,16 +7,18 @@
  * its floor on either line or function coverage.
  *
  * The floor for a file the baseline records is its exact `{hit, found}`
- * fraction under `gates.coverage.files`, compared by cross-multiplication so
- * no float rounding creeps in; a file the baseline does not record gets the
- * `gates.coverage.global` fraction. The same fraction is enforced on lines
- * and on functions. The global fraction over the whole project is
- * `score.mjs`'s comparison, not this gate's: a workspace member's own run
- * aggregates the member alone, and holding it to the workspace-wide fraction
- * would fail a member that is exactly at its recorded floor. With no
- * baseline — or a baseline whose coverage gate was never raised — every
- * floor is 100%, the greenfield wall, so a repo that never raised one is
- * gated exactly as before.
+ * fraction per metric under `gates.coverage.files` — `lines` from lcov
+ * `LH`/`LF`, `functions` from `FNH`/`FNF` — compared by cross-multiplication
+ * so no float rounding creeps in; a file the baseline does not record gets
+ * the `gates.coverage.global` fractions. Each metric is enforced against its
+ * own floor: a file at 4/10 lines and 0/1 functions passes only when both
+ * floors are met. The global fraction over the whole project is `score.mjs`'s
+ * comparison, not this gate's: a workspace member's own run aggregates the
+ * member alone, and holding it to the workspace-wide fraction would fail a
+ * member that is exactly at its recorded floor. With no baseline — or a
+ * baseline whose coverage gate was never raised — every floor is 100%, the
+ * greenfield wall, so a repo that never raised one is gated exactly as
+ * before.
  *
  * Usage:
  *   bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage
@@ -39,24 +41,30 @@ interface Frac {
   hit: number;
 }
 
+/** One file's coverage floor: one exact fraction per metric. */
+interface CoverageFrac {
+  functions: Frac;
+  lines: Frac;
+}
+
 /** The baseline's `gates.coverage` block (scripts/SCORE-SCHEMA.md). */
 interface CoverageFloor {
-  files?: Record<string, Frac>;
-  global?: Frac;
+  files?: Record<string, CoverageFrac>;
+  global?: CoverageFrac;
 }
 
 /** The baseline's coverage floors: `global` for unrecorded files, `files` per file. */
 interface Floors {
-  files: Map<string, Frac>;
-  global: Frac;
+  files: Map<string, CoverageFrac>;
+  global: CoverageFrac;
 }
 
 interface Baseline {
   gates?: { coverage?: CoverageFloor };
 }
 
-/** The greenfield floor: 100%. */
-const FULL: Frac = { found: 1, hit: 1 };
+/** The greenfield floor: 100% on both metrics. */
+const FULL: CoverageFrac = { functions: { found: 1, hit: 1 }, lines: { found: 1, hit: 1 } };
 
 const lcovPath = parseArg("--lcov") ?? "coverage/lcov.info";
 const baselinePath = parseArg("--baseline") ?? ".code-quality-baseline.json";
@@ -69,9 +77,23 @@ if (!existsSync(lcovPath)) {
   process.exit(1);
 }
 
+/** Whether `v` is an exact fraction as the baseline records it. */
+function isFrac(v: unknown): v is Frac {
+  const f = v as Frac | undefined;
+  return !!f && Number.isInteger(f.hit) && Number.isInteger(f.found);
+}
+
+/** Whether `v` carries a floor for both metrics. */
+function isCoverageFrac(v: unknown): v is CoverageFrac {
+  const c = v as CoverageFrac | undefined;
+  return !!c && isFrac(c.lines) && isFrac(c.functions);
+}
+
 // The baseline's coverage floors: `global` is the floor for a file the baseline
 // does not record, `files` its per-file floors. An unreadable baseline fails
 // the gate — a floor file that cannot be read must not silently become 100%.
+// A coverage block that does not carry both metrics is unreadable too: the
+// floor is per metric, and a missing one must not silently become 100%.
 function readFloors(path: string): Floors {
   if (!existsSync(path)) return { files: new Map(), global: FULL };
   let doc: Baseline;
@@ -84,15 +106,19 @@ function readFloors(path: string): Floors {
     process.exit(1);
   }
   const coverage = doc.gates?.coverage;
-  return {
-    files: new Map(
-      Object.entries(coverage?.files ?? {}).map(([key, frac]) => [
-        resolve(dirname(path), key),
-        frac,
-      ]),
-    ),
-    global: coverage?.global ?? FULL,
-  };
+  if (coverage?.global !== undefined && !isCoverageFrac(coverage.global)) {
+    console.error(`coverage-gate: baseline ${path} records no lines/functions floor`);
+    process.exit(1);
+  }
+  const files = new Map<string, CoverageFrac>();
+  for (const [key, frac] of Object.entries(coverage?.files ?? {})) {
+    if (!isCoverageFrac(frac)) {
+      console.error(`coverage-gate: baseline ${path} records no lines/functions floor for ${key}`);
+      process.exit(1);
+    }
+    files.set(resolve(dirname(path), key), frac);
+  }
+  return { files, global: coverage?.global ?? FULL };
 }
 
 const floors = readFloors(baselinePath);
@@ -158,11 +184,14 @@ for (const r of Object.values(byFile)) {
   const floor = floors.files.get(resolve(r.sf)) ?? floors.global;
   const linePct = r.lf > 0 ? (r.lh / r.lf) * 100 : 100;
   const funcPct = r.fnf > 0 ? (r.fnh / r.fnf) * 100 : 100;
-  if (!meets(r.lh, r.lf, floor) || !meets(r.fnh, r.fnf, floor)) {
-    failing.push(
-      `${r.sf}\n    lines ${linePct.toFixed(2)}%  (${r.lh}/${r.lf}) — floor ${fracText(floor)}\n    funcs ${funcPct.toFixed(2)}%  (${r.fnh}/${r.fnf}) — floor ${fracText(floor)}`,
-    );
+  const below: string[] = [];
+  if (!meets(r.lh, r.lf, floor.lines)) {
+    below.push(`lines ${linePct.toFixed(2)}%  (${r.lh}/${r.lf}) — floor ${fracText(floor.lines)}`);
   }
+  if (!meets(r.fnh, r.fnf, floor.functions)) {
+    below.push(`funcs ${funcPct.toFixed(2)}%  (${r.fnh}/${r.fnf}) — floor ${fracText(floor.functions)}`);
+  }
+  if (below.length > 0) failing.push(`${r.sf}\n    ${below.join("\n    ")}`);
 }
 
 const totalLinePct = tLF > 0 ? (tLH / tLF) * 100 : 100;
@@ -170,7 +199,7 @@ const totalFuncPct = tFNF > 0 ? (tFNH / tFNF) * 100 : 100;
 
 console.log(
   `coverage-gate: baseline ${existsSync(baselinePath) ? baselinePath : "none — every floor is 100%"} | ` +
-    `global floor ${fracText(floors.global)} | ` +
+    `global floor lines ${fracText(floors.global.lines)} funcs ${fracText(floors.global.functions)} | ` +
     `lines ${totalLinePct.toFixed(2)}% (${tLH}/${tLF}) | ` +
     `funcs ${totalFuncPct.toFixed(2)}% (${tFNH}/${tFNF}) across ${Object.keys(byFile).length} files`,
 );

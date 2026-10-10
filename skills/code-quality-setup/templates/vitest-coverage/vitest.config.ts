@@ -3,8 +3,8 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
-// The recorded global coverage floor: `gates.coverage.global` from the
-// committed baseline `.code-quality-baseline.json` (written by the skill's
+// The recorded global coverage floor: `gates.coverage.global.statements` from
+// the committed baseline `.code-quality-baseline.json` (written by the skill's
 // `score.mjs --raise`), as a whole percentage rounded DOWN so the threshold
 // is never stricter than the recorded floor. The caller checks the baseline
 // exists; a baseline whose coverage gate was never raised, or an unreadable
@@ -12,11 +12,12 @@ import { defineConfig } from "vitest/config";
 function recordedFloor(baselinePath: URL): number {
   try {
     // SAFETY: the baseline is JSON written by score.mjs; only the coverage
-    // gate's `global` fraction is read.
+    // gate's `global.statements` fraction is read — the metric this threshold
+    // floors (the per-file floors, on both metrics, are the gate script's).
     const baseline = JSON.parse(readFileSync(baselinePath, "utf8")) as {
-      gates?: { coverage?: { global?: { found?: number; hit?: number } } };
+      gates?: { coverage?: { global?: { statements?: { found?: number; hit?: number } } } };
     };
-    const g = baseline.gates?.coverage?.global;
+    const g = baseline.gates?.coverage?.global?.statements;
     if (Number.isInteger(g?.hit) && Number.isInteger(g?.found) && g.found > 0) {
       return Math.floor((g.hit / g.found) * 100);
     }

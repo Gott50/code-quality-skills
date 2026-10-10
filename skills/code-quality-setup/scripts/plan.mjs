@@ -13,11 +13,12 @@
 // substitution keys it renders are specified in ../RECIPE-CONTRACT.md; the JSON it consumes is
 // specified in DETECT-SCHEMA.md.
 
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, statSync, readdirSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { measure, safeRealpath, ARTIFACTS, readBaseline, compare } from "./score.mjs";
 
 const SKILL_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DETECT = join(SKILL_DIR, "scripts", "detect.mjs");
@@ -887,7 +888,256 @@ function buildPlan(report, opts) {
     degraded,
     degradedReason: reason,
     manifestPresent: manifest !== null,
+    // `--check` prints the drift report, not the plan, so the measurement (which reads the gate
+    // artifacts) is skipped: a CI job must not pay for a section it never renders.
+    measurement: opts.check ? null : buildMeasurement(report.root, selected),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Measurement (the adoption flow: measure the current level, install the floor at it)
+// ---------------------------------------------------------------------------
+
+// The `floor` value a recipe's gate declares → the artifact that carries its level. The four
+// unified-baseline gates plus fallow's two. A gate with no `floor` is a wall at a fixed level and
+// is not measured. Coverage has two possible artifacts (bun's lcov, vitest's Istanbul JSON); the
+// reader prefers lcov, so the plan reports whichever exists.
+const FLOOR_ARTIFACT = {
+  coverage: ["lcov", "istanbul"],
+  mutation: ["mutation"],
+  lint: ["oxlint"],
+  typecheck: ["tsc"],
+  "fallow-health": ["fallowHealth"],
+  "fallow-dead-code": ["fallowDeadCode"],
+};
+
+// The greenfield wall: the floor a gate installs when nothing has been measured. 100% on both
+// coverage metrics and on mutation, 0 for lint and typecheck, fallow's report-only mode. This is
+// the SAME code path as a measured level — the wall is just the level a greenfield repo measures at.
+const WALL = { coverage: "100% (both metrics)", mutation: "100%", lint: "0", typecheck: "0", "fallow-health": "report-only", "fallow-dead-code": "report-only" };
+
+// The newest mtime under `root`, skipping `node_modules`, dot-directories (the installed skill
+// lives in one) and the artifact directories themselves — an artifact is not a source file, so
+// comparing it against itself would never read stale. Used to tell a fresh artifact from a stale
+// one: an artifact older than the newest source file was produced before the last edit, so its
+// level is not the current level.
+const ARTIFACT_DIRS = new Set(Object.values(ARTIFACTS).map((p) => p.split("/")[0]));
+
+function newestSourceMtime(root) {
+  let newest = 0;
+  const walk = (dir) => {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.name === "node_modules" || e.name.startsWith(".") || ARTIFACT_DIRS.has(e.name)) continue;
+      const p = join(dir, e.name);
+      if (e.isDirectory()) {
+        walk(p);
+      } else if (e.isFile()) {
+        try {
+          const m = statSync(p).mtimeMs;
+          if (m > newest) newest = m;
+        } catch {
+          /* unreadable: ignore */
+        }
+      }
+    }
+  };
+  walk(root);
+  return newest;
+}
+
+// The artifact's mtime, or null when it is absent. `keys` is the candidate list (coverage has two).
+function artifactMtime(root, keys) {
+  for (const key of keys) {
+    try {
+      return statSync(join(root, ARTIFACTS[key])).mtimeMs;
+    } catch {
+      /* try the next candidate */
+    }
+  }
+  return null;
+}
+
+// The artifact path the plan reports for a gate: the first candidate that exists, else the first.
+function artifactPath(root, keys) {
+  for (const key of keys) {
+    if (existsSync(join(root, ARTIFACTS[key]))) return ARTIFACTS[key];
+  }
+  return ARTIFACTS[keys[0]];
+}
+
+// A coverage/mutation fraction as the text the plan prints: `56.7% (34/60)`. `hit`/`found` for
+// coverage, `killed`/`total` for mutation.
+function fracText(frac, kind) {
+  const num = kind === "mutation" ? frac.killed : frac.hit;
+  const den = kind === "mutation" ? frac.total : frac.found;
+  return den === 0 ? "100% (0/0)" : `${((num / den) * 100).toFixed(1)}% (${num}/${den})`;
+}
+
+// A coverage fraction as the text the plan prints: `lines 56.7% (34/60)  functions 0.0% (0/1)`.
+// The metric names come from the source — lcov's `lines`, Istanbul's `statements`.
+function coverageText(frac) {
+  return Object.entries(frac ?? {})
+    .map(([metric, f]) => `${metric} ${fracText(f, "coverage")}`)
+    .join("  ");
+}
+
+// The measured level of one gate, as the text the plan prints. `null` when the artifact is absent
+// (unmeasured) — the caller falls back to the wall.
+function levelText(gate, gates) {
+  if (gate === "coverage") {
+    const g = gates[gate];
+    return g ? coverageText(g.global) : null;
+  }
+  if (gate === "mutation") {
+    const g = gates[gate];
+    return g ? fracText(g.global, "mutation") : null;
+  }
+  if (gate === "lint" || gate === "typecheck") {
+    const g = gates[gate];
+    return g ? String(g.global) : null;
+  }
+  if (gate === "fallow-health") {
+    const g = gates.fallowHealth;
+    return g && typeof g.score === "number" ? `${g.score.toFixed(1)} (${g.grade ?? "—"})` : null;
+  }
+  if (gate === "fallow-dead-code") {
+    const g = gates.fallowDeadCode;
+    return g && typeof g.global === "number" ? String(g.global) : null;
+  }
+  return null;
+}
+
+// fallow's own floor files, one per fallow gate. Their format is fallow's (a per-file+category
+// count map for health, a per-category list for dead code), not a single level, so the plan reports
+// the floor as `recorded` when the file exists.
+const FALLOW_BASELINE = {
+  "fallow-health": ".fallow-health-baseline.json",
+  "fallow-dead-code": ".fallow-dead-code-baseline.json",
+};
+
+// The floor a gate already has recorded, as the text the plan prints, or `null` when the gate has
+// no recorded floor. The unified baseline holds coverage/mutation/lint/typecheck; fallow's floors
+// live in fallow's own files.
+function recordedFloor(gate, baseline, root) {
+  if (gate === "fallow-health" || gate === "fallow-dead-code") {
+    return existsSync(join(root, FALLOW_BASELINE[gate])) ? "recorded" : null;
+  }
+  const g = baseline?.gates?.[gate];
+  if (!g) return null;
+  if (gate === "coverage") return coverageText(g.global);
+  if (gate === "mutation") return fracText(g.global, "mutation");
+  return String(g.global);
+}
+
+// The adoption flow's measure step. For every gate the selection will install (a selected recipe's
+// gate that declares `floor`), read the artifact that carries its level and report the level and
+// the floor the apply will install.
+//
+// The floor is the RECORDED floor when the gate already has one — the apply does not re-raise it,
+// so a repo that adopted earlier keeps its floor and a measured level below it is the regression it
+// is (the gate that enforces it fails). With no recorded floor the floor is the measured level —
+// the SAME code path as greenfield, where the measured level is the wall. An absent artifact is
+// `unmeasured`: the floor is the wall, and the apply measures it fresh before writing the baseline.
+//
+// The plan writes nothing and runs no gate: it reads the artifacts and the baseline that already
+// exist. A stale artifact (older than the newest source file) is flagged, not trusted — the apply
+// re-runs the gate before `score.mjs --raise`, so the recorded floor is the level of the code as it
+// stands.
+function buildMeasurement(root, selected) {
+  const { gates, errors } = measure(root, [root, safeRealpath(root)]);
+  const newest = newestSourceMtime(root);
+  const baseline = readBaseline(join(root, ".code-quality-baseline.json"));
+  const regressed = new Set((baseline.doc ? compare(gates, baseline.doc) : []).map((r) => r.gate));
+  const rows = [];
+  const seen = new Set();
+  for (const r of selected) {
+    for (const g of r.gates ?? []) {
+      if (!g.floor) continue;
+      const keys = FLOOR_ARTIFACT[g.floor];
+      if (!keys || seen.has(g.floor)) continue;
+      seen.add(g.floor);
+      const level = levelText(g.floor, gates);
+      const mtime = artifactMtime(root, keys);
+      const stale = mtime !== null && newest > 0 && mtime < newest;
+      const recorded = recordedFloor(g.floor, baseline.doc, root);
+      rows.push({
+        gate: g.floor,
+        recipe: r.id,
+        artifact: artifactPath(root, keys),
+        level,
+        stale,
+        recorded,
+        floor: recorded ?? level ?? WALL[g.floor],
+        raise: recorded === null,
+        regression: regressed.has(g.floor),
+        source: g.floor === "fallow-health" || g.floor === "fallow-dead-code" ? "fallow" : "unified",
+      });
+    }
+  }
+  return { rows, errors, baselinePresent: baseline.doc !== null, baselineError: baseline.error };
+}
+
+function renderMeasurement(measurement) {
+  const lines = ["## Measurement (the floor the apply will install)", ""];
+  if (measurement.rows.length === 0) {
+    lines.push("_No selected gate declares a floor._");
+    return lines.join("\n");
+  }
+  lines.push(
+    "_The apply installs each gate with its floor at the measured level, so the gates are green on day one and can only improve. A gate that already has a recorded floor keeps it — the apply does not re-raise it, and a measured level below it is a regression. The floor never rises on its own: only `score.mjs --raise` (or the improvement skill) raises it._",
+    "",
+  );
+  lines.push("| Gate | Measured now | Floor the apply installs | Apply | Source |");
+  lines.push("|---|---|---|---|---|");
+  for (const row of measurement.rows) {
+    const measured = row.level === null ? "_unmeasured_" : row.stale ? `${row.level} ⚠ stale` : row.level;
+    const floor = row.regression ? `${row.floor} ⚠ regression` : row.floor;
+    lines.push(`| \`${row.gate}\` | ${measured} | ${floor} | ${row.raise ? "raise" : "keep"} | ${row.source} |`);
+  }
+  const unmeasured = measurement.rows.filter((r) => r.level === null && r.raise);
+  const stale = measurement.rows.filter((r) => r.stale && r.raise);
+  const regressions = measurement.rows.filter((r) => r.regression);
+  const kept = measurement.rows.filter((r) => !r.raise);
+  if (kept.length > 0) {
+    lines.push("");
+    lines.push(
+      `_${kept.length} gate(s) already have a recorded floor — the apply keeps it and does not re-raise it (${kept.map((r) => `\`${r.gate}\``).join(", ")}). A repo that already has a baseline is unchanged._`,
+    );
+  }
+  if (regressions.length > 0) {
+    lines.push("");
+    lines.push(
+      `_${regressions.length} gate(s) measure BELOW their recorded floor — the gate that enforces it fails until the level climbs back (${regressions.map((r) => `\`${r.gate}\``).join(", ")}). The apply does not lower the floor._`,
+    );
+  }
+  if (unmeasured.length > 0) {
+    lines.push("");
+    lines.push(
+      `_${unmeasured.length} gate(s) unmeasured — no artifact yet. The apply runs the gate, then writes the baseline at the level it measures; with no artifact the floor is the greenfield wall (${unmeasured.map((r) => `\`${r.gate}\` ${WALL[r.gate]}`).join(", ")})._`,
+    );
+  }
+  if (stale.length > 0) {
+    lines.push("");
+    lines.push(
+      `_${stale.length} artifact(s) older than the newest source file — the level shown is stale. The apply re-runs the gate before \`score.mjs --raise\`, so the recorded floor is the level of the code as it stands._`,
+    );
+  }
+  if (measurement.baselineError) {
+    lines.push("");
+    lines.push(`_The baseline is unreadable (${measurement.baselineError}) — the plan treats every gate as unrecorded._`);
+  }
+  if (measurement.errors.length > 0) {
+    lines.push("");
+    lines.push("_Unreadable artifacts (the gate is unmeasured):_");
+    for (const e of measurement.errors) lines.push(`- \`${e.gate}\`: ${e.error}`);
+  }
+  return lines.join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -1198,6 +1448,7 @@ function renderPlan(plan, opts) {
 
   out.push(renderStack(plan.stack), "");
   out.push(renderSelection(plan.selected), "");
+  out.push(renderMeasurement(plan.measurement), "");
   out.push(renderNotSelected(plan.notSelected), "");
   out.push(renderHeldBack(plan.heldBack), "");
   out.push(renderCollisions(plan.collisions, opts.force), "");

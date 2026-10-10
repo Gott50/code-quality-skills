@@ -2,9 +2,11 @@
 
 `node scripts/plan.mjs [projectDir] [--recipe <id>] [--force] [--diff [path]] [--check]` runs the
 detector (`detect.mjs`) and prints the plan the agent shows for approval. Zero dependencies, node
-builtins only, no package manager invoked, **writes nothing**. Exit 0 on a report; exit 1 with a
-message on stderr when the detector fails or no usable recipe remains. `--check` prints the
-machine-readable drift report instead of the plan and exits 0 only when it is clean (see below).
+builtins only, no package manager invoked, **writes nothing and runs no gate**. It reads the gate
+artifacts that already exist for the **Measurement** section (the adoption flow's measure step, see
+below) — reading is not writing, and the heavy gates run in the apply, not here. Exit 0 on a report;
+exit 1 with a message on stderr when the detector fails or no usable recipe remains. `--check` prints
+the machine-readable drift report instead of the plan and exits 0 only when it is clean (see below).
 
 `DETECT-SCHEMA.md` is the JSON it consumes; `RECIPE-CONTRACT.md` is the frontmatter and the
 substitution keys it renders. This file is the contract for the plan text.
@@ -102,35 +104,40 @@ The first line after the title is the state:
    the workspace kind and members.
 2. **Selection** — the selected recipes, priority order, each with title, purpose, and cost
    (`heavy` is flagged `⚠ slow verify`).
-3. **Not selected** — every usable recipe that is not selected, with its first failing
+3. **Measurement (the floor the apply will install)** — one row per gate the selection will install
+   (a selected recipe's gate that declares `floor`): the gate, the level it measures now, the floor
+   the apply will install (the recorded floor when the gate has one, else the measured level, else
+   the wall), whether the apply raises or keeps it, and the floor's source (`unified` or `fallow`).
+   See below.
+4. **Not selected** — every usable recipe that is not selected, with its first failing
    `reason.detail` (or `applicable — not selected (narrowed by --recipe)` under `--recipe`).
-4. **Held back** — the detector's `heldBack`, with its reason.
-5. **Collisions** — the detector's `collisions` for the selected recipes, each with its evidence;
+5. **Held back** — the detector's `heldBack`, with its reason.
+6. **Collisions** — the detector's `collisions` for the selected recipes, each with its evidence;
    `--force` marks them overridden.
-6. **Files (phase 1 — writes, priority order)** — every file to be written: `path (action, scope) — verdict`.
+7. **Files (phase 1 — writes, priority order)** — every file to be written: `path (action, scope) — verdict`.
    A `merge`/`patch`/collision/loss shows its unified diff inline; a `create` is `new` / `no-op` /
    `drift` / `loss`. `--diff` adds the rest.
-7. **Losses (create drift — the repo's extra content would be dropped)** — every `create` target the
+8. **Losses (create drift — the repo's extra content would be dropped)** — every `create` target the
    repo has customized (verdict `loss`), one `- \`<path>\` (<recipe>) — N key(s)/line(s) the template
    lacks:` line each followed by the lost items as `  - \`<item>\`` bullets, or `_None._`. The repo's
    file carries content the template does not, so overwriting it drops that content (#36). The agent
    MUST NOT overwrite these files without an explicit override (`--force`); `--force` marks them
    overridden (SKILL.md → Apply).
-8. **Pre-existing content (duplicate blocks)** — every marker `merge` block the target file already
+9. **Pre-existing content (duplicate blocks)** — every marker `merge` block the target file already
    carries without a marker (verdict `duplicate`), one `- \`<path>\` (<recipe>) — <evidence>` line
    each, or `_None._`. The hand-set-up repo (#35): the harness is there, the manifest is not, so the
    marker is absent and the block reads `new` while the file already runs the gate. The agent MUST
    NOT append these blocks (SKILL.md → Apply).
-9. **Commands (phase 2 — commands, priority order)** — the selected recipes' `commands` with
+10. **Commands (phase 2 — commands, priority order)** — the selected recipes' `commands` with
    `showInPlan !== false`, in selection order: `N. [<recipe>] \`<run>\` (<scope> → <dirs>)`.
-10. **Gates and verify (phase 3 — verify, priority order)** — per selected recipe, its `gates` and its
+11. **Gates and verify (phase 3 — verify, priority order)** — per selected recipe, its `gates` and its
    `verify` entries: `- gate \`<id>\` (<scope> → <dirs>)` (or the literal `run` in place of the gate).
    A literal `run` that greps for a skipped duplicate block's marker is rendered with that grep
    replaced by `true` (#49): the plan has already proven the block's content is present (the
    `duplicate` verdict), so the verify passes and the recipe is recorded. The agent runs the verify
    **as rendered**, not as the recipe's frontmatter states it (RECIPE-CONTRACT.md → `verify`).
-11. **Warnings** — one `{ id, error }` line per unreadable recipe (or unreadable template).
-12. **Drift (manifest)** — the per-recipe state from the manifest, or a degraded note. The state is
+12. **Warnings** — one `{ id, error }` line per unreadable recipe (or unreadable template).
+13. **Drift (manifest)** — the per-recipe state from the manifest, or a degraded note. The state is
    the worst file verdict (`missing` > `loss` > `drifted` > `update` > `intact`), so a recipe whose
    only non-intact file is a skipped `create` loss reads `loss`, not `drifted` (#46).
 
@@ -147,6 +154,53 @@ would lose repo content and are NOT overwritten without \`--force\` (see Losses)
 never applied one recipe at a time: a formatter's one-time sweep (a `commands` entry) runs after
 every later recipe's JSON merges, so the sweep sorts the merged files and that recipe's own
 `format:check` verify passes on the state the run just produced.
+
+## The measurement — the floor the apply will install
+
+The **Measurement** section is the adoption flow (#67): for every gate the selection will install (a
+selected recipe's gate that declares `floor`), it shows the level the gate measures **now** and the
+floor the apply will install. A gate with no recorded floor is raised to its measured level, so the
+gates are green on day one and can only improve. Greenfield is the same code path: a clean repo
+measures 100% (or 0), so the floor is the wall — one path, not two.
+
+```
+## Measurement (the floor the apply will install)
+
+_The apply installs each gate with its floor at the measured level, so the gates are green on day one and can only improve. A gate that already has a recorded floor keeps it — the apply does not re-raise it, and a measured level below it is a regression. The floor never rises on its own: only `score.mjs --raise` (or the improvement skill) raises it._
+
+| Gate | Measured now | Floor the apply installs | Apply | Source |
+|---|---|---|---|---|
+| `lint` | 0 | 0 | keep | unified |
+| `typecheck` | 0 | 0 | keep | unified |
+| `coverage` | functions 50.0% (3/6)  lines 56.7% (34/60) | functions 83.3% (5/6)  lines 80.0% (48/60) ⚠ regression | keep | unified |
+| `mutation` | _unmeasured_ | 100% | raise | unified |
+| `fallow-dead-code` | 1 | recorded | keep | fallow |
+| `fallow-health` | 93.3 (A) | 93.3 (A) | raise | fallow |
+```
+
+| Column | Meaning |
+|---|---|
+| Gate | the `floor` value the selected recipe's gate declares — `coverage`, `mutation`, `lint`, `typecheck`, `fallow-health`, `fallow-dead-code` |
+| Measured now | the level the gate's artifact carries, read by `scripts/score.mjs`'s readers (the same ones the score view uses); `_unmeasured_` when the artifact is absent, `⚠ stale` when the artifact is older than the newest source file |
+| Floor the apply installs | the **recorded** floor when the gate already has one (the unified baseline for coverage/mutation/lint/typecheck, fallow's own file for the two fallow gates — shown as `recorded`), else the measured level, else the greenfield wall when unmeasured: 100% for coverage and mutation, 0 for lint and typecheck, fallow's report-only mode. `⚠ regression` when the measured level is below the recorded floor |
+| Apply | `keep` — the gate already has a recorded floor, so the apply does not re-raise it; `raise` — no recorded floor, so the apply writes the measured level |
+| Source | `unified` (`.code-quality-baseline.json`) or `fallow` (fallow's own baseline files) |
+
+The plan **writes nothing and runs no gate**: it reads the artifacts and the baseline that already
+exist. This is the resolution of the tension between "the plan writes nothing" and "measuring needs
+the gate artifacts": the plan measures from whatever artifacts are on disk, and the apply produces
+the authoritative measurement by running the gates. The plan never runs the heavy gates (Stryker
+takes minutes); the apply does, once, in the capture step before the baseline write.
+
+A **stale** artifact (older than the newest source file, skipping `node_modules`, dot-directories and
+the artifact directories themselves) is flagged, not trusted: the level shown is not the level of
+the code as it stands. The apply re-runs the gate before `score.mjs --raise`, so a stale artifact
+never becomes a floor — the recorded floor is always the level the apply just measured.
+
+The floor never rises on its own. The gates are read-only checks; only `score.mjs --raise` (or the
+improvement skill) raises a floor. A repo that already has a baseline is unchanged: the plan shows
+the recorded floor as the floor the apply installs, the apply does not re-raise it, and `--raise`
+merges (the floor never falls — see `SCORE-SCHEMA.md` → The adoption flow's measure step).
 
 ## Verdicts
 

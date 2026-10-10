@@ -6,16 +6,18 @@
  * lcov.
  *
  * The floor for a file the baseline records is its exact `{hit, found}`
- * fraction under `gates.coverage.files`, compared by cross-multiplication so
+ * fraction per metric under `gates.coverage.files` — `statements` from the
+ * `s` map, `functions` from the `f` map — compared by cross-multiplication so
  * no float rounding creeps in; a file the baseline does not record gets the
- * `gates.coverage.global` fraction. The same fraction is enforced on
- * statements and on functions. The global fraction over the whole project is
- * `score.mjs`'s comparison, not this gate's: a workspace member's own run
- * aggregates the member alone, and holding it to the workspace-wide fraction
- * would fail a member that is exactly at its recorded floor. With no
- * baseline — or a baseline whose coverage gate was never raised — every
- * floor is 100%, the greenfield wall, so a repo that never raised one is
- * gated exactly as before.
+ * `gates.coverage.global` fractions. Each metric is enforced against its own
+ * floor: a file at 4/10 statements and 0/1 functions passes only when both
+ * floors are met. The global fraction over the whole project is `score.mjs`'s
+ * comparison, not this gate's: a workspace member's own run aggregates the
+ * member alone, and holding it to the workspace-wide fraction would fail a
+ * member that is exactly at its recorded floor. With no baseline — or a
+ * baseline whose coverage gate was never raised — every floor is 100%, the
+ * greenfield wall, so a repo that never raised one is gated exactly as
+ * before.
  *
  * Usage (the `test` script runs it after `vitest run --coverage`):
  *   node scripts/coverage-gate.mjs --coverage coverage/coverage-final.json --baseline .code-quality-baseline.json
@@ -32,8 +34,8 @@ function parseArg(name) {
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
 
-/** The greenfield floor: 100%. */
-const FULL = { found: 1, hit: 1 };
+/** The greenfield floor: 100% on both metrics. */
+const FULL = { functions: { found: 1, hit: 1 }, statements: { found: 1, hit: 1 } };
 
 const coveragePath = parseArg("--coverage") ?? "coverage/coverage-final.json";
 const baselinePath = parseArg("--baseline") ?? ".code-quality-baseline.json";
@@ -44,12 +46,24 @@ if (!existsSync(coveragePath)) {
   process.exit(1);
 }
 
+/** Whether `v` is an exact fraction as the baseline records it. */
+function isFrac(v) {
+  return !!v && Number.isInteger(v.hit) && Number.isInteger(v.found);
+}
+
+/** Whether `v` carries a floor for both metrics. */
+function isCoverageFrac(v) {
+  return !!v && isFrac(v.statements) && isFrac(v.functions);
+}
+
 // The baseline's coverage floors: `global` is the floor for a file the
 // baseline does not record, `files` its per-file floors keyed as recorded
 // (workspace-root-relative), and `abs` the same floors keyed by the absolute
 // path each recorded key resolves to beside the baseline file — the form the
 // Istanbul keys are matched in. An unreadable baseline fails the gate — a
-// floor file that cannot be read must not silently become 100%.
+// floor file that cannot be read must not silently become 100%. A coverage
+// block that does not carry both metrics is unreadable too: the floor is per
+// metric, and a missing one must not silently become 100%.
 function readFloors(path) {
   if (!existsSync(path)) return { abs: new Map(), files: {}, global: FULL };
   let doc;
@@ -62,7 +76,17 @@ function readFloors(path) {
     process.exit(1);
   }
   const coverage = doc?.gates?.coverage;
+  if (coverage?.global !== undefined && !isCoverageFrac(coverage.global)) {
+    console.error(`coverage-gate: baseline ${path} records no statements/functions floor`);
+    process.exit(1);
+  }
   const files = coverage?.files ?? {};
+  for (const [key, frac] of Object.entries(files)) {
+    if (!isCoverageFrac(frac)) {
+      console.error(`coverage-gate: baseline ${path} records no statements/functions floor for ${key}`);
+      process.exit(1);
+    }
+  }
   const abs = new Map(
     Object.entries(files).map(([key, frac]) => [resolve(dirname(path), key), frac]),
   );
@@ -73,19 +97,16 @@ const floors = readFloors(baselinePath);
 
 // Istanbul's `coverage-final.json` is keyed by absolute path; each value
 // carries an `s` statement hit map and an `f` function hit map. The level is
-// hit / found per map (SCORE-SCHEMA.md reads the `s` map; the `f` map is the
-// functions floor the Bun gate enforces on lcov `FNH`/`FNF`).
+// hit / found per map, one exact fraction per metric (SCORE-SCHEMA.md).
 function readIstanbul(doc) {
   const files = {};
   for (const [key, fc] of Object.entries(doc ?? {})) {
     const s = fc?.s ?? {};
     const f = fc?.f ?? {};
     files[key] = {
-      fnf: Object.keys(f).length,
-      fnh: Object.values(f).filter((n) => n > 0).length,
+      functions: { found: Object.keys(f).length, hit: Object.values(f).filter((n) => n > 0).length },
       sf: key,
-      stf: Object.keys(s).length,
-      sth: Object.values(s).filter((n) => n > 0).length,
+      statements: { found: Object.keys(s).length, hit: Object.values(s).filter((n) => n > 0).length },
     };
   }
   return files;
@@ -136,18 +157,25 @@ let tStF = 0,
   tFnH = 0;
 
 for (const r of Object.values(byFile)) {
-  tStF += r.stf;
-  tStH += r.sth;
-  tFnF += r.fnf;
-  tFnH += r.fnh;
+  tStF += r.statements.found;
+  tStH += r.statements.hit;
+  tFnF += r.functions.found;
+  tFnH += r.functions.hit;
   const floor = floorOf(r);
-  const stPct = r.stf > 0 ? (r.sth / r.stf) * 100 : 100;
-  const fnPct = r.fnf > 0 ? (r.fnh / r.fnf) * 100 : 100;
-  if (!meets(r.sth, r.stf, floor) || !meets(r.fnh, r.fnf, floor)) {
-    failing.push(
-      `${relative(process.cwd(), r.sf)}\n    statements ${stPct.toFixed(2)}%  (${r.sth}/${r.stf}) — floor ${fracText(floor)}\n    functions ${fnPct.toFixed(2)}%  (${r.fnh}/${r.fnf}) — floor ${fracText(floor)}`,
+  const stPct = r.statements.found > 0 ? (r.statements.hit / r.statements.found) * 100 : 100;
+  const fnPct = r.functions.found > 0 ? (r.functions.hit / r.functions.found) * 100 : 100;
+  const below = [];
+  if (!meets(r.statements.hit, r.statements.found, floor.statements)) {
+    below.push(
+      `statements ${stPct.toFixed(2)}%  (${r.statements.hit}/${r.statements.found}) — floor ${fracText(floor.statements)}`,
     );
   }
+  if (!meets(r.functions.hit, r.functions.found, floor.functions)) {
+    below.push(
+      `functions ${fnPct.toFixed(2)}%  (${r.functions.hit}/${r.functions.found}) — floor ${fracText(floor.functions)}`,
+    );
+  }
+  if (below.length > 0) failing.push(`${relative(process.cwd(), r.sf)}\n    ${below.join("\n    ")}`);
 }
 
 const totalStPct = tStF > 0 ? (tStH / tStF) * 100 : 100;
@@ -155,7 +183,7 @@ const totalFnPct = tFnF > 0 ? (tFnH / tFnF) * 100 : 100;
 
 console.log(
   `coverage-gate: baseline ${existsSync(baselinePath) ? baselinePath : "none — every floor is 100%"} | ` +
-    `global floor ${fracText(floors.global)} | ` +
+    `global floor statements ${fracText(floors.global.statements)} functions ${fracText(floors.global.functions)} | ` +
     `statements ${totalStPct.toFixed(2)}% (${tStH}/${tStF}) | ` +
     `functions ${totalFnPct.toFixed(2)}% (${tFnH}/${tFnF}) across ${Object.keys(byFile).length} files`,
 );

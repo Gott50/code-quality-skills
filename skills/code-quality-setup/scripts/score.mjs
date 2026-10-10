@@ -15,6 +15,7 @@
 
 import { existsSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const SCHEMA_VERSION = 1;
 const SKILL_VERSION = "1";
@@ -22,7 +23,7 @@ const BASELINE_NAME = ".code-quality-baseline.json";
 
 // The artifact each gate writes, relative to the project root. The first three are the paths the
 // recipes already fix; the last four are captured stdout (those tools write no file of their own).
-const ARTIFACTS = {
+export const ARTIFACTS = {
   lcov: "coverage/lcov.info",
   istanbul: "coverage/coverage-final.json",
   mutation: "reports/mutation/report.json",
@@ -40,9 +41,10 @@ const BASELINE_GATES = ["coverage", "mutation", "lint", "typecheck"];
 // Artifact readers
 // ---------------------------------------------------------------------------
 
-// bun's lcov: one `SF:`-delimited record per file, `LF`/`LH` (lines found/hit). No global record —
-// the global is the sum. Records may repeat an `SF`; accumulate per file (the gate does the same).
-function readLcov(text) {
+// bun's lcov: one `SF:`-delimited record per file, `LF`/`LH` (lines found/hit) and `FNF`/`FNH`
+// (functions found/hit). No global record — the global is the sum. Records may repeat an `SF`;
+// accumulate per file (the gate does the same). Each file carries one exact fraction per metric.
+export function readLcov(text) {
   const files = {};
   for (const block of text.split(/(?=^SF:)/m)) {
     const lines = block.split("\n");
@@ -55,31 +57,41 @@ function readLcov(text) {
       const line = lines.find((l) => l.startsWith(`${key}:`));
       return line ? Number(line.split(":")[1]) : 0;
     };
-    const rec = files[sf] ?? { hit: 0, found: 0 };
-    rec.found += num("LF");
-    rec.hit += num("LH");
+    const rec = files[sf] ?? { functions: { found: 0, hit: 0 }, lines: { found: 0, hit: 0 } };
+    rec.lines.found += num("LF");
+    rec.lines.hit += num("LH");
+    rec.functions.found += num("FNF");
+    rec.functions.hit += num("FNH");
     files[sf] = rec;
   }
   return files;
 }
 
+// The number of entries in an Istanbul hit map that were hit at least once.
+function countHit(map) {
+  return Object.values(map).filter((n) => n > 0).length;
+}
+
 // vitest's Istanbul `coverage-final.json`: keyed by absolute path, each value an Istanbul
-// FileCoverage with an `s` hit map. The level is statements hit / statements found; there is no
-// global summary, so the global is the sum. The key is relativized to the project root.
-function readIstanbul(doc, bases) {
+// FileCoverage with an `s` statement hit map and an `f` function hit map. The level is hit / found
+// per map; there is no global summary, so the global is the sum. The key is relativized to the
+// project root.
+export function readIstanbul(doc, bases) {
   const files = {};
   for (const [key, fc] of Object.entries(doc ?? {})) {
     const s = fc?.s ?? {};
-    const found = Object.keys(s).length;
-    const hit = Object.values(s).filter((n) => n > 0).length;
-    files[relativize(key, bases)] = { hit, found };
+    const f = fc?.f ?? {};
+    files[relativize(key, bases)] = {
+      functions: { found: Object.keys(f).length, hit: countHit(f) },
+      statements: { found: Object.keys(s).length, hit: countHit(s) },
+    };
   }
   return files;
 }
 
 // Stryker's `report.json`: `files[path].mutants[].status`. No score field — the level is
 // killed / total, counted from the statuses. `total` is every mutant in the file.
-function readMutation(doc) {
+export function readMutation(doc) {
   const files = {};
   for (const [path, file] of Object.entries(doc?.files ?? {})) {
     const mutants = file?.mutants ?? [];
@@ -93,7 +105,7 @@ function readMutation(doc) {
 
 // fallow health: `health_score.score` (0–100) + `.grade` is the level; the maintainability average
 // and the worst per-file CRAP are reported alongside.
-function readFallowHealth(doc) {
+export function readFallowHealth(doc) {
   const hs = doc?.health_score ?? {};
   const craps = (doc?.file_scores ?? []).map((f) => f?.crap_max).filter((n) => typeof n === "number");
   return {
@@ -106,7 +118,7 @@ function readFallowHealth(doc) {
 }
 
 // tsc has no JSON reporter: one line per diagnostic, `file(l,c): error TSxxxx: …`. Count them.
-function countTscErrors(text) {
+export function countTscErrors(text) {
   return text.split("\n").filter((line) => /: error TS\d+/.test(line)).length;
 }
 
@@ -114,17 +126,22 @@ function countTscErrors(text) {
 // Measurement
 // ---------------------------------------------------------------------------
 
-function sumCoverage(files) {
-  let hit = 0;
-  let found = 0;
+// The global coverage: the sum of every file's fraction, per metric. The metric names come from the
+// source — lcov's `lines`/`functions`, Istanbul's `statements`/`functions`.
+export function sumCoverage(files) {
+  const out = {};
   for (const f of Object.values(files)) {
-    hit += f.hit;
-    found += f.found;
+    for (const [metric, frac] of Object.entries(f)) {
+      const acc = out[metric] ?? { found: 0, hit: 0 };
+      acc.found += frac.found;
+      acc.hit += frac.hit;
+      out[metric] = acc;
+    }
   }
-  return { hit, found };
+  return out;
 }
 
-function sumMutation(files) {
+export function sumMutation(files) {
   let killed = 0;
   let total = 0;
   for (const f of Object.values(files)) {
@@ -136,7 +153,7 @@ function sumMutation(files) {
 
 // Read every artifact that exists. A malformed artifact is reported, never fatal: one broken file
 // must not cost the user the whole score. The gate is omitted and the error recorded.
-function measure(root, bases) {
+export function measure(root, bases) {
   const gates = {};
   const errors = [];
   const read = (gate, fn) => {
@@ -199,18 +216,78 @@ function measure(root, bases) {
 
 // The floor file: the current level of every gate the unified baseline holds, as exact fractions.
 // fallow's gates are not here — their floors live in fallow's own baseline files.
-function baselineFrom(gates, versions) {
+//
+// `--raise` MERGES with the recorded baseline, it does not overwrite it (#67): the floor never
+// falls. Per gate:
+//   - coverage / mutation — per file and global, the LARGER of the current and recorded fractions
+//     (cross-multiplied, the same comparison `atLeast` makes). Coverage carries one fraction per
+//     metric, so each metric keeps the larger of the two on its own. A recorded file whose artifact
+//     no longer lists it is kept; a new file is added at its current fraction.
+//   - lint / typecheck — the SMALLER of the current and recorded counts (a count is a ceiling).
+//   - a recorded gate whose artifact is absent is KEPT, never dropped: dropping it would fall back
+//     to the greenfield wall, which is stricter, not a raise.
+//   - a gate with no recorded floor takes the current level.
+// So a repo that already has a baseline is unchanged by an apply that re-raises: the recorded floor
+// holds, and only a gate with no floor yet is raised to its measured level.
+function maxFrac(cur, rec) {
+  if (!rec) return cur;
+  return atLeast(cur, rec) ? cur : rec;
+}
+
+function mergeFracFiles(cur, rec) {
+  const out = {};
+  for (const [file, f] of Object.entries(cur ?? {})) out[file] = maxFrac(f, rec?.[file]);
+  for (const [file, f] of Object.entries(rec ?? {})) if (!(file in out)) out[file] = f;
+  return out;
+}
+
+// A coverage fraction is a map of metric → exact fraction; the floor never falls, per metric, so
+// each metric keeps the larger of the current and recorded fractions.
+function maxCoverageFrac(cur, rec) {
+  const out = {};
+  for (const [metric, frac] of Object.entries(cur ?? {})) out[metric] = maxFrac(frac, rec?.[metric]);
+  for (const [metric, frac] of Object.entries(rec ?? {})) if (!(metric in out)) out[metric] = frac;
+  return out;
+}
+
+function mergeCoverageFiles(cur, rec) {
+  const out = {};
+  for (const [file, f] of Object.entries(cur ?? {})) out[file] = maxCoverageFrac(f, rec?.[file]);
+  for (const [file, f] of Object.entries(rec ?? {})) if (!(file in out)) out[file] = f;
+  return out;
+}
+
+function minCount(cur, rec) {
+  if (typeof rec !== "number") return cur;
+  return Math.min(cur, rec);
+}
+
+function baselineFrom(gates, versions, recorded) {
   const out = { schemaVersion: SCHEMA_VERSION, versions, gates: {} };
+  const rg = recorded?.gates ?? {};
   for (const gate of BASELINE_GATES) {
     const g = gates[gate];
-    if (!g) continue;
-    out.gates[gate] =
-      gate === "coverage" || gate === "mutation" ? { global: g.global, files: g.files } : { global: g.global };
+    const r = rg[gate];
+    if (!g) {
+      // A recorded gate whose artifact is absent: keep the recorded floor, never drop it.
+      if (r) out.gates[gate] = r;
+      continue;
+    }
+    if (gate === "coverage") {
+      out.gates[gate] = {
+        global: maxCoverageFrac(g.global, r?.global),
+        files: mergeCoverageFiles(g.files, r?.files),
+      };
+    } else if (gate === "mutation") {
+      out.gates[gate] = { global: maxFrac(g.global, r?.global), files: mergeFracFiles(g.files, r?.files) };
+    } else {
+      out.gates[gate] = { global: minCount(g.global, r?.global) };
+    }
   }
   return out;
 }
 
-function readBaseline(path) {
+export function readBaseline(path) {
   if (!existsSync(path)) return { doc: null, error: null };
   try {
     return { doc: JSON.parse(readFileSync(path, "utf8")), error: null };
@@ -221,7 +298,7 @@ function readBaseline(path) {
 
 // `cur >= floor` on the exact fraction, cross-multiplied so no float rounding creeps in. A gate
 // with nothing to measure (found/total 0) is 100%.
-function atLeast(cur, floor) {
+export function atLeast(cur, floor) {
   const cf = cur.found ?? cur.total ?? 0;
   const ff = floor.found ?? floor.total ?? 0;
   const ch = cur.hit ?? cur.killed ?? 0;
@@ -230,10 +307,31 @@ function atLeast(cur, floor) {
   return ch * ff >= fh * cf;
 }
 
+// A floor is either one exact fraction (mutation) or a map of metric → fraction (coverage). This
+// returns its metrics as [name, fraction] pairs, the empty name for a single fraction.
+function metricsOf(floor) {
+  if (floor && (typeof floor.hit === "number" || typeof floor.killed === "number")) return [["", floor]];
+  return Object.entries(floor ?? {});
+}
+
+// The metrics of `cur` that fall below `floor`. A metric the current artifact does not carry (a
+// baseline written by the other coverage tool) is skipped: the versions block already reads that
+// baseline as stale.
+function fracRegressions(cur, floor) {
+  const out = [];
+  for (const [metric, f] of metricsOf(floor)) {
+    const c = metric === "" ? cur : cur?.[metric];
+    if (!c) continue;
+    if (!atLeast(c, f)) out.push({ metric: metric || null, floor: f, current: c });
+  }
+  return out;
+}
+
 // The ratchet's comparison (#62): per-file floors for coverage and mutation, one global count for
 // lint and typecheck. A recorded file that is gone is not a regression (its entry drops on the
-// next raise); a new file must meet the recorded global floor.
-function compare(gates, baseline) {
+// next raise); a new file must meet the recorded global floor. Coverage carries one floor per
+// metric, so each metric is compared on its own.
+export function compare(gates, baseline) {
   const regressions = [];
   const bg = baseline?.gates ?? {};
 
@@ -241,17 +339,15 @@ function compare(gates, baseline) {
     const floor = bg[gate];
     const cur = gates[gate];
     if (!floor || !cur) continue;
-    if (!atLeast(cur.global, floor.global)) {
-      regressions.push({ gate, file: null, floor: floor.global, current: cur.global });
-    }
+    for (const r of fracRegressions(cur.global, floor.global)) regressions.push({ gate, file: null, ...r });
     for (const [file, f] of Object.entries(floor.files ?? {})) {
       const c = cur.files[file];
       if (!c) continue;
-      if (!atLeast(c, f)) regressions.push({ gate, file, floor: f, current: c });
+      for (const r of fracRegressions(c, f)) regressions.push({ gate, file, ...r });
     }
     for (const [file, c] of Object.entries(cur.files)) {
       if (floor.files?.[file]) continue;
-      if (!atLeast(c, floor.global)) regressions.push({ gate, file, floor: floor.global, current: c });
+      for (const r of fracRegressions(c, floor.global)) regressions.push({ gate, file, ...r });
     }
   }
 
@@ -326,7 +422,10 @@ function pct(frac) {
 }
 
 function fmtCoverage(cov) {
-  return cov ? `${pct(cov.global)}  (${fracText(cov.global)})` : "—";
+  if (!cov) return "—";
+  return Object.entries(cov.global)
+    .map(([metric, frac]) => `${metric} ${pct(frac)} (${fracText(frac)})`)
+    .join("  ");
 }
 
 function fmtMutation(mut) {
@@ -352,7 +451,8 @@ function verdictText(score) {
 
 function regressionText(r) {
   if (r.gate === "coverage" || r.gate === "mutation") {
-    return `${r.gate} ${r.file ?? "(global)"}: ${pct(r.current)} (${fracText(r.current)}) < floor ${pct(r.floor)} (${fracText(r.floor)})`;
+    const metric = r.metric ? ` ${r.metric}` : "";
+    return `${r.gate} ${r.file ?? "(global)"}${metric}: ${pct(r.current)} (${fracText(r.current)}) < floor ${pct(r.floor)} (${fracText(r.floor)})`;
   }
   return `${r.gate}: ${r.current} > floor ${r.floor}`;
 }
@@ -414,7 +514,7 @@ function renderText(score) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function isDir(path) {
+export function isDir(path) {
   try {
     return statSync(path).isDirectory();
   } catch {
@@ -430,7 +530,7 @@ function tryReadJson(path) {
   }
 }
 
-function safeRealpath(path) {
+export function safeRealpath(path) {
   try {
     return realpathSync(path);
   } catch {
@@ -440,7 +540,7 @@ function safeRealpath(path) {
 
 // An Istanbul key is absolute; the baseline keys are project-relative. Try the project root and its
 // realpath (on macOS `/tmp` is a symlink to `/private/tmp`, so the two differ).
-function relativize(path, bases) {
+export function relativize(path, bases) {
   if (!isAbsolute(path)) return path;
   for (const base of bases) {
     const rel = relative(base, path);
@@ -508,7 +608,7 @@ function main() {
       for (const e of errors) process.stderr.write(`  ${e.gate}: ${e.error}\n`);
       process.exit(1);
     }
-    writeFileSync(baselinePath, canonicalJson(baselineFrom(gates, versions)));
+    writeFileSync(baselinePath, canonicalJson(baselineFrom(gates, versions, baseline.doc)));
     versionMismatch = [];
     regressions = [];
     state = "ok";
@@ -538,9 +638,15 @@ function main() {
   process.exit(state === "regression" ? 1 : 0);
 }
 
-try {
-  main();
-} catch (err) {
-  process.stderr.write(`score: ${err?.message ?? err}\n`);
-  process.exit(1);
+// Run only when executed directly: plan.mjs imports `measure` from this file for the adoption
+// flow's measure step, and an import must not run the score view. Both sides are realpathed: on
+// macOS `/tmp` is a symlink to `/private/tmp`, so a bare `pathToFileURL(process.argv[1])` would not
+// match `import.meta.url` for a script invoked through the symlink.
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
+  try {
+    main();
+  } catch (err) {
+    process.stderr.write(`score: ${err?.message ?? err}\n`);
+    process.exit(1);
+  }
 }
