@@ -200,8 +200,9 @@ function mergeKind(entry, recipeId) {
 // carries what the block contributes. This is the hand-set-up repo (#35) — the harness is there,
 // the manifest is not, so the marker is absent and the block reads `new` while the file already
 // runs the gate. Two signals, both requiring the WHOLE block to be present (a partial match is not
-// a duplicate: biome-assist's `.gitignore` block adds `node_modules/` (present) and
-// `.code-quality.json` (absent), and must still apply):
+// a duplicate: repo-hygiene's `.gitignore` block adds `.npm/`, `dist/`, `*.tsbuildinfo`, `.env`,
+// `.env.local` and `*.log`; a repo that already ignores `dist/` but not the rest is a partial
+// match, so the block still applies):
 //   - line presence: every non-blank payload line already appears in the file, compared after
 //     normalizing whitespace (a hand-written hook aligns its `||` with spaces);
 //   - command presence: the payload is a documentation section (it carries a heading) and every

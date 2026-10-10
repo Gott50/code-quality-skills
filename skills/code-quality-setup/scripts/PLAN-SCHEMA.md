@@ -114,8 +114,9 @@ it is not a loss.
 
 `duplicate` is the hand-set-up repo (#35): the recipe's marker is absent, so the block reads `new`,
 but the target file already carries what the block contributes. Two signals, both requiring the
-**whole** block to be present — a partial match is not a duplicate (biome-assist's `.gitignore`
-block adds `node_modules/`, already present, and `.code-quality.json`, absent, so it still applies):
+**whole** block to be present — a partial match is not a duplicate (repo-hygiene's `.gitignore`
+block adds `.npm/`, `dist/`, `*.tsbuildinfo`, `.env`, `.env.local` and `*.log`; a repo that already
+ignores `dist/` but not the rest is a partial match, so the block still applies):
 
 - **line presence** — every non-blank payload line already appears in the file, compared after
   normalizing whitespace (a hand-written hook aligns its `||` with spaces);
@@ -155,9 +156,16 @@ degrades the report to "compare against the current library only" and nothing br
 ## The manifest hash convention
 
 The manifest is written by the apply step (agent-driven; there is no `apply.mjs`), one recipe at a
-time after that recipe's `verify` passed. `plan.mjs` only reads it. For the drift report to agree,
-the apply step MUST hash the content the recipe **owns** in each file, with the same normalization
-`plan.mjs` uses:
+time after that recipe's `verify` passed. `plan.mjs` only reads it. The apply step MUST write it
+through `scripts/manifest.mjs`, the canonical writer — never by hand. The manifest is a committed
+file (ADR 0002), so it must be in the one form the formatter recipes' `biome check .` leaves alone:
+**keys sorted, two spaces of indent, a trailing newline**. The writer emits exactly that, and it is
+idempotent — re-recording a recipe whose content is unchanged rewrites the same bytes — so the
+manifest is byte-stable across runs. Hand-written JSON is not byte-stable, and the formatter gate
+the recipes install fails on it (#34).
+
+For the drift report to agree, the apply step MUST hash the content the recipe **owns** in each
+file, with the same normalization `plan.mjs` uses:
 
 - `create` — the whole rendered file. A `create` the apply skipped as a `loss` is recorded the same
   way — the rendered template's hash, what the apply would have written — so the drift report can

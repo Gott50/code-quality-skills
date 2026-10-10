@@ -18,10 +18,11 @@ The [skills CLI](https://github.com/vercel-labs/skills) copies the skill into `.
 
 ## What it does
 
-The skill ships two read-only, dependency-free scripts (node builtins only):
+The skill ships three dependency-free scripts (node builtins only) — two read-only, one writer:
 
 - `scripts/detect.mjs` — reads the project and prints a JSON applicability matrix: the stack, the existing tooling, and every recipe's evaluated `when`.
 - `scripts/plan.mjs` — runs the detector and prints the plan the agent shows for approval: the selection, the applicability matrix, every file to be written, every command to be run, and the gates left behind.
+- `scripts/manifest.mjs` — the canonical writer for `.code-quality.json`, the applied-state manifest the agent records each recipe through (ADR 0002).
 
 The agent prints the plan, asks once, and applies it. It never improvises the plan. Applying is agent-driven — there is no `apply.mjs` — and each recipe is recorded in `.code-quality.json` as it completes.
 

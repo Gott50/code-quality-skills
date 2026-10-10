@@ -42,7 +42,14 @@ A file row whose verdict is **`loss`** (see the plan's *Losses* section) is a `c
 
 A file row whose verdict is **`no-op`** on a `patch` is the after-state the recipe body states already holding: the target declares every key the template declares, with the template's scalar values. Write nothing for that entry — the patch is done — and record it like any other file (RECIPE-CONTRACT.md → `files`).
 
-Record each recipe in `.code-quality.json` as it completes — recipe-granular, after its `verify` passes. A failed `verify` is reported as-is, not rolled back; that recipe stays unrecorded, so a re-run resumes where it stopped. Declining the plan writes nothing.
+Record each recipe in `.code-quality.json` as it completes — recipe-granular, after its `verify` passes — through the canonical writer, never by hand:
+
+```
+node scripts/manifest.mjs record [projectDir] --recipe <id> --recipe-hash <hash> \
+  --file <path>:<action>:<hash> ... [--skill-version <v>] [--environment <json>]
+```
+
+The writer sorts keys, indents with two spaces, and ends with a newline, so the committed manifest passes the formatter recipes' `format:check` (ADR 0002). The hashes are the ones [PLAN-SCHEMA.md](scripts/PLAN-SCHEMA.md) → the manifest hash convention defines. A declined recipe is recorded with `node scripts/manifest.mjs decline [projectDir] --recipe <id>`. A failed `verify` is reported as-is, not rolled back; that recipe stays unrecorded, so a re-run resumes where it stopped. Declining the plan writes nothing.
 
 ## 4. Re-run: the drift report
 
