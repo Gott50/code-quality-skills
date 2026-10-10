@@ -1,6 +1,9 @@
 # code-quality-skills
 
-An installable agent skill that wires code-quality gates into a TypeScript repo — formatting, linting, typechecking, tests, coverage, mutation testing, git hooks, and CI — from a library of recipes. It detects the stack, prints a plan, and applies it on approval.
+Two installable agent skills for a TypeScript repo's code-quality gates:
+
+- **`code-quality-setup`** wires the gates in — formatting, linting, typechecking, tests, coverage, mutation testing, git hooks, and CI — from a library of recipes. It detects the stack, prints a plan, and applies it on approval.
+- **`code-quality-improve`** raises the score one target at a time: it ranks the improvement targets, prints the ranking, and on approval makes one change, verifies it, and raises that gate's floor.
 
 ## Install
 
@@ -8,17 +11,18 @@ An installable agent skill that wires code-quality gates into a TypeScript repo 
 npx skills@latest add Gott50/code-quality-skills
 ```
 
-The repo exposes one skill, so the explicit form is:
+The repo exposes two skills, so `-s <name>` is load-bearing — without it the CLI installs both:
 
 ```sh
 npx skills@latest add Gott50/code-quality-skills -s code-quality-setup
+npx skills@latest add Gott50/code-quality-skills -s code-quality-improve
 ```
 
-The [skills CLI](https://github.com/vercel-labs/skills) copies the skill into `.agents/skills/code-quality-setup/` and records it in `skills-lock.json`. Then ask your agent to "set up code quality in this repo".
+The [skills CLI](https://github.com/vercel-labs/skills) copies each skill into `.agents/skills/<name>/` and records it in `skills-lock.json`. Then ask your agent to "set up code quality in this repo", and later to "improve the code-quality score".
 
 ## What it does
 
-The skill ships four dependency-free scripts (node builtins only) — three read-only, one writer:
+`code-quality-setup` ships four dependency-free scripts (node builtins only) — three read-only, one writer:
 
 - `scripts/detect.mjs` — reads the project and prints a JSON applicability matrix: the stack, the existing tooling, and every recipe's evaluated `when`.
 - `scripts/plan.mjs` — runs the detector and prints the plan the agent shows for approval: the selection, the applicability matrix, every file to be written, every command to be run, and the gates left behind.
@@ -26,6 +30,12 @@ The skill ships four dependency-free scripts (node builtins only) — three read
 - `scripts/score.mjs` — the read-only score view: reads each gate's artifact and prints the per-gate level, with fallow's maintainability as the headline; `--raise` writes the committed floor file `.code-quality-baseline.json`.
 
 The agent prints the plan, asks once, and applies it. It never improvises the plan. Applying is agent-driven — there is no `apply.mjs` — and each recipe is recorded in `.code-quality.json` as it completes.
+
+`code-quality-improve` ships one read-only script:
+
+- `scripts/rank.mjs` — reads the artifacts the gates produced and prints the ranked improvement targets: fallow's own `--targets` ranking, then the coverage gaps, lint violations and typecheck errors folded in as additional candidates. A missing artifact is a reported gap, not a crash.
+
+The agent prints the ranking, asks once, and makes one change per pass. The raise step invokes `code-quality-setup`'s `score.mjs --raise` (or the project's `fallow:raise`), so the floor merge lives in one place.
 
 ## Recipes
 
@@ -58,14 +68,18 @@ Two different things:
 ## Layout
 
 ```
-skills/code-quality-setup/   the installable skill
+skills/code-quality-setup/   the installable setup skill
   SKILL.md                   the entry point
   RECIPE-CONTRACT.md         the recipe frontmatter and body contract
   references/recipes/        the recipe library
   templates/<id>/            the files each recipe writes
   scripts/                   detect.mjs, plan.mjs, score.mjs, and their schemas
+skills/code-quality-improve/ the installable improvement skill
+  SKILL.md                   the entry point
+  scripts/rank.mjs           the ranking view
+  references/raise.md        the per-gate floor and raise command
 fixtures/                    throwaway projects the detector and recipes are verified against
 .agents/skills/              vendored third-party skills (mattpocock/skills)
 ```
 
-Fixtures live at the repo root, not inside the skill: the skills CLI copies the whole skill directory into every consumer's install, so anything in there ships to every user and churns the lockfile hash.
+Fixtures live at the repo root, not inside a skill: the skills CLI copies the whole skill directory into every consumer's install, so anything in there ships to every user and churns the lockfile hash.
