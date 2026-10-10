@@ -49,7 +49,7 @@ jobs:
       - name: Post or update the drift comment
         if: steps.report.outputs.present == 'true'
         continue-on-error: true
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: code-quality-drift
           path: drift-comment.md
