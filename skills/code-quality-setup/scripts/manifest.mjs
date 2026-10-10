@@ -12,12 +12,18 @@
 //   node scripts/manifest.mjs record [projectDir] --recipe <id> --recipe-hash <hash> \
 //     [--file <path>:<action>:<hash>]... [--skill-version <v>] [--environment <json>] [--applied-at <iso>]
 //   node scripts/manifest.mjs decline [projectDir] --recipe <id> [--applied-at <iso>]
+//   node scripts/manifest.mjs feedback [projectDir] --enable | --disable
 //   node scripts/manifest.mjs canonicalize [projectDir]
 //
 // The schema is unchanged (schemaVersion 1, recipes[], declined[]; PLAN-SCHEMA.md → the manifest
 // hash convention). This file owns only the serialization. `record` and `decline` are idempotent:
 // re-recording a recipe whose content is unchanged rewrites the same bytes, so the manifest is
 // byte-stable across runs.
+//
+// `feedback` is the opt-in for the feedback channel (#71): a top-level boolean, off by default.
+// `--enable` writes `feedback: true`; `--disable` removes the key, so "off" is the absence of the
+// field and a disabled manifest is byte-identical to one that never opted in. The channel itself
+// lives in scripts/feedback.mjs (FEEDBACK-SCHEMA.md); this file only stores the flag.
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -118,6 +124,7 @@ function parseArgs(argv) {
     skillVersion: null,
     environment: null,
     appliedAt: null,
+    feedback: null,
   };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
@@ -128,6 +135,8 @@ function parseArgs(argv) {
     else if (a === "--skill-version") opts.skillVersion = argv[++i];
     else if (a === "--environment") opts.environment = argv[++i];
     else if (a === "--applied-at") opts.appliedAt = argv[++i];
+    else if (a === "--enable") opts.feedback = true;
+    else if (a === "--disable") opts.feedback = false;
     else if (a.startsWith("--")) throw new Error(`unknown option: ${a}`);
     else positional.push(a);
   }
@@ -219,6 +228,17 @@ function decline(doc, opts) {
   return next;
 }
 
+// The feedback channel's opt-in (#71). `--enable` writes `feedback: true`; `--disable` removes the
+// key, so "off" is the absence of the field and a disabled manifest is byte-identical to one that
+// never opted in. Idempotent: enabling twice, or disabling a manifest that never opted in, rewrites
+// the same bytes (the caller's `changed` check then skips the write).
+function setFeedback(doc, enabled) {
+  const next = { ...doc };
+  if (enabled) next.feedback = true;
+  else delete next.feedback;
+  return next;
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -226,7 +246,7 @@ function decline(doc, opts) {
 function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.command === null) {
-    throw new Error("a command is required: record | decline | canonicalize");
+    throw new Error("a command is required: record | decline | feedback | canonicalize");
   }
   const { doc, existed } = loadManifest(opts.projectDir);
 
@@ -238,6 +258,9 @@ function main() {
   } else if (opts.command === "decline") {
     if (opts.recipe === null) throw new Error("decline needs --recipe <id>");
     next = decline(doc, opts);
+  } else if (opts.command === "feedback") {
+    if (opts.feedback === null) throw new Error("feedback needs --enable or --disable");
+    next = setFeedback(doc, opts.feedback);
   } else if (opts.command === "canonicalize") {
     next = doc;
   } else {

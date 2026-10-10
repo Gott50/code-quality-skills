@@ -283,6 +283,10 @@ idempotent — re-recording a recipe whose content is unchanged rewrites the sam
 manifest is byte-stable across runs. Hand-written JSON is not byte-stable, and the formatter gate
 the recipes install fails on it (#34).
 
+The manifest also carries the opt-in `feedback` flag (#71): a top-level boolean, absent = off, set
+by `node scripts/manifest.mjs feedback [projectDir] --enable` and removed by `--disable`. It is not
+part of the drift comparison — see [FEEDBACK-SCHEMA.md](FEEDBACK-SCHEMA.md).
+
 For the drift report to agree, the apply step MUST hash the content the recipe **owns** in each
 file, with the same normalization `plan.mjs` uses:
 
