@@ -41,6 +41,7 @@ Each recipe is one file at `skills/code-quality-setup/references/recipes/<id>.md
 | `stryker-mutation` / `stryker-mutation-vitest` | Stryker mutation gate on pre-push |
 | `fallow-audit` / `fallow-audit-npm` | dead-code and repo-health audit with fallow |
 | `ci-workflow` / `ci-workflow-npm` | the fast gates on every PR, mutation on PRs |
+| `ci-drift` | the skill's drift report as one sticky, non-blocking PR comment |
 | `eslint-prettier` | an existing ESLint + Prettier setup as the lint and format gates |
 | `agent-guidance` | a lean `AGENTS.md` section pointing at `docs/code-quality.md` |
 

@@ -1,0 +1,55 @@
+name: code-quality drift
+
+# Posts the skill's drift report as one sticky, non-blocking comment on every
+# PR. The job never fails a PR: the check's exit code is ignored (drift and a
+# degraded report both exit 1) and the comment step is continue-on-error, so a
+# drift report is a signal, never a gate.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # `--check` prints one JSON document and exits 1 whenever the report is
+      # not clean (drift, or a degraded report with no manifest). The job is
+      # non-blocking, so the exit code is ignored; the JSON on stdout is the
+      # payload. Stdout that is not the JSON document — the unsupported path
+      # prints a sentence and exits 0 — is treated as no report.
+      - name: Render the drift report
+        id: report
+        run: |
+          node .agents/skills/code-quality-setup/scripts/plan.mjs --check > drift.json || true
+          node -e '
+            const fs = require("node:fs");
+            let report = null;
+            try { report = JSON.parse(fs.readFileSync("drift.json", "utf8")); } catch {}
+            const present = report !== null && typeof report.markdown === "string";
+            if (present) fs.writeFileSync("drift-comment.md", report.markdown + "\n");
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, "present=" + present + "\n");
+          '
+
+      # One comment per PR, identified by the `header` marker and updated in
+      # place. Skipped when there is no report.
+      - name: Post or update the drift comment
+        if: steps.report.outputs.present == 'true'
+        continue-on-error: true
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: code-quality-drift
+          path: drift-comment.md
