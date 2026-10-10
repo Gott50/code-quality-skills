@@ -33,7 +33,7 @@ The agent prints the plan, asks once, and applies it. It never improvises the pl
 
 `code-quality-improve` ships one read-only script:
 
-- `scripts/rank.mjs` — reads the artifacts the gates produced and prints the ranked improvement targets: fallow's own `--targets` ranking, then the coverage gaps, lint violations and typecheck errors folded in as additional candidates. A missing artifact is a reported gap, not a crash.
+- `scripts/rank.mjs` — reads the artifacts the gates produced and prints the ranked improvement targets: the repo-owned candidates (coverage, mutation, lint, typecheck) first, then fallow's own `--targets` ranking by effort tier, with the effort and confidence printed for every candidate. A missing artifact is a reported gap, not a crash.
 
 The agent prints the ranking, asks once, and makes one change per pass. The raise step invokes `code-quality-setup`'s `score.mjs --raise` (or the project's `fallow:raise`), so the floor merge lives in one place.
 

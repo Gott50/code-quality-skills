@@ -2,11 +2,16 @@
 // rank.mjs — the code-quality-improve ranking view.
 //
 // Zero dependencies, node builtins only. Reads the artifacts the gates already produced and prints
-// the ranked improvement targets: fallow's own `--targets` ranking first, then the coverage gaps,
-// the mutation gaps, lint violations and typecheck errors folded in as additional candidates. It
-// never runs a gate and
-// never invokes a package manager: the artifacts must already exist. A missing artifact is a
-// reported gap, never a crash.
+// the ranked improvement targets: the coverage gaps, the mutation gaps, lint violations and
+// typecheck errors folded in as candidates, then fallow's own `--targets` ranking. It never runs a
+// gate and never invokes a package manager: the artifacts must already exist. A missing artifact is
+// a reported gap, never a crash.
+//
+// The order is by effort tier, cheap first: the folded-in candidates are repo-owned (the artifact
+// already exists and the fix needs no new harness), so they lead; fallow's targets follow by their
+// own `effort` estimate, and within a tier fallow's own efficiency order (priority ÷ effort) is
+// kept. Every candidate prints its `effort` and `confidence` — `—` where the source carries none.
+// The full rule is in RANK-SCHEMA.md.
 //
 // The readers are this skill's own, not an import from the sibling `code-quality-setup` skill: the
 // skills CLI copies one skill directory per install, so a relative import across skill directories
@@ -21,8 +26,15 @@ import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const BASELINE_NAME = ".code-quality-baseline.json";
+
+// The ranking's sort keys. The folded-in candidates are repo-owned — the artifact already exists and
+// the fix needs no new harness — so they lead (tier 0); fallow's targets follow by their own effort
+// estimate, and a capture that carried no effort sorts last. Confidence breaks an efficiency tie.
+const EFFORT_TIER = { low: 1, medium: 2, high: 3 };
+const CONFIDENCE_RANK = { high: 0, medium: 1, low: 2 };
+const GROUP_ORDER = { coverage: 0, mutation: 1, lint: 2, typecheck: 3 };
 
 // The artifact each source is read from, relative to the project root. The fallow targets are a
 // captured stdout (fallow writes no file of its own), like the score view's captures.
@@ -231,6 +243,34 @@ function uncoveredOf(metrics) {
   return n;
 }
 
+// The effort tier a target sorts in. The folded-in candidates are repo-owned — the artifact already
+// exists and the fix needs no new harness — so they lead (tier 0). fallow's targets follow by their
+// own `effort` estimate; a capture that carried no effort sorts last.
+function effortTier(t) {
+  if (t.source !== "fallow") return 0;
+  return EFFORT_TIER[t.effort] ?? 4;
+}
+
+function confidenceRank(t) {
+  return CONFIDENCE_RANK[t.confidence] ?? 3;
+}
+
+// The ranking: effort tier first (cheap first), then the source's own order — fallow's efficiency
+// (priority ÷ effort) descending with confidence as the tiebreaker, the folded-in groups in their
+// documented order. The sort is stable, so a pair that compares equal keeps its push order: the
+// folded-in groups are already severity-ordered, and fallow's targets are already in fallow's own
+// order. fallow's own rank is printed on every fallow line, so its ranking is not dropped.
+function compareTargets(a, b) {
+  const tier = effortTier(a) - effortTier(b);
+  if (tier !== 0) return tier;
+  if (a.source === "fallow") {
+    const eff = (b.efficiency ?? b.priority ?? 0) - (a.efficiency ?? a.priority ?? 0);
+    if (eff !== 0) return eff;
+    return confidenceRank(a) - confidenceRank(b);
+  }
+  return (GROUP_ORDER[a.source] ?? 9) - (GROUP_ORDER[b.source] ?? 9);
+}
+
 // Read every artifact that exists and build the ranked target list. A missing artifact is a gap
 // (with its capture command), never a crash; a malformed one is a gap too.
 export function collect(root, bases) {
@@ -265,7 +305,7 @@ export function collect(root, bases) {
     try {
       const list = readFallowTargets(readJson(fallowPath));
       sources.fallow = { path: ARTIFACTS.fallowTargets, present: true, count: list.length, error: null };
-      for (const t of list) {
+      list.forEach((t, i) => {
         targets.push({
           source: "fallow",
           path: typeof t?.path === "string" ? t.path : "(unknown)",
@@ -275,12 +315,14 @@ export function collect(root, bases) {
           efficiency: t?.efficiency ?? null,
           effort: t?.effort ?? null,
           confidence: t?.confidence ?? null,
+          // fallow's own rank, so its ranking stays visible after the effort-tier reorder.
+          fallowRank: i + 1,
           category: t?.category ?? null,
           factors: Array.isArray(t?.factors) ? t.factors : [],
           evidence: t?.evidence ?? null,
           actions: Array.isArray(t?.actions) ? t.actions : [],
         });
-      }
+      });
     } catch (err) {
       sources.fallow = { path: ARTIFACTS.fallowTargets, present: true, count: 0, error: String(err?.message ?? err) };
       gaps.push({ source: "fallow", path: ARTIFACTS.fallowTargets, reason: `unreadable: ${err?.message ?? err}` });
@@ -328,6 +370,8 @@ export function collect(root, bases) {
         metrics: r.metrics,
         uncovered: r.uncovered,
         belowFloor: coverageBelowFloor(r.metrics, r.file, baseline.doc),
+        effort: null,
+        confidence: null,
       });
     }
   } else {
@@ -367,6 +411,8 @@ export function collect(root, bases) {
             mutatorName: g.mutatorName,
             detail: `${g.status} ${g.mutatorName ?? "mutant"}`,
             belowFloor,
+            effort: null,
+            confidence: null,
           });
         }
       }
@@ -396,7 +442,7 @@ export function collect(root, bases) {
         error: null,
       };
       for (const [file, c] of rows) {
-        targets.push({ source: "lint", path: file, gate: "lint", detail: `${c} diagnostic(s)`, count: c });
+        targets.push({ source: "lint", path: file, gate: "lint", detail: `${c} diagnostic(s)`, count: c, effort: null, confidence: null });
       }
     } catch (err) {
       sources.lint = { path: ARTIFACTS.oxlint, present: true, count: 0, files: 0, floor: null, error: String(err?.message ?? err) };
@@ -424,7 +470,7 @@ export function collect(root, bases) {
         error: null,
       };
       for (const [file, c] of rows) {
-        targets.push({ source: "typecheck", path: file, gate: "typecheck", detail: `${c} error(s)`, count: c });
+        targets.push({ source: "typecheck", path: file, gate: "typecheck", detail: `${c} error(s)`, count: c, effort: null, confidence: null });
       }
     } catch (err) {
       sources.typecheck = { path: ARTIFACTS.tsc, present: true, count: 0, files: 0, floor: null, error: String(err?.message ?? err) };
@@ -435,8 +481,8 @@ export function collect(root, bases) {
     gaps.push({ source: "typecheck", path: ARTIFACTS.tsc, reason: `absent — capture it with \`${CAPTURE.tsc}\`` });
   }
 
-  // The rank: fallow's targets keep fallow's own order (it is the structured ranking); the
-  // folded-in candidates follow, each group already ordered by severity.
+  // The rank: effort tier first (cheap first), then the source's own order — see compareTargets.
+  targets.sort(compareTargets);
   targets.forEach((t, i) => {
     t.rank = i + 1;
     t.raise = raiseCommand(t.gate, root);
@@ -535,12 +581,18 @@ function evidenceText(ev) {
   return parts.length ? parts.join("; ") : null;
 }
 
+// Every candidate prints its effort and confidence; `—` where the source carries none (the
+// folded-in candidates: coverage, mutation, lint, typecheck).
+function effortConfidence(t) {
+  return `effort ${t.effort ?? "—"}  confidence ${t.confidence ?? "—"}`;
+}
+
 function targetLines(t) {
   const lines = [];
   if (t.source === "fallow") {
     lines.push(
-      `  ${t.rank}. [fallow] ${t.path}   priority ${t.priority}  efficiency ${t.efficiency}  ` +
-        `effort ${t.effort}  confidence ${t.confidence}`,
+      `  ${t.rank}. [fallow] ${t.path}   priority ${t.priority ?? "—"}  efficiency ${t.efficiency ?? "—"}  ` +
+        `${effortConfidence(t)}   fallow #${t.fallowRank}`,
     );
     if (t.detail) lines.push(`     ${t.category} — ${t.detail}`);
     if (t.factors.length) lines.push(`     factors: ${t.factors.map(factorText).join("; ")}`);
@@ -549,13 +601,16 @@ function targetLines(t) {
     if (t.actions.length) lines.push(`     actions: ${t.actions.map((a) => a?.type).filter(Boolean).join("; ")}`);
   } else if (t.source === "coverage") {
     const mark = t.belowFloor ? "   ⚠ below floor" : "";
-    lines.push(`  ${t.rank}. [coverage] ${t.path}   ${coverageText(t.metrics)}   uncovered ${t.uncovered}${mark}`);
+    lines.push(
+      `  ${t.rank}. [coverage] ${t.path}   ${coverageText(t.metrics)}   uncovered ${t.uncovered}   ` +
+        `${effortConfidence(t)}${mark}`,
+    );
   } else if (t.source === "mutation") {
     const mark = t.belowFloor ? "   ⚠ below floor" : "";
     const loc = t.line == null ? t.path : `${t.path}:${t.line}`;
-    lines.push(`  ${t.rank}. [mutation] ${loc}   ${t.detail}${mark}`);
+    lines.push(`  ${t.rank}. [mutation] ${loc}   ${t.detail}   ${effortConfidence(t)}${mark}`);
   } else {
-    lines.push(`  ${t.rank}. [${t.source}] ${t.path}   ${t.detail}`);
+    lines.push(`  ${t.rank}. [${t.source}] ${t.path}   ${t.detail}   ${effortConfidence(t)}`);
   }
   lines.push(`     raise: ${t.raise}`);
   return lines;
