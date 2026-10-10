@@ -5,17 +5,22 @@
  * Reads the pre-push hook stdin (one line per pushed ref:
  * `<local ref> <local sha> <remote ref> <remote sha>`), diffs the pushed
  * commits against the remote tip, and runs Stryker scoped to ONLY the changed
- * source files (via --mutate) with --incremental caching. Any survivor or
- * no-coverage file fails the push.
+ * source files (via --mutate) with --incremental caching. A changed file
+ * below its mutation floor fails the push.
  *
  * Scoping to changed files keeps the gate practical: a push touching one file
  * mutates that file, not the whole area. Incremental mode reuses cached
  * results for unchanged files, so retry loops after a failed push are fast.
  *
  * The Stryker exit code only enforces the mutation score, and Stryker counts
- * timed-out mutants as killed, so a 100% run can still contain timeouts. The
- * gate therefore also parses each area's report JSON and fails on any
- * timed-out, survived, or no-coverage mutant.
+ * timed-out mutants as killed, so a clean-score run can still contain
+ * timeouts. The gate therefore also parses each area's report JSON and
+ * enforces the per-file mutation floor from the committed baseline
+ * `.code-quality-baseline.json` (written by the skill's `score.mjs --raise`):
+ * a recorded file must meet its exact `{killed, total}` fraction
+ * (cross-multiplied, so no float rounding creeps in), an unrecorded file must
+ * meet `gates.mutation.global`, and a timed-out mutant always fails whatever
+ * the floor. With no baseline every floor is 100% — the greenfield wall.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync } from "node:fs";
@@ -24,12 +29,47 @@ import { pathToFileURL } from "node:url";
 
 const ZERO_SHA = "0000000000000000000000000000000000000000";
 
-/** Statuses that must be zero for a clean push. */
-const BAD_STATUSES = {
-  NoCoverage: true,
-  Survived: true,
-  Timeout: true,
-} as const satisfies Record<string, boolean>;
+/** An exact fraction, as the baseline records it — never a rounded ratio. */
+interface Frac {
+  killed: number;
+  total: number;
+}
+
+/** The greenfield floor: 100%. */
+const FULL: Frac = { killed: 1, total: 1 };
+
+/** The baseline's mutation floors: `global` for unrecorded files, `files` per file. */
+interface Floors {
+  files: Record<string, Frac>;
+  global: Frac;
+}
+
+// Read once at startup. An unreadable baseline fails the gate — a floor file
+// that cannot be read must not silently become 100%.
+function readFloors(): Floors {
+  const path = resolve(ROOT, ".code-quality-baseline.json");
+  if (!existsSync(path)) return { files: {}, global: FULL };
+  try {
+    // SAFETY: the baseline is JSON written by score.mjs; only the mutation
+    // gate's `global` fraction and `files` map are read.
+    const doc = JSON.parse(readFileSync(path, "utf8")) as {
+      gates?: { mutation?: { files?: Record<string, Frac>; global?: Frac } };
+    };
+    const mutation = doc.gates?.mutation;
+    return { files: mutation?.files ?? {}, global: mutation?.global ?? FULL };
+  } catch (err) {
+    console.error(`[mutation-gate] baseline ${path} is unreadable: ${err}`);
+    process.exit(1);
+  }
+}
+
+/** The floor for one file: its own if the baseline records it, else global. */
+function floorOf(fileName: string, areaPrefix: string): Frac {
+  // The report's keys are relative to the area the config ran in (the member
+  // directory for a member config), the baseline's keys to the workspace
+  // root, so the area prefix turns one into the other.
+  return FLOORS.files[`${areaPrefix}${fileName}`] ?? FLOORS.files[fileName] ?? FLOORS.global;
+}
 
 const FULL_CONFIG = "stryker.conf.mjs";
 
@@ -38,6 +78,10 @@ const FULL_CONFIG = "stryker.conf.mjs";
 // the report and incremental cache stay rooted here, where `.gitignore` covers
 // them.
 const ROOT = process.cwd();
+
+// The mutation floors, read once at startup. ROOT must be initialized first:
+// the baseline sits at the workspace root the gate was invoked from.
+const FLOORS = readFloors();
 
 // The Stryker CLI, run through whichever package manager the project uses:
 // `bunx` under Bun, `npx` under npm and pnpm. Derived from the lockfile — the
@@ -65,34 +109,41 @@ function areaOf(config: string): string {
 const REPORT_FILE = "reports/mutation/report.json";
 
 /**
- * Count bad-status mutants for the changed files in a Stryker report.
+ * Per-file mutation levels for the changed files in a Stryker report:
+ * `killed` counts `Killed` mutants only, `total` every mutant in the file,
+ * and `timedOut` the `Timeout` ones (which Stryker's own score counts as
+ * killed).
  *
  * With --incremental, Stryker re-emits cached files from the incremental file
  * into the report even when they are not part of the current --mutate set, so
- * counts must be scoped to the pushed files; a cached survivor from a file
+ * levels must be scoped to the pushed files; a cached survivor from a file
  * that is not being pushed must not fail the push.
  *
  * An empty changedFiles set matches every file in the report. The full-suite
  * fallback (new branch with no merge-base) runs Stryker over the whole repo
  * and passes an empty set, so it must still be verified rather than skipped.
  */
-function countMutantStatuses(reportFile: string, changedFiles: Set<string>): Map<string, number> {
-  const counts = new Map<string, number>();
-  if (!existsSync(reportFile)) return counts;
+function fileLevels(
+  reportFile: string,
+  changedFiles: Set<string>,
+): Map<string, { killed: number; timedOut: number; total: number }> {
+  const levels = new Map<string, { killed: number; timedOut: number; total: number }>();
+  if (!existsSync(reportFile)) return levels;
   // SAFETY: Stryker's jsonReporter writes files[].mutants[].status as a string
   // enum; other report fields are not read by this gate.
   const report = JSON.parse(readFileSync(reportFile, "utf8")) as {
-    files?: Record<string, { mutants?: Array<{ status: string }> }>;
+    files?: Record<string, { mutants?: Array<{ status?: string }> }>;
   };
   for (const [fileName, file] of Object.entries(report.files ?? {})) {
     if (changedFiles.size > 0 && !changedFiles.has(fileName)) continue;
-    for (const mutant of file.mutants ?? []) {
-      if (Object.hasOwn(BAD_STATUSES, mutant.status)) {
-        counts.set(mutant.status, (counts.get(mutant.status) ?? 0) + 1);
-      }
-    }
+    const mutants = file.mutants ?? [];
+    levels.set(fileName, {
+      killed: mutants.filter((m) => m.status === "Killed").length,
+      timedOut: mutants.filter((m) => m.status === "Timeout").length,
+      total: mutants.length,
+    });
   }
-  return counts;
+  return levels;
 }
 
 function git(args: string[]): string[] {
@@ -230,12 +281,34 @@ function runStryker(config: string, files: string[]): boolean {
 }
 
 /**
+ * A missing report fails closed — unless Stryker's own output confirms a
+ * genuinely zero-mutant run. Stryker writes no report when it instruments
+ * zero mutants (e.g. a push touching only type-only files); any other count
+ * (or unparseable output) must not be misclassified as a clean pass. Anchor
+ * on the instrumenter's own line ("Instrumented <N> source file(s) with <M>
+ * mutant(s)") instead of a bare "with N mutant" phrase, so progress lines or
+ * other interleaved output cannot match by noise.
+ */
+function reportMissing(config: string, reportFile: string, stdout: string): boolean {
+  const instrumented = stdout.match(/Instrumented \d+ source file\(s\) with (\d+) mutant/);
+  if (instrumented && instrumented[1] === "0") {
+    console.log(`\n[mutation-gate] ${config}: no mutants instrumented, nothing to verify`);
+    return true;
+  }
+  console.error(
+    `\n[mutation-gate] ${config}: report ${reportFile} missing after run; ` +
+      `cannot verify the mutation floors.`,
+  );
+  return false;
+}
+
+/**
  * Verify a completed Stryker run's report. The exit code only enforces the
- * mutation score, and Stryker counts timed-out mutants as killed, so a 100%
- * run can still contain timeouts. Fail on any timed-out, survived, or
- * no-coverage mutant among the pushed files in the report. Changed files
- * absent from the report have zero mutants (or were deleted), so there is
- * nothing to verify for them.
+ * mutation score, and Stryker counts timed-out mutants as killed, so a
+ * clean-score run can still contain timeouts. Enforce the per-file mutation
+ * floor from the baseline for the pushed files in the report — a timed-out
+ * mutant fails whatever the floor. Changed files absent from the report have
+ * zero mutants (or were deleted), so there is nothing to verify for them.
  */
 function verifyReport(
   config: string,
@@ -243,33 +316,27 @@ function verifyReport(
   stdout: string,
   changedFiles: Set<string>,
 ): boolean {
-  if (!existsSync(reportFile)) {
-    // Stryker writes no report when it instruments zero mutants (e.g. a push
-    // touching only type-only files). Confirm the instrumented count from its
-    // own output is genuinely 0 before passing; a missing report with any
-    // other count (or unparseable output) fails closed so a timed-out or
-    // interrupted run is never misclassified as a clean pass.
-    // Anchor on the instrumenter's own line ("Instrumented <N> source
-    // file(s) with <M> mutant(s)") instead of a bare "with N mutant" phrase,
-    // so progress lines or other interleaved output cannot match by noise.
-    const instrumented = stdout.match(/Instrumented \d+ source file\(s\) with (\d+) mutant/);
-    if (instrumented && instrumented[1] === "0") {
-      console.log(`\n[mutation-gate] ${config}: no mutants instrumented, nothing to verify`);
-      return true;
+  // The area prefix turns the report's area-relative keys into the baseline's
+  // workspace-root-relative ones (the member directory for a member config).
+  const areaPrefix = AREA_CONFIGS.find(([, c]) => c === config)?.[0] ?? "";
+  if (!existsSync(reportFile)) return reportMissing(config, reportFile, stdout);
+  const failures: string[] = [];
+  for (const [fileName, level] of fileLevels(reportFile, changedFiles)) {
+    if (level.timedOut > 0) {
+      failures.push(
+        `${fileName}: ${level.timedOut} timed-out mutant(s) — timeouts fail whatever the floor`,
+      );
     }
-    console.error(
-      `\n[mutation-gate] ${config}: report ${reportFile} missing after run; ` +
-        `cannot verify 0 Timeout / 0 Survived / 0 NoCoverage.`,
-    );
-    return false;
+    const floor = floorOf(fileName, areaPrefix);
+    if (level.total > 0 && level.killed * floor.total < floor.killed * level.total) {
+      failures.push(
+        `${fileName}: ${level.killed}/${level.total} killed — floor ${floor.killed}/${floor.total}`,
+      );
+    }
   }
-  const bad = countMutantStatuses(reportFile, changedFiles);
-  if (bad.size > 0) {
-    const detail = [...bad.entries()].map(([s, n]) => `${n} ${s}`).join(", ");
-    console.error(
-      `\n[mutation-gate] ${config}: report ${reportFile} has ${detail}; ` +
-        `expected 0 Timeout, 0 Survived, 0 NoCoverage.`,
-    );
+  if (failures.length > 0) {
+    console.error(`\n[mutation-gate] ${config}: report ${reportFile}:`);
+    for (const failure of failures) console.error(`  - ${failure}`);
     return false;
   }
   return true;
@@ -326,10 +393,8 @@ for (const [config, files] of scope) {
 
 if (failed) {
   console.error(
-    "\n[mutation-gate] FAILED: mutation testing found timed-out, survived, or uncovered mutants. Fix them before pushing.",
+    "\n[mutation-gate] FAILED: mutation testing found a file below its floor, or a timed-out mutant. Fix them before pushing.",
   );
   process.exit(1);
 }
-console.log(
-  "\n[mutation-gate] OK: all changed files fully mutation tested (0 timed out, 0 survived, 0 no-coverage)",
-);
+console.log("\n[mutation-gate] OK: every changed file meets its mutation floor (0 timed out)");

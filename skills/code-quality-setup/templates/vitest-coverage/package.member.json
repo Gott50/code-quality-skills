@@ -1,5 +1,5 @@
 {
   "scripts": {
-    "test": "vitest run --coverage"
+    "test": "vitest run --coverage && node {{root}}/scripts/coverage-gate.mjs --baseline {{root}}/.code-quality-baseline.json"
   }
 }

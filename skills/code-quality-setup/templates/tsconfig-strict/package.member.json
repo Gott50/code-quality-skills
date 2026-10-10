@@ -1,5 +1,5 @@
 {
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "bun {{root}}/scripts/typecheck-gate.mjs"
   }
 }

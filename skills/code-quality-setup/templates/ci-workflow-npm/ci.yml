@@ -41,11 +41,13 @@ jobs:
       - name: Format check
         run: npm run format:check
 
-      # `npm run test` carries the 100% per-file coverage gate.
+      # `npm run test` carries the per-file coverage gate, floored by the
+      # committed baseline (100% when there is none).
       - name: Test with the coverage gate
         run: npm run test
 
-  # Mutation gate — enforces 0 Timeout / 0 Survived / 0 NoCoverage mutants on
+  # Mutation gate — enforces the per-file mutation floors from the committed
+  # baseline (0 Timeout / 0 Survived / 0 NoCoverage when there is none) on
   # the PR's changed source files. Mirrors the pre-push hook so the strongest
   # quality gate is enforced on PRs, not just local pushes.
   mutation:

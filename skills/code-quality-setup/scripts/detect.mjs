@@ -19,6 +19,18 @@ const SCHEMA_VERSION = 1;
 const SKILL_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const RECIPES_DIR = join(SKILL_DIR, "references", "recipes");
 
+// The gates a recipe's gate entry may name in `floor:` (RECIPE-CONTRACT.md →
+// "`floor` — the gate's ratchet"): the four unified-baseline gates, or
+// fallow's own two. A static string-keyed membership table.
+const FLOOR_GATES = {
+  "fallow-dead-code": true,
+  "fallow-health": true,
+  coverage: true,
+  lint: true,
+  mutation: true,
+  typecheck: true,
+};
+
 // ---------------------------------------------------------------------------
 // 1. Strict-subset frontmatter reader (RECIPE-CONTRACT.md → "Reader rules")
 // ---------------------------------------------------------------------------
@@ -153,6 +165,14 @@ function loadRecipes() {
       const fm = parseFrontmatter(text, label);
       if (fm.id !== stem) throw new Error(`${label}: id "${fm.id}" must equal the filename stem`);
       if (!/^[a-z][a-z0-9-]*$/.test(fm.id)) throw new Error(`${label}: id "${fm.id}" is not kebab-case`);
+      // A gate's `floor` names the baseline gate its level is floored by;
+      // anything else is a frontmatter rule violation, not a typo to run
+      // with.
+      for (const gate of fm.gates ?? []) {
+        if (gate.floor != null && !Object.hasOwn(FLOOR_GATES, gate.floor)) {
+          throw new Error(`${label}: gate "${gate.id}" floor "${gate.floor}" is not a known floor gate`);
+        }
+      }
       const body = text.slice(text.indexOf("\n---", 3) + 4);
       return {
         id: fm.id,
