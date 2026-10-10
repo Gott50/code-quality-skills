@@ -66,4 +66,4 @@ The filesystem is the source of truth; `.code-quality.json` is an optimization. 
 
 - [RECIPE-CONTRACT.md](RECIPE-CONTRACT.md) — the recipe frontmatter and body contract.
 - [references/recipes/](references/recipes/) — the recipe library, one file per recipe.
-- [scripts/DETECT-SCHEMA.md](scripts/DETECT-SCHEMA.md), [scripts/PLAN-SCHEMA.md](scripts/PLAN-SCHEMA.md) — the two scripts' output contracts.
+- [scripts/DETECT-SCHEMA.md](scripts/DETECT-SCHEMA.md), [scripts/PLAN-SCHEMA.md](scripts/PLAN-SCHEMA.md), [scripts/SCORE-SCHEMA.md](scripts/SCORE-SCHEMA.md) — the scripts' output contracts.
