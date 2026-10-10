@@ -93,8 +93,20 @@ The filesystem is the source of truth; `.code-quality.json` is an optimization. 
 - `--diff [path]` — unified diffs on demand.
 - `--check` — print the machine-readable drift report (one JSON document: the per-recipe verdicts, the degraded note, and the rendered `## Drift (manifest)` section) instead of the plan, and exit 0 only when it is clean. The `ci-drift` workflow's input ([PLAN-SCHEMA.md](scripts/PLAN-SCHEMA.md) → `--check`).
 
+## 6. Feedback (opt-in)
+
+When a gate fails for a reason the plan did not predict — a detector hard error, a malformed recipe, a `verify` that fails unexpectedly — or the user asks, the skill can file a redacted report to this repo. It is **off** unless `.code-quality.json` carries `feedback: true`:
+
+```
+node scripts/manifest.mjs feedback [projectDir] --enable
+node scripts/feedback.mjs [projectDir] --recipe <id> --error <text>
+```
+
+`feedback.mjs` prints the redacted report and the filing path; it never sends anything — the human files it. See [references/feedback.md](references/feedback.md) and [scripts/FEEDBACK-SCHEMA.md](scripts/FEEDBACK-SCHEMA.md).
+
 ## Reference
 
 - [RECIPE-CONTRACT.md](RECIPE-CONTRACT.md) — the recipe frontmatter and body contract.
 - [references/recipes/](references/recipes/) — the recipe library, one file per recipe.
-- [scripts/DETECT-SCHEMA.md](scripts/DETECT-SCHEMA.md), [scripts/PLAN-SCHEMA.md](scripts/PLAN-SCHEMA.md), [scripts/SCORE-SCHEMA.md](scripts/SCORE-SCHEMA.md) — the scripts' output contracts.
+- [references/feedback.md](references/feedback.md) — the opt-in feedback channel.
+- [scripts/DETECT-SCHEMA.md](scripts/DETECT-SCHEMA.md), [scripts/PLAN-SCHEMA.md](scripts/PLAN-SCHEMA.md), [scripts/SCORE-SCHEMA.md](scripts/SCORE-SCHEMA.md), [scripts/FEEDBACK-SCHEMA.md](scripts/FEEDBACK-SCHEMA.md) — the scripts' output contracts.
