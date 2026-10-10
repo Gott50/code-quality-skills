@@ -1,10 +1,10 @@
 {
   "scripts": {
     "fallow": "bun scripts/lcov-to-istanbul.ts --lcov coverage/lcov.info --out coverage/coverage-final.json && fallow health --coverage coverage/coverage-final.json --report-only",
-    "fallow:audit": "sh -c 'if test -f .fallow-dead-code-baseline.json; then fallow audit --format json --quiet --explain --gate-marker agent --dead-code-baseline .fallow-dead-code-baseline.json; else fallow audit --format json --quiet --explain --gate-marker agent; fi'",
+    "fallow:audit": "sh -c 'set --; test -f .fallow-dead-code-baseline.json && set -- \"$@\" --dead-code-baseline .fallow-dead-code-baseline.json; test -f .fallow-health-baseline.json && set -- \"$@\" --health-baseline .fallow-health-baseline.json; fallow audit --format json --quiet --explain --gate-marker agent \"$@\"'",
     "fallow:coverage": "bun run test && bun run fallow",
     "fallow:ratchet": "sh -c 'bun scripts/lcov-to-istanbul.ts --lcov coverage/lcov.info --out coverage/coverage-final.json && if test -f .fallow-health-baseline.json; then fallow health --coverage coverage/coverage-final.json --baseline .fallow-health-baseline.json; else fallow health --coverage coverage/coverage-final.json --report-only; fi'",
-    "fallow:raise": "sh -c 'bun scripts/lcov-to-istanbul.ts --lcov coverage/lcov.info --out coverage/coverage-final.json; fallow health --coverage coverage/coverage-final.json --report-only --save-baseline .fallow-health-baseline.json; fallow dead-code --save-baseline .fallow-dead-code-baseline.json; test -f .fallow-health-baseline.json && test -f .fallow-dead-code-baseline.json'"
+    "fallow:raise": "sh -c 'bun scripts/lcov-to-istanbul.ts --lcov coverage/lcov.info --out coverage/coverage-final.json; fallow health --coverage coverage/coverage-final.json --report-only --save-baseline .fallow-health-baseline.json; fallow dead-code --save-baseline .fallow-dead-code-baseline.json; test -f .fallow-health-baseline.json && test -f .fallow-dead-code-baseline.json && if command -v biome >/dev/null 2>&1; then biome check --write --unsafe --linter-enabled=false .fallow-health-baseline.json .fallow-dead-code-baseline.json; elif command -v prettier >/dev/null 2>&1; then prettier --write .fallow-health-baseline.json .fallow-dead-code-baseline.json; fi'"
   },
   "devDependencies": {
     "fallow": "3.19.0"

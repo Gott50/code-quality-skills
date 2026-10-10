@@ -17,7 +17,7 @@ substitution keys it renders. This file is the contract for the plan text.
 |---|---|
 | `[projectDir]` | the project to plan for (default `.`) |
 | `--recipe <id>` | narrow the selection to one recipe. `when` is never bypassed: an id that is not selected, or one that `requires` another recipe, plans nothing. `conflicts` still surface. |
-| `--force` | overrides a **collision** (the tool collisions in section 5) or a **loss** (a `create` drift that would drop the repo's extra content, section 7), never a failed `when`. |
+| `--force` | overrides a **collision** (the tool collisions in section 6) or a **loss** (a `create` drift that would drop the repo's extra content, section 8), never a failed `when` and never an **update** (a `create` drift the apply merges, section 9). |
 | `--diff` | print unified diffs for every file, not only the merge/patch/collision ones. |
 | `--diff <path>` | print only the file at `<path>` and its diff. |
 | `--check` | print the machine-readable drift report (one JSON document) instead of the plan, and exit 0 only when it is clean. See `--check` below. |
@@ -91,7 +91,7 @@ The first line after the title is the state:
 
 | State | Output |
 |---|---|
-| a plan exists | `**Plan ready** — N recipe(s) selected.` then the sections below; when any block is a duplicate, the line continues ` M block(s) already present — see Pre-existing content.`; when any `create` drift is a loss, it continues ` K file(s) would lose repo content — see Losses.` |
+| a plan exists | `**Plan ready** — N recipe(s) selected.` then the sections below; when any block is a duplicate, the line continues ` M block(s) already present — see Pre-existing content.`; when any `create` drift is a loss, it continues ` K file(s) would lose repo content — see Losses.`; when any `create` drift is an update, it continues ` U file(s) carry repo additions — see Updates.` |
 | already set up | `**Already set up** — N recipe(s) applied, every file intact.` (a manifest is present and every selected recipe is `intact`) |
 | nothing applies (`selection: []`) | `**Nothing applies.**` then each recipe's first failing `reason.detail`; when the blocking reason is the package-manager allowlist, the fix is named — `Run \`bun install\` (or add a \`packageManager\` field to package.json), then re-run.` when no manager is detected, or `package manager \`<name>\` is not covered by any recipe` when one is detected but off the allowlist |
 | unsupported (no TypeScript) | `Unsupported: no TypeScript detected. Nothing to plan.` and stop |
@@ -115,29 +115,40 @@ The first line after the title is the state:
 6. **Collisions** — the detector's `collisions` for the selected recipes, each with its evidence;
    `--force` marks them overridden.
 7. **Files (phase 1 — writes, priority order)** — every file to be written: `path (action, scope) — verdict`.
-   A `merge`/`patch`/collision/loss shows its unified diff inline; a `create` is `new` / `no-op` /
-   `drift` / `loss`. `--diff` adds the rest.
+   A `merge`/`patch`/collision/loss/update shows its unified diff inline; a `create` is `new` /
+   `no-op` / `drift` / `update` / `loss`. `--diff` adds the rest.
 8. **Losses (create drift — the repo's extra content would be dropped)** — every `create` target the
    repo has customized (verdict `loss`), one `- \`<path>\` (<recipe>) — N key(s)/line(s) the template
    lacks:` line each followed by the lost items as `  - \`<item>\`` bullets, or `_None._`. The repo's
    file carries content the template does not, so overwriting it drops that content (#36). The agent
    MUST NOT overwrite these files without an explicit override (`--force`); `--force` marks them
    overridden (SKILL.md → Apply).
-9. **Pre-existing content (duplicate blocks)** — every marker `merge` block the target file already
+9. **Updates (create drift — the library's content is merged in, the repo's additions kept)** — every
+   `create` target the repo has extended with **no manifest** (verdict `update`), one
+   `- \`<path>\` (<recipe>) — N key(s)/line(s) the template lacks:` line each followed by the
+   additions as `  - \`<item>\`` bullets. The section is rendered **only when there is an update**, so
+   a repo with a manifest — where the same file reads `loss` — is unchanged. The repo's file carries
+   content the template does not, but with no manifest the plan cannot tell the repo's own additions
+   from the skill's own earlier install; the filesystem is the source of truth (ADR 0001), so the
+   verdict is `update`: the library's content is the target and the repo's additions are preserved by
+   a merge (#90). The agent writes the library's content and re-applies the additions — it MUST NOT
+   overwrite the file verbatim (that drops them) and MUST NOT skip it (that leaves the gate
+   uninstalled). No `--force` is needed (SKILL.md → Apply).
+10. **Pre-existing content (duplicate blocks)** — every marker `merge` block the target file already
    carries without a marker (verdict `duplicate`), one `- \`<path>\` (<recipe>) — <evidence>` line
    each, or `_None._`. The hand-set-up repo (#35): the harness is there, the manifest is not, so the
    marker is absent and the block reads `new` while the file already runs the gate. The agent MUST
    NOT append these blocks (SKILL.md → Apply).
-10. **Commands (phase 2 — commands, priority order)** — the selected recipes' `commands` with
+11. **Commands (phase 2 — commands, priority order)** — the selected recipes' `commands` with
    `showInPlan !== false`, in selection order: `N. [<recipe>] \`<run>\` (<scope> → <dirs>)`.
-11. **Gates and verify (phase 3 — verify, priority order)** — per selected recipe, its `gates` and its
+12. **Gates and verify (phase 3 — verify, priority order)** — per selected recipe, its `gates` and its
    `verify` entries: `- gate \`<id>\` (<scope> → <dirs>)` (or the literal `run` in place of the gate).
    A literal `run` that greps for a skipped duplicate block's marker is rendered with that grep
    replaced by `true` (#49): the plan has already proven the block's content is present (the
    `duplicate` verdict), so the verify passes and the recipe is recorded. The agent runs the verify
    **as rendered**, not as the recipe's frontmatter states it (RECIPE-CONTRACT.md → `verify`).
-12. **Warnings** — one `{ id, error }` line per unreadable recipe (or unreadable template).
-13. **Drift (manifest)** — the per-recipe state from the manifest, or a degraded note. The state is
+13. **Warnings** — one `{ id, error }` line per unreadable recipe (or unreadable template).
+14. **Drift (manifest)** — the per-recipe state from the manifest, or a degraded note. The state is
    the worst file verdict (`missing` > `loss` > `drifted` > `update` > `intact`), so a recipe whose
    only non-intact file is a skipped `create` loss reads `loss`, not `drifted` (#46).
 
@@ -208,7 +219,7 @@ Without a manifest, from the filesystem alone:
 
 | Action | Verdicts |
 |---|---|
-| `create` | `new` (absent) · `no-op` (byte-identical) · `drift` (present, different, the repo is a subset of the template) · `loss` (present, different, the repo carries content the template does not — see below) |
+| `create` | `new` (absent) · `no-op` (byte-identical) · `drift` (present, different, the repo is a subset of the template) · `update` (present, different, the repo carries content the template does not, **no manifest** — see below) · `loss` (present, different, the repo carries content the template does not, **manifest present** — see below) |
 | `merge` (markers) | `new` (no block) · `no-op` (identical block) · `replace` (different block) · `duplicate` (no block, but the file already carries the block's content — see below) |
 | `merge` (JSON) | `new` (absent) · `add` (missing keys) · `no-op` · `collision` (an existing value would change) |
 | `patch` | `new` (absent) · `no-op` (the after-state already holds — see below) · `patch` (always shown; the detector cannot verify it) |
@@ -232,8 +243,8 @@ plan shows the diff and the lost items (SKILL.md → Apply). A `create` file the
 it is not a loss.
 
 `duplicate` is the hand-set-up repo (#35): the recipe's marker is absent, so the block reads `new`,
-but the target file already carries what the block contributes. Two signals, both requiring the
-**whole** block to be present — a partial match is not a duplicate (repo-hygiene's `.gitignore`
+but the target file already carries what the block contributes. Three signals — the first two require
+the **whole** block to be present, so a partial match is not a duplicate (repo-hygiene's `.gitignore`
 block adds `.npm/`, `dist/`, `*.tsbuildinfo`, `.env`, `.env.local` and `*.log`; a repo that already
 ignores `dist/` but not the rest is a partial match, so the block still applies):
 
@@ -241,7 +252,14 @@ ignores `dist/` but not the rest is a partial match, so the block still applies)
   normalizing whitespace (a hand-written hook aligns its `||` with spaces);
 - **command presence** — the payload is a documentation section (it carries a heading) and every
   gate command it names already appears in the file (a hand-written `AGENTS.md` documents the same
-  gates in a different shape — bullets and arrows, not the rendered table).
+  gates in a different shape — bullets and arrows, not the rendered table);
+- **equivalent command** (#94) — the payload's gate command is already run by the file under a
+  different command. A repo that wired the same gate itself — its own `scripts/biome-staged.ts`
+  behind `bun run biome:staged` — runs Biome's staged format, but the line is not the block's line,
+  so line presence misses it and the block would be appended, running the gate twice. The block's
+  gate command names a tool (`bunx @biomejs/biome check --staged …`); the file already runs the gate
+  when it names the same tool binary and the same mode word. Both must match, so a repo that runs
+  the tool in another mode (`biome:lint`) is not a duplicate.
 
 The apply MUST NOT append a `duplicate` block (SKILL.md → Apply).
 
@@ -267,6 +285,12 @@ for a skipped file), so the hash comparison alone cannot tell the repo's own con
 hand-edit of the skill's. The content comparison can — the repo's file carries content the template
 does not — so the drift report reads `loss`, the same verdict the Files section shows. A file the
 manifest records as `update` is the skill's own recorded content, so it stays `update`, not `loss`.
+A `create` the apply left as a **merge** (#90) is `intact`, not `update`: the apply recorded the file
+it wrote (the library's content plus the repo's additions — see the hash convention below), so the
+recorded hash matches the file and the file still carries every path/line the current template owns.
+The recipe's owned content is present and the extras are the repo's, so a re-run must not overwrite
+the file with the bare template. An old manifest recorded the bare template's hash, so the recorded
+hash does not match the merged file and this branch never fires for it.
 Per recipe the worst file verdict wins (`missing` > `loss` > `drifted` > `update` > `intact`); a
 recipe the manifest does not know is `new`, one the library no longer selects is `stale`, one the
 user declined is `declined`. A manifest that is absent, corrupt, or from another `schemaVersion`
@@ -292,7 +316,13 @@ file, with the same normalization `plan.mjs` uses:
 
 - `create` — the whole rendered file. A `create` the apply skipped as a `loss` is recorded the same
   way — the rendered template's hash, what the apply would have written — so the drift report can
-  still tell the repo's own content from a hand-edit (#46).
+  still tell the repo's own content from a hand-edit (#46). A `create` the apply left as a **merge**
+  (the `update` verdict, #90) records **the file the apply wrote** — the library's content plus the
+  repo's additions — not the bare template: the next run then reads `intact` (the recorded file still
+  carries every path/line the current template owns, so the recipe's owned content is present and the
+  extras are the repo's), instead of `loss` forever (the bare template's hash never matches the
+  merged file) or `update` (which would overwrite the file with the bare template and drop the
+  additions).
 - `merge` (markers) — the marker-delimited block, with trailing newlines stripped.
 - `merge` (JSON) — the fragment's named leaves, canonicalized with `JSON.stringify`.
 - `patch` — the template's declared keys, canonicalized: sorted by dotted path, one per line, each

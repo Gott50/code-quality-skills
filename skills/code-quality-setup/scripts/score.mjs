@@ -395,16 +395,37 @@ function versionMismatches(recorded, current) {
 // Versions
 // ---------------------------------------------------------------------------
 
+// The runtime version a `.bun-version` / `.node-version` file pins: the file's first non-empty
+// line, trimmed, with a leading `v` dropped so it reads like the `packageManager` field's version.
+// The repo-hygiene recipes write these files (`.bun-version` for bun, `.node-version` for
+// npm/pnpm) and CI reads them through `bun-version-file` / `node-version-file`, so they are the
+// runtime the recipes pin (#96). `null` when the file is absent, empty or unreadable.
+function readVersionFile(root, name) {
+  const path = join(root, name);
+  if (!existsSync(path)) return null;
+  try {
+    const line = readFileSync(path, "utf8")
+      .split("\n")
+      .map((l) => l.trim())
+      .find((l) => l.length > 0);
+    return line ? line.replace(/^v/, "") : null;
+  } catch {
+    return null;
+  }
+}
+
 // The declared version of each tool, from the project's package.json (dependencies or
-// devDependencies); bun from the `packageManager` field. `null` when the project does not declare
-// it. The skill's own version is a constant — the skill ships no package.json.
+// devDependencies); the runtime from the `packageManager` field, else the `.bun-version` /
+// `.node-version` file the repo-hygiene recipes write (#96). `null` when the project does not
+// declare it. The skill's own version is a constant — the skill ships no package.json.
 function readPackageVersions(root) {
   const pkg = tryReadJson(join(root, "package.json")) ?? {};
   const deps = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
   const pm = typeof pkg.packageManager === "string" ? pkg.packageManager : "";
   return {
     skill: SKILL_VERSION,
-    bun: pm.startsWith("bun@") ? pm.slice(4) : null,
+    bun: pm.startsWith("bun@") ? pm.slice(4) : readVersionFile(root, ".bun-version"),
+    node: readVersionFile(root, ".node-version"),
     vitest: deps.vitest ?? null,
     stryker: deps["@stryker-mutator/core"] ?? null,
     oxlint: deps.oxlint ?? null,

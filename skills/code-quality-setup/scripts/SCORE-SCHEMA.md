@@ -100,6 +100,7 @@ its own format, per [#77](https://github.com/Gott50/code-quality-skills/issues/7
   "versions": {
     "skill": "1",
     "bun": "1.4.2",
+    "node": null,
     "vitest": "^5.0.3",
     "stryker": "^10.0.0",
     "oxlint": "^1.87.0",
@@ -168,9 +169,14 @@ A gate with nothing to measure (`found`/`total` 0) is 100%.
 ## Versions
 
 The `versions` block records the declared version of each tool, read from the project's
-`package.json` (`dependencies` or `devDependencies`); `bun` comes from the `packageManager` field
-(`bun@1.4.2` → `1.4.2`). `skill` is the skill's own version constant — the skill ships no
-`package.json`. A tool the project does not declare is `null`.
+`package.json` (`dependencies` or `devDependencies`). The runtime is read from the pin the project
+declares: `bun` from the `packageManager` field (`bun@1.4.2` → `1.4.2`), else the `.bun-version`
+file the `repo-hygiene` recipe writes; `node` from the `.node-version` file the `repo-hygiene-npm`
+recipe writes. A pin file's version is its first non-empty line, trimmed, with a leading `v`
+dropped. The recipes pin the runtime in these files and CI reads them through `bun-version-file` /
+`node-version-file`, so the recorded versions cover the runtime the recipes pin
+([#96](https://github.com/Gott50/code-quality-skills/issues/96)). `skill` is the skill's own version
+constant — the skill ships no `package.json`. A tool the project does not declare is `null`.
 
 A recorded tool version changing **invalidates the baseline** (#62): the plan asks to re-measure, so
 the verdict is `baseline stale` and the run exits 0. Only a change between two known versions
