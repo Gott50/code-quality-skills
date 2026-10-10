@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "fallow": "bun scripts/lcov-to-istanbul.ts --lcov coverage/lcov.info --out coverage/coverage-final.json && fallow health --coverage coverage/coverage-final.json",
+    "fallow": "bun scripts/lcov-to-istanbul.ts --lcov coverage/lcov.info --out coverage/coverage-final.json && fallow health --coverage coverage/coverage-final.json --report-only",
     "fallow:audit": "fallow audit --format json --quiet --explain --gate-marker agent",
     "fallow:coverage": "bun run test && bun run fallow"
   },

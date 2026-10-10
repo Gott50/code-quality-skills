@@ -49,7 +49,7 @@ verify:
 
 This recipe requires `vitest-coverage`: `fallow:coverage` runs the test suite and then scores against the coverage it produces, so without that recipe there is no coverage to read. The detector reports the missing requirement as the failing reason rather than applying a half-wired audit.
 
-`fallow:audit` is the gate; `fallow` (health) is a report, not a gate — it prints maintainability and CRAP risk and exits 0.
+`fallow:audit` is the gate; `fallow` (health) is a report, not a gate — the script passes `--report-only`, so it prints maintainability and CRAP risk and always exits 0. The health *gate* is the ratchet's `--baseline` invocation, a separate command: `--min-score` must never be combined with `--baseline` in one invocation, because `--min-score` replaces the finding-driven exit code and would silently defeat the baseline.
 
 ## Idempotency
 
