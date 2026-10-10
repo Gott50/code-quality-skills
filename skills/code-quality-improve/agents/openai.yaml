@@ -1,0 +1,5 @@
+interface:
+  display_name: "Code Quality Improve"
+  short_description: "Raise a repo's code-quality score one target at a time"
+policy:
+  allow_implicit_invocation: false
