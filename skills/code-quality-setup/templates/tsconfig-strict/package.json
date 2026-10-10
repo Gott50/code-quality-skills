@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "bun scripts/typecheck-gate.mjs"
   },
   "devDependencies": {
     "@types/bun": "latest",

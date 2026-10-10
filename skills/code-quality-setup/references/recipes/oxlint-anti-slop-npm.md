@@ -92,10 +92,14 @@ files:
     action: create
     scope: root
     template: templates/oxlint-anti-slop/tools/oxlint/anti-slop/shared/reflect-method.ts
+  - path: scripts/lint-gate.mjs
+    action: create
+    scope: root
+    template: templates/oxlint-anti-slop/scripts/lint-gate.mjs
   - path: package.json
     action: merge
     scope: root
-    template: templates/oxlint-anti-slop/package.json
+    template: templates/oxlint-anti-slop-npm/package.json
   - path: .husky/pre-commit
     action: merge
     scope: root
@@ -107,7 +111,8 @@ commands:
 gates:
   - id: lint
     run: npm run lint
-    description: oxlint, including the anti-slop rules
+    description: oxlint, including the anti-slop rules — the diagnostic count floored by the baseline
+    floor: lint
 verify:
   - gate: lint
     scope: root
@@ -117,9 +122,10 @@ verify:
 
 1. **`oxlint.config.ts`** — create from `templates/oxlint-anti-slop/oxlint.config.ts`, the same config the Bun recipe writes. oxlint has been Node-based since v1.17 (the npm bin is `#!/usr/bin/env node` and JS plugins load through `await import(url)`), so the config and the plugin are package-manager-neutral and the two recipes share one template. It registers the vendored plugin and turns on its 15 rules plus the size and complexity caps; test files are exempted from the line and statement caps through `overrides`.
 2. **`tools/oxlint/anti-slop/**`** — create the 19 vendored files. The plugin is self-contained: it imports only `@oxlint/plugins` and its own siblings. `effect/` is deliberately not vendored.
-3. **`package.json`** — merge from `templates/oxlint-anti-slop/package.json`: add the `oxlint` and `@oxlint/plugins` devDependencies and the `lint` script. Existing keys are never overwritten; a differing value is a collision the plan must show.
-4. **`.husky/pre-commit`** — merge from `templates/oxlint-anti-slop-npm/pre-commit.block`, inside this recipe's marker pair. The block is the Bun recipe's with `bun run lint` → `npm run lint`; the hook is inert until `repo-hygiene-npm` wires `prepare`.
-5. **The install** — `sh -c 'if test -f pnpm-lock.yaml; then pnpm install; else npm install; fi'`, installing the two devDependencies.
+3. **`scripts/lint-gate.mjs`** — create from `templates/oxlint-anti-slop/scripts/lint-gate.mjs`, the same script the Bun recipe writes (root-scoped). The lint floor: the gate runs oxlint with `--format json`, counts the diagnostics, and fails when the count exceeds `gates.lint.global` from `.code-quality-baseline.json` (written by the skill's `score.mjs --raise`). With no baseline the floor is 0 — any diagnostic fails, the greenfield wall. It is plain `.mjs`, so `node` runs it without a TypeScript loader.
+4. **`package.json`** — merge from `templates/oxlint-anti-slop-npm/package.json`: add the `oxlint` and `@oxlint/plugins` devDependencies and the `lint` script, `node scripts/lint-gate.mjs` — the npm twin of the Bun recipe's `bun scripts/lint-gate.mjs`, one script through two runners. Existing keys are never overwritten; a differing value is a collision the plan must show.
+5. **`.husky/pre-commit`** — merge from `templates/oxlint-anti-slop-npm/pre-commit.block`, inside this recipe's marker pair. The block is the Bun recipe's with `bun run lint` → `npm run lint`; the hook is inert until `repo-hygiene-npm` wires `prepare`.
+6. **The install** — `sh -c 'if test -f pnpm-lock.yaml; then pnpm install; else npm install; fi'`, installing the two devDependencies.
 
 Two gotchas the config carries, unchanged from the Bun recipe: **`node_modules/**` is in `ignorePatterns` on purpose** (oxlint lints `node_modules` unless a `.gitignore` excludes it, and a repo that has not run `biome-assist-npm` has no such entry yet), and **`tools/oxlint/anti-slop/**` is in `ignorePatterns`** (the vendored plugin is not the project's code).
 
@@ -134,6 +140,7 @@ Two gotchas the config carries, unchanged from the Bun recipe: **`node_modules/*
 
 - Delete `oxlint.config.ts`.
 - Delete `tools/oxlint/anti-slop/`; delete `tools/` if it is empty.
+- Delete `scripts/lint-gate.mjs`; delete `scripts/` if it is empty.
 - Remove the `oxlint` and `@oxlint/plugins` devDependencies and the `lint` script from `package.json` — only where this recipe added them.
 - Remove the `code-quality:oxlint-anti-slop-npm` block from `.husky/pre-commit`; delete the file if the block is all it holds.
 - Run the project's install to drop the packages.

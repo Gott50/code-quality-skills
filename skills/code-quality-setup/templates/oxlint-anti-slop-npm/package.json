@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "lint": "bun scripts/lint-gate.mjs"
+    "lint": "node scripts/lint-gate.mjs"
   },
   "devDependencies": {
     "@oxlint/plugins": "^1.87.0",

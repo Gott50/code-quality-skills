@@ -24,7 +24,7 @@ verify:
 ## Apply
 
 1. **`.github/workflows/ci.yml`** — create from `templates/ci-workflow-npm/ci.yml`. Three jobs, and the split is the point:
-   - **`ci`** — checkout, `setup-node` from `.node-version`, install, then `lint`, `typecheck`, `format:check` and `test`. `npm run test` carries the 100% per-file coverage gate, so the coverage gate is enforced on every PR without a separate step.
+   - **`ci`** — checkout, `setup-node` from `.node-version`, install, then `lint`, `typecheck`, `format:check` and `test`. `npm run test` carries the per-file coverage gate, floored by the committed baseline (100% when there is none), so the coverage gate is enforced on every PR without a separate step.
    - **`mutation`** — `if: github.event_name == 'pull_request'`, `fetch-depth: 0`, and the same `scripts/mutation-gate.ts` the pre-push hook runs, fed the PR's head and base SHAs through `npx tsx`.
    - **`fallow-coverage`** — `npm run fallow:coverage` with `continue-on-error: true`. A health report, not a gate.
 

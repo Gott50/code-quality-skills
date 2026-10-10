@@ -37,8 +37,8 @@ Each recipe is one file at `skills/code-quality-setup/references/recipes/<id>.md
 | `biome-assist` / `biome-assist-npm` | Biome format and assist, wired to pre-commit |
 | `oxlint-anti-slop` / `oxlint-anti-slop-npm` | oxlint with the vendored anti-slop rules |
 | `tsconfig-strict` / `tsconfig-strict-npm` | strict compiler options and the `tsc --noEmit` typecheck gate |
-| `bun-test-coverage` | `bun test` with a 100% per-file coverage gate |
-| `vitest-coverage` | Vitest with a 100% per-file coverage gate |
+| `bun-test-coverage` | `bun test` with a per-file coverage gate floored by the committed baseline |
+| `vitest-coverage` | Vitest with a per-file coverage gate floored by the committed baseline |
 | `stryker-mutation` / `stryker-mutation-vitest` | Stryker mutation gate on pre-push |
 | `fallow-audit` / `fallow-audit-npm` | dead-code and repo-health audit with fallow |
 | `ci-workflow` / `ci-workflow-npm` | the fast gates on every PR, mutation on PRs |

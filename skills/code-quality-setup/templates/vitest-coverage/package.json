@@ -1,6 +1,6 @@
 {
   "scripts": {
-    "test": "sh -c 'if test -f pnpm-workspace.yaml; then pnpm -r test; elif node -e \"process.exit(require(\\\"./package.json\\\").workspaces ? 0 : 1)\"; then npm run test --workspaces --if-present; else vitest run --coverage; fi'"
+    "test": "sh -c 'if test -f pnpm-workspace.yaml; then pnpm -r test; elif node -e \"process.exit(require(\\\"./package.json\\\").workspaces ? 0 : 1)\"; then npm run test --workspaces --if-present; else vitest run --coverage && node scripts/coverage-gate.mjs --baseline .code-quality-baseline.json; fi'"
   },
   "devDependencies": {
     "@vitest/coverage-istanbul": "^5.0.3",

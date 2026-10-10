@@ -29,10 +29,12 @@ commands:
 gates:
   - id: fallow-audit
     run: npm run fallow:audit
-    description: dead code, unused exports and unresolved imports — new issues only
+    description: dead code, unused exports and unresolved imports — new issues only, known ones floored by the committed dead-code baseline
+    floor: fallow-dead-code
   - id: fallow-health
-    run: npm run fallow
-    description: maintainability and CRAP risk against measured coverage
+    run: npm run fallow:ratchet
+    description: maintainability and CRAP ratchet — new complexity findings fail, known ones pass
+    floor: fallow-health
 verify:
   - gate: fallow-audit
     scope: root
@@ -41,7 +43,7 @@ verify:
 ## Apply
 
 1. **`.fallowrc.json`** — create from `templates/fallow-audit/.fallowrc.json`, the same config the Bun recipe writes: it is package-manager-neutral. `audit.gate: new-only` is what makes the audit usable on a repo with existing debt: it fails on issues the change *introduces*, not on the ones already there. `entry` names `stryker.conf.mjs`, which is referenced only by the Stryker CLI and would otherwise be reported as an unused file.
-2. **`package.json`** — merge from `templates/fallow-audit-npm/package.json`: add the `fallow` devDependency and the `fallow`, `fallow:audit` and `fallow:coverage` scripts.
+2. **`package.json`** — merge from `templates/fallow-audit-npm/package.json`: add the `fallow` devDependency and the `fallow`, `fallow:audit`, `fallow:coverage`, `fallow:ratchet` and `fallow:raise` scripts. `fallow:ratchet` is the health gate and `fallow:raise` writes the two committed floor files `.fallow-health-baseline.json` and `.fallow-dead-code-baseline.json` (see the gate paragraph below).
 3. **`.husky/pre-push`** — merge from `templates/fallow-audit-npm/pre-push.block`, inside this recipe's marker pair: the Bun recipe's block with `bun run fallow:audit` → `npm run fallow:audit`.
 4. **The install** — `sh -c 'if test -f pnpm-lock.yaml; then pnpm install; else npm install; fi'`, installing `fallow`.
 
@@ -49,7 +51,7 @@ verify:
 
 This recipe requires `vitest-coverage`: `fallow:coverage` runs the test suite and then scores against the coverage it produces, so without that recipe there is no coverage to read. The detector reports the missing requirement as the failing reason rather than applying a half-wired audit.
 
-`fallow:audit` is the gate; `fallow` (health) is a report, not a gate — the script passes `--report-only`, so it prints maintainability and CRAP risk and always exits 0. The health *gate* is the ratchet's `--baseline` invocation, a separate command: `--min-score` must never be combined with `--baseline` in one invocation, because `--min-score` replaces the finding-driven exit code and would silently defeat the baseline.
+`fallow:audit` is the dead-code gate: `--gate new-only` fails only on issues the changeset introduces, and the committed `.fallow-dead-code-baseline.json` (written by `fallow:raise`) floors the known ones — a changed file carrying a baselined issue passes, a new one fails. The flag is conditional on the file existing because fallow exits 2 on a missing baseline file, so a greenfield repo with no baseline is gated exactly as before. `fallow` (health) is a report, not a gate — the script passes `--report-only`, so it prints maintainability and CRAP risk and always exits 0; the CI workflow runs it with `continue-on-error`, so a health regression never fails a build. The health *gate* is `fallow:ratchet`: `fallow health --baseline .fallow-health-baseline.json` — known findings pass (exit 0), new ones fail (exit 1) — falling back to `--report-only` while no baseline exists. `--min-score` must never be combined with `--baseline` in one invocation, because `--min-score` replaces the finding-driven exit code and would silently defeat the baseline. `fallow:raise` writes both baselines — `fallow health --report-only --save-baseline` (the `--report-only` keeps the raise at exit 0 while findings exist) and `fallow dead-code --save-baseline` — and fails closed when either file was not written; run the tests first (`npm run test`) so `coverage/coverage-final.json` exists for the health half.
 
 ## Idempotency
 
@@ -59,6 +61,7 @@ This recipe requires `vitest-coverage`: `fallow:coverage` runs the test suite an
 ## Undo
 
 - Delete `.fallowrc.json`.
-- Remove the `fallow` devDependency and the `fallow`, `fallow:audit` and `fallow:coverage` scripts from `package.json` — only where this recipe added them.
+- Remove the `fallow` devDependency and the `fallow`, `fallow:audit`, `fallow:coverage`, `fallow:ratchet` and `fallow:raise` scripts from `package.json` — only where this recipe added them.
+- Delete `.fallow-health-baseline.json` and `.fallow-dead-code-baseline.json`.
 - Remove the `code-quality:fallow-audit-npm` block from `.husky/pre-push`; delete the file if the block is all it holds.
 - Run the project's install to drop the package.

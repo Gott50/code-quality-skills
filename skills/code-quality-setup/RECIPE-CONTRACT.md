@@ -141,9 +141,33 @@ gates:
   - id: format-check
     run: bun run format:check
     description: Biome format and assist, linter off
+  - id: test
+    run: bun run test
+    description: bun test with the per-file coverage floor from the baseline
+    floor: coverage        # OPTIONAL — the baseline gate this gate's floor comes from
 ```
 
 The project-facing commands the recipe leaves behind: what a human or agent runs to check the project. `id` is unique within the recipe. Rendered into `AGENTS.md` and the guidance doc; a recipe that only writes prose has none.
+
+### `floor` — the gate's ratchet
+
+A gate entry MAY declare `floor: <gate>`, naming the gate whose recorded level is the floor this gate enforces. The floor comes from one of two places:
+
+| `floor` value | Floor source |
+|---|---|
+| `coverage`, `mutation`, `lint`, `typecheck` | `.code-quality-baseline.json` — the committed floor file `scripts/score.mjs --raise` writes (`scripts/SCORE-SCHEMA.md` holds its schema) |
+| `fallow-health`, `fallow-dead-code` | fallow's own baseline files (`.fallow-health-baseline.json`, `.fallow-dead-code-baseline.json`), written by the fallow-audit recipe's `fallow:raise` — fallow's floors never live in the unified baseline, because each is its own format |
+
+The declared gate MUST read its floor from that source at run time — never from a hard-coded level — and the recipe's body MUST say where the floor is read (the gate script, the config, the command). The semantics per source gate:
+
+- **`coverage` / `mutation`** — per-file exact fractions: a file the baseline records must meet its own `{hit, found}` / `{killed, total}` fraction (cross-multiplied, never a rounded ratio); a file it does not record must meet the recorded `global` fraction. The `global` fraction over the whole project is the score view's comparison (`score.mjs`), not a gate's: a workspace member's own run aggregates the member alone, and holding it to the workspace-wide fraction would fail a member exactly at its recorded floor.
+- **`lint` / `typecheck`** — one global count: the current count must not exceed the recorded count.
+- **`fallow-health`** — `fallow health --baseline`: known findings pass, new findings fail. `--min-score` MUST NOT be combined with `--baseline` in one invocation — `--min-score` replaces the finding-driven exit code and silently defeats the baseline.
+- **`fallow-dead-code`** — `fallow audit --dead-code-baseline`: issues the baseline records pass in changed files, new ones fail.
+
+With **no baseline** — or a baseline whose gate was never raised — the floor falls back to the greenfield wall: 100% for coverage and mutation, 0 for lint and typecheck, and fallow's report-only mode. A repo that never raised a baseline is therefore gated exactly as before the floor existed. A gate whose floor file exists but is unreadable fails closed: a floor that cannot be read must not silently become the wall.
+
+A gate WITHOUT `floor` is a wall at a fixed level — a formatter's zero-diff gate has no floor, and `eslint-prettier`'s `lint` gate declares none because the unified baseline's `lint` count is oxlint's diagnostic count, a different measure than an ESLint run's. `detect.mjs` MUST reject a `floor` value outside the six gates above.
 
 ## `verify` — how the recipe proves itself
 
