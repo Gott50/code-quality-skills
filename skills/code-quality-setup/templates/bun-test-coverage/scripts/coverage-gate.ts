@@ -47,10 +47,22 @@ interface CoverageFrac {
   lines: Frac;
 }
 
-/** The baseline's `gates.coverage` block (scripts/SCORE-SCHEMA.md). */
+/** A fraction as the baseline JSON carries it: unchecked, so every field optional. */
+interface RawFrac {
+  found?: number;
+  hit?: number;
+}
+
+/** A coverage floor as the baseline JSON carries it: unchecked. */
+interface RawCoverageFrac {
+  functions?: RawFrac;
+  lines?: RawFrac;
+}
+
+/** The baseline's `gates.coverage` block (scripts/SCORE-SCHEMA.md), as parsed. */
 interface CoverageFloor {
-  files?: Record<string, CoverageFrac>;
-  global?: CoverageFrac;
+  files?: Record<string, RawCoverageFrac>;
+  global?: RawCoverageFrac;
 }
 
 /** The baseline's coverage floors: `global` for unrecorded files, `files` per file. */
@@ -78,47 +90,58 @@ if (!existsSync(lcovPath)) {
 }
 
 /** Whether `v` is an exact fraction as the baseline records it. */
-function isFrac(v: unknown): v is Frac {
-  const f = v as Frac | undefined;
-  return !!f && Number.isInteger(f.hit) && Number.isInteger(f.found);
+function isFrac(v: RawFrac | undefined): v is Frac {
+  return !!v && Number.isInteger(v.hit) && Number.isInteger(v.found);
 }
 
 /** Whether `v` carries a floor for both metrics. */
-function isCoverageFrac(v: unknown): v is CoverageFrac {
-  const c = v as CoverageFrac | undefined;
-  return !!c && isFrac(c.lines) && isFrac(c.functions);
+function isCoverageFrac(v: RawCoverageFrac | undefined): v is CoverageFrac {
+  return !!v && isFrac(v.lines) && isFrac(v.functions);
 }
 
-// The baseline's coverage floors: `global` is the floor for a file the baseline
-// does not record, `files` its per-file floors. An unreadable baseline fails
-// the gate — a floor file that cannot be read must not silently become 100%.
-// A coverage block that does not carry both metrics is unreadable too: the
-// floor is per metric, and a missing one must not silently become 100%.
-function readFloors(path: string): Floors {
-  if (!existsSync(path)) return { files: new Map(), global: FULL };
-  let doc: Baseline;
+// The baseline as parsed, or exit 1 when the file is unreadable: a floor file
+// that cannot be read must not silently become 100%.
+function readBaseline(path: string): Baseline {
+  if (!existsSync(path)) return {};
   try {
     // SAFETY: the baseline is JSON written by score.mjs; only the coverage
-    // gate's `global` fraction and `files` map are read.
-    doc = JSON.parse(readFileSync(path, "utf8")) as Baseline;
+    // gate's `global` fraction and `files` map are read, and every field is
+    // re-checked by `isCoverageFrac` before use.
+    return JSON.parse(readFileSync(path, "utf8")) as Baseline;
   } catch (err) {
     console.error(`coverage-gate: baseline ${path} is unreadable: ${err}`);
     process.exit(1);
   }
-  const coverage = doc.gates?.coverage;
-  if (coverage?.global !== undefined && !isCoverageFrac(coverage.global)) {
-    console.error(`coverage-gate: baseline ${path} records no lines/functions floor`);
-    process.exit(1);
-  }
-  const files = new Map<string, CoverageFrac>();
-  for (const [key, frac] of Object.entries(coverage?.files ?? {})) {
+}
+
+// The per-file floors the baseline records, keyed by absolute path. A coverage
+// block that does not carry both metrics is unreadable: the floor is per
+// metric, and a missing one must not silently become 100%.
+function fileFloors(
+  path: string,
+  files: Record<string, RawCoverageFrac> | undefined,
+): Map<string, CoverageFrac> {
+  const floors = new Map<string, CoverageFrac>();
+  for (const [key, frac] of Object.entries(files ?? {})) {
     if (!isCoverageFrac(frac)) {
       console.error(`coverage-gate: baseline ${path} records no lines/functions floor for ${key}`);
       process.exit(1);
     }
-    files.set(resolve(dirname(path), key), frac);
+    floors.set(resolve(dirname(path), key), frac);
   }
-  return { files, global: coverage?.global ?? FULL };
+  return floors;
+}
+
+// The baseline's coverage floors: `global` is the floor for a file the baseline
+// does not record, `files` its per-file floors.
+function readFloors(path: string): Floors {
+  const coverage = readBaseline(path).gates?.coverage;
+  const globalFloor = coverage?.global;
+  if (globalFloor !== undefined && !isCoverageFrac(globalFloor)) {
+    console.error(`coverage-gate: baseline ${path} records no lines/functions floor`);
+    process.exit(1);
+  }
+  return { files: fileFloors(path, coverage?.files), global: globalFloor ?? FULL };
 }
 
 const floors = readFloors(baselinePath);
@@ -189,19 +212,24 @@ for (const r of Object.values(byFile)) {
     below.push(`lines ${linePct.toFixed(2)}%  (${r.lh}/${r.lf}) — floor ${fracText(floor.lines)}`);
   }
   if (!meets(r.fnh, r.fnf, floor.functions)) {
-    below.push(`funcs ${funcPct.toFixed(2)}%  (${r.fnh}/${r.fnf}) — floor ${fracText(floor.functions)}`);
+    below.push(
+      `funcs ${funcPct.toFixed(2)}%  (${r.fnh}/${r.fnf}) — floor ${fracText(floor.functions)}`,
+    );
   }
   if (below.length > 0) failing.push(`${r.sf}\n    ${below.join("\n    ")}`);
 }
 
 const totalLinePct = tLF > 0 ? (tLH / tLF) * 100 : 100;
 const totalFuncPct = tFNF > 0 ? (tFNH / tFNF) * 100 : 100;
+const baselineLabel = existsSync(baselinePath) ? baselinePath : "none — every floor is 100%";
 
 console.log(
-  `coverage-gate: baseline ${existsSync(baselinePath) ? baselinePath : "none — every floor is 100%"} | ` +
-    `global floor lines ${fracText(floors.global.lines)} funcs ${fracText(floors.global.functions)} | ` +
+  `coverage-gate: baseline ${baselineLabel} | ` +
+    `global floor lines ${fracText(floors.global.lines)} ` +
+    `funcs ${fracText(floors.global.functions)} | ` +
     `lines ${totalLinePct.toFixed(2)}% (${tLH}/${tLF}) | ` +
-    `funcs ${totalFuncPct.toFixed(2)}% (${tFNH}/${tFNF}) across ${Object.keys(byFile).length} files`,
+    `funcs ${totalFuncPct.toFixed(2)}% (${tFNH}/${tFNF}) ` +
+    `across ${Object.keys(byFile).length} files`,
 );
 
 if (failing.length > 0) {

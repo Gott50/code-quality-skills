@@ -21,7 +21,7 @@ Capture the artifacts the gates produce, then print the ranking verbatim. Never 
 node scripts/rank.mjs [projectDir] [--json]   # default projectDir: .
 ```
 
-`rank.mjs` reads the artifacts and writes nothing. It never runs a gate and never invokes a package manager. The ranking is fallow's own `--targets` ranking first, then the coverage gaps, lint violations and typecheck errors folded in as additional candidates. A missing artifact is a reported gap, not a crash — the gap names the capture command.
+`rank.mjs` reads the artifacts and writes nothing. It never runs a gate and never invokes a package manager. The ranking is fallow's own `--targets` ranking first, then the coverage gaps, mutation gaps, lint violations and typecheck errors folded in as additional candidates. A missing artifact is a reported gap, not a crash — the gap names the capture command.
 
 The artifacts it reads, all relative to the project root:
 
@@ -30,6 +30,7 @@ The artifacts it reads, all relative to the project root:
 | fallow targets | `reports/fallow-targets.json` | `fallow health --targets --format json > reports/fallow-targets.json` |
 | coverage (bun) | `coverage/lcov.info` | `bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage` |
 | coverage (vitest) | `coverage/coverage-final.json` | `vitest run --coverage` |
+| mutation | `reports/mutation/report.json` | `stryker run` |
 | lint | `reports/oxlint.json` | `oxlint --format json > reports/oxlint.json` |
 | typecheck | `reports/tsc.log` | `tsc --noEmit --pretty false > reports/tsc.log` |
 | floors | `.code-quality-baseline.json` | written by `score.mjs --raise` |

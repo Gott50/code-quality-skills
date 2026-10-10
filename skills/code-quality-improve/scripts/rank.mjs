@@ -3,7 +3,8 @@
 //
 // Zero dependencies, node builtins only. Reads the artifacts the gates already produced and prints
 // the ranked improvement targets: fallow's own `--targets` ranking first, then the coverage gaps,
-// lint violations and typecheck errors folded in as additional candidates. It never runs a gate and
+// the mutation gaps, lint violations and typecheck errors folded in as additional candidates. It
+// never runs a gate and
 // never invokes a package manager: the artifacts must already exist. A missing artifact is a
 // reported gap, never a crash.
 //
@@ -29,6 +30,7 @@ const ARTIFACTS = {
   fallowTargets: "reports/fallow-targets.json",
   lcov: "coverage/lcov.info",
   istanbul: "coverage/coverage-final.json",
+  mutation: "reports/mutation/report.json",
   oxlint: "reports/oxlint.json",
   tsc: "reports/tsc.log",
 };
@@ -39,6 +41,7 @@ const CAPTURE = {
   fallowTargets: "fallow health --targets --format json > reports/fallow-targets.json",
   lcov: "bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage",
   istanbul: "vitest run --coverage",
+  mutation: "stryker run",
   oxlint: "oxlint --format json > reports/oxlint.json",
   tsc: "tsc --noEmit --pretty false > reports/tsc.log",
 };
@@ -100,6 +103,36 @@ export function readIstanbul(doc, bases) {
     files[relativize(key, bases)] = {
       functions: { found: Object.keys(f).length, hit: countHit(f) },
       statements: { found: Object.keys(s).length, hit: countHit(s) },
+    };
+  }
+  return files;
+}
+
+// Stryker's `report.json`: `files[path].mutants[]`, each with a `status` and a
+// `location.start.line`. A mutant the suite did not kill is a gap: every status but `Killed` (the
+// test caught it) and `Ignored` (a deliberate exclusion). `Survived`, `NoCoverage` and `Timeout`
+// are the common ones; `RuntimeError` and `CompileError` are gaps too — the project's own mutation
+// gate counts `killed` as `Killed` only and `total` as every mutant, so a `RuntimeError` mutant
+// holds the file's level below 100% exactly like a survivor (#95). Per file: the level
+// (`killed`/`total`) and the gaps, each with its line, status and mutator.
+export function readMutation(doc) {
+  const files = {};
+  for (const [path, file] of Object.entries(doc?.files ?? {})) {
+    const mutants = file?.mutants ?? [];
+    const gaps = [];
+    for (const m of mutants) {
+      const status = typeof m?.status === "string" ? m.status : "(unknown)";
+      if (status === "Killed" || status === "Ignored") continue;
+      gaps.push({
+        line: typeof m?.location?.start?.line === "number" ? m.location.start.line : null,
+        status,
+        mutatorName: typeof m?.mutatorName === "string" ? m.mutatorName : null,
+      });
+    }
+    files[path] = {
+      killed: mutants.filter((m) => m?.status === "Killed").length,
+      total: mutants.length,
+      gaps,
     };
   }
   return files;
@@ -174,6 +207,17 @@ function coverageBelowFloor(metrics, file, baseline) {
     if (f && !atLeast(frac, f)) return true;
   }
   return false;
+}
+
+// Whether a mutation file breaches its recorded floor: the per-file floor when the baseline records
+// one, else the global floor (a new file gets the project's global floor, #62). The level is the
+// file's `{ killed, total }`; a file with no recorded floor is not marked.
+function mutationBelowFloor(level, file, baseline) {
+  const mut = baseline?.gates?.mutation;
+  if (!mut) return false;
+  const floor = mut.files?.[file] ?? mut.global;
+  if (!floor) return false;
+  return !atLeast(level, floor);
 }
 
 // ---------------------------------------------------------------------------
@@ -293,6 +337,46 @@ export function collect(root, bases) {
       path: covPath,
       reason: `absent — capture it with \`${CAPTURE.lcov}\` (bun) or \`${CAPTURE.istanbul}\` (vitest)`,
     });
+  }
+
+  // mutation — Stryker's report: the mutants the suite did not kill
+  const mutationPath = join(root, ARTIFACTS.mutation);
+  if (existsSync(mutationPath)) {
+    try {
+      const files = readMutation(readJson(mutationPath));
+      const rows = Object.entries(files)
+        .filter(([, f]) => f.gaps.length > 0)
+        .sort((a, b) => b[1].gaps.length - a[1].gaps.length || a[0].localeCompare(b[0]));
+      const gapCount = rows.reduce((n, [, f]) => n + f.gaps.length, 0);
+      sources.mutation = {
+        path: ARTIFACTS.mutation,
+        present: true,
+        gaps: gapCount,
+        files: rows.length,
+        error: null,
+      };
+      for (const [file, f] of rows) {
+        const belowFloor = mutationBelowFloor(f, file, baseline.doc);
+        for (const g of f.gaps) {
+          targets.push({
+            source: "mutation",
+            path: file,
+            gate: "mutation",
+            line: g.line,
+            status: g.status,
+            mutatorName: g.mutatorName,
+            detail: `${g.status} ${g.mutatorName ?? "mutant"}`,
+            belowFloor,
+          });
+        }
+      }
+    } catch (err) {
+      sources.mutation = { path: ARTIFACTS.mutation, present: true, gaps: 0, files: 0, error: String(err?.message ?? err) };
+      gaps.push({ source: "mutation", path: ARTIFACTS.mutation, reason: `unreadable: ${err?.message ?? err}` });
+    }
+  } else {
+    sources.mutation = { path: ARTIFACTS.mutation, present: false, gaps: 0, files: 0, error: null };
+    gaps.push({ source: "mutation", path: ARTIFACTS.mutation, reason: `absent — capture it with \`${CAPTURE.mutation}\`` });
   }
 
   // lint — oxlint's captured JSON
@@ -421,6 +505,8 @@ function sourceLine(name, s) {
       return `  ${label}${s.path} — ${s.count} target(s)`;
     case "coverage":
       return `  ${label}${s.path} — ${s.files} file(s) with uncovered lines or functions`;
+    case "mutation":
+      return `  ${label}${s.path} — ${s.gaps} gap(s) in ${s.files} file(s)`;
     case "lint": {
       const floor = s.floor == null ? "" : `   floor ${s.floor}${s.count > s.floor ? "   ⚠ above floor" : ""}`;
       return `  ${label}${s.path} — ${s.count} diagnostic(s) in ${s.files} file(s)${floor}`;
@@ -464,6 +550,10 @@ function targetLines(t) {
   } else if (t.source === "coverage") {
     const mark = t.belowFloor ? "   ⚠ below floor" : "";
     lines.push(`  ${t.rank}. [coverage] ${t.path}   ${coverageText(t.metrics)}   uncovered ${t.uncovered}${mark}`);
+  } else if (t.source === "mutation") {
+    const mark = t.belowFloor ? "   ⚠ below floor" : "";
+    const loc = t.line == null ? t.path : `${t.path}:${t.line}`;
+    lines.push(`  ${t.rank}. [mutation] ${loc}   ${t.detail}${mark}`);
   } else {
     lines.push(`  ${t.rank}. [${t.source}] ${t.path}   ${t.detail}`);
   }
@@ -475,7 +565,7 @@ function renderText(report) {
   const lines = [];
   lines.push(`Improvement targets — ${report.root}`);
   lines.push("");
-  for (const name of ["baseline", "fallow", "coverage", "lint", "typecheck"]) {
+  for (const name of ["baseline", "fallow", "coverage", "mutation", "lint", "typecheck"]) {
     lines.push(sourceLine(name, report.sources[name]));
   }
   lines.push("");

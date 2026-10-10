@@ -102,10 +102,10 @@ function areaOf(config: string): string {
 // every config. The incremental cache stays per-area, so members do not share
 // cache state.
 //
-// This template is root-scoped, so it must not carry a `{{root}}` token: the
+// This template is root-scoped, so it must not carry the root token: the
 // renderer would rewrite it and `create`'s byte-compare would report drift on a
-// file nobody edited. (`{{plan.*}}` keys are legal in any scope; this rule is
-// about `{{root}}` alone.) Name the mechanism, never the token.
+// file nobody edited. (The plan keys are legal in any scope; this rule is
+// about the root token alone.) Name the mechanism, never the token.
 const REPORT_FILE = "reports/mutation/report.json";
 
 /**

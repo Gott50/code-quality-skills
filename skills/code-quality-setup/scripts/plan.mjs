@@ -210,10 +210,18 @@ function mergeKind(entry, recipeId) {
 //     normalizing whitespace (a hand-written hook aligns its `||` with spaces);
 //   - command presence: the payload is a documentation section (it carries a heading) and every
 //     gate command it names already appears in the file (a hand-written AGENTS.md documents the
-//     same gates in a different shape — bullets and arrows, not the rendered table).
+//     same gates in a different shape — bullets and arrows, not the rendered table);
+//   - equivalent command (#94): the payload's gate command is already run by the file under a
+//     different command. A repo that wired the same gate itself — its own `scripts/biome-staged.ts`
+//     behind `bun run biome:staged` — runs Biome's staged format, but the line is not the block's
+//     line, so line presence misses it and the block would be appended, running the gate twice.
+//     The block's gate command names a tool (`bunx @biomejs/biome check --staged …`); the file
+//     already runs the gate when it names the same tool binary and the same mode word. Both must
+//     match, so a repo that runs the tool in another mode (`biome:lint`) is not a duplicate.
 // Returns a human-readable evidence string, or null when the block contributes something new.
 function blockAlreadyPresent(existing, content, recipeId) {
   const norm = (s) => s.trim().replace(/\s+/g, " ");
+  const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const payload = content
     .split("\n")
     .filter((line) => !line.includes(`code-quality:${recipeId}:start`) && !line.includes(`code-quality:${recipeId}:end`));
@@ -226,9 +234,29 @@ function blockAlreadyPresent(existing, content, recipeId) {
     const commands = [
       ...new Set([...content.matchAll(/\b(?:bunx?|npm|pnpm|npx)\s+(?:run\s+)?([A-Za-z0-9:_@./-]+)/g)].map((m) => m[1])),
     ];
-    const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     if (commands.length > 0 && commands.every((c) => new RegExp(`\\b${escape(c)}\\b`).test(existing))) {
       return `already documents: ${commands.join(", ")}`;
+    }
+  }
+  const gate = payload.find(
+    (l) => !l.trim().startsWith("#") && /\b(?:bunx?|npx|npm|pnpm)\s+(?:run\s+)?[A-Za-z0-9:_@./-]/.test(l),
+  );
+  if (gate) {
+    const tool = /\b(?:bunx?|npx|npm|pnpm)\s+(?:run\s+)?([A-Za-z0-9:_@./-]+)/.exec(gate)[1].split("/").pop();
+    const mode = /--([a-z][a-z-]*)/.exec(gate)?.[1];
+    if (tool && mode) {
+      // The file's own command tokens, each split into its `:`-separated segments and its last path
+      // segment, so the mode word is matched against a command — not any comment that happens to
+      // contain it (a hook with `bun run biome:lint` and a comment mentioning "staged" is not a
+      // duplicate).
+      const names = [...existing.matchAll(/\b(?:bunx?|npx|npm|pnpm)\s+(?:run\s+)?([A-Za-z0-9:_@./-]+)/g)].flatMap((m) => [
+        m[1],
+        ...m[1].split(":"),
+        m[1].split("/").pop(),
+      ]);
+      if (names.includes(tool) && names.includes(mode)) {
+        return `already runs ${tool} ${mode}`;
+      }
     }
   }
   return null;
@@ -591,9 +619,14 @@ function isCreateLoss(f, files) {
   return f.action === "create" && files[f.path] != null && lostContent(files[f.path], f.content, f.path).items.length > 0;
 }
 
-// The verdict for one write, from the filesystem alone (no manifest): create → new/no-op/drift/loss,
-// merge → new/no-op/add/replace/collision, patch → new/patch. `diff` is the inline unified diff.
-function filesystemVerdict(write, content, projectRoot, recipeId) {
+// The verdict for one write, from the filesystem alone (no manifest): create → new/no-op/drift/
+// update/loss, merge → new/no-op/add/replace/collision, patch → new/patch. `diff` is the inline
+// unified diff. `manifestPresent` decides the `create` verdict for a file the repo has extended
+// (#90): with a manifest the plan knows the repo's file is not the recorded content, so it is a
+// `loss` (skip); without one the plan cannot tell the repo's own additions from the skill's own
+// earlier install, so it is an `update` (merge — the library's content is written, the repo's
+// additions are preserved).
+function filesystemVerdict(write, content, projectRoot, recipeId, manifestPresent) {
   const abs = join(projectRoot, write.target);
   const existing = existsSync(abs) ? readFileSync(abs, "utf8") : null;
   const entry = { path: write.target, action: write.action, content };
@@ -603,6 +636,18 @@ function filesystemVerdict(write, content, projectRoot, recipeId) {
     if (existing === content) return { verdict: "no-op" };
     const { unit, items: lost } = lostContent(existing, content, write.target);
     if (lost.length > 0) {
+      // No manifest (#90): the filesystem is the source of truth (ADR 0001), so the repo's file
+      // is read as the skill's own earlier install plus the repo's additions — an `update` the
+      // apply merges, not a `loss` it skips. The ratchet installs, and the additions survive.
+      if (!manifestPresent) {
+        return {
+          verdict: "update",
+          note: `the repo's file carries ${lost.length} ${unit}(s) the template does not — merge them in, do not drop them`,
+          lost,
+          unit,
+          diff: unifiedDiff(existing, content, write.target),
+        };
+      }
       return {
         verdict: "loss",
         note: `the repo's file carries ${lost.length} ${unit}(s) the template does not — overwriting drops them`,
@@ -725,10 +770,23 @@ function classify(manifest, { library, files }) {
       // A `create` target the repo has customized (#36, #46) reads `loss`, not `drifted`: the
       // manifest recorded the rendered template's hash, so the hash comparison alone cannot tell
       // the repo's own content from a hand-edit of the skill's. See `isCreateLoss`.
+      // A `create` the apply left as a merge (#90): the apply wrote the library's content plus the
+      // repo's additions and recorded the file it wrote, so the recorded hash matches the file and
+      // the file still carries every path/line the current template owns. The recipe's owned
+      // content is present — the extras are the repo's — so it is `intact`, not `update` (which
+      // would overwrite the file with the bare template and drop the additions). An old manifest
+      // recorded the bare template's hash, so `presentHash !== recordedHash` and this never fires.
+      const mergedCreate =
+        f.action === "create" &&
+        recordedHash !== null &&
+        presentHash === recordedHash &&
+        files[f.path] != null &&
+        lostContent(f.content, files[f.path], f.path).items.length === 0;
       let verdict;
       if (duplicate) verdict = "intact";
       else if (presentHash === null) verdict = "missing";
       else if (presentHash === currentHash) verdict = "intact";
+      else if (mergedCreate) verdict = "intact";
       else if (recordedHash !== null && presentHash === recordedHash) verdict = "update";
       else if (isCreateLoss(f, files)) verdict = "loss";
       else verdict = "drifted";
@@ -737,7 +795,7 @@ function classify(manifest, { library, files }) {
         action: f.action,
         kind: f.action === "merge" ? mergeKind(f, lib.id) : null,
         verdict,
-        updateAvailable: recordedHash !== null && recordedHash !== currentHash,
+        updateAvailable: recordedHash !== null && recordedHash !== currentHash && !mergedCreate,
         recordedHash,
         currentHash,
         presentHash,
@@ -843,7 +901,7 @@ function buildPlan(report, opts) {
   const fileRows = [];
   for (const r of selected) {
     for (const w of writesByRecipe.get(r.id)) {
-      const fsVerdict = filesystemVerdict(w, w.content, report.root, r.id);
+      const fsVerdict = filesystemVerdict(w, w.content, report.root, r.id, manifest !== null);
       const d = driftById.get(r.id);
       const dFile = d?.files.find((f) => f.path === w.target && f.action === w.action);
       fileRows.push({
@@ -1223,11 +1281,17 @@ function renderCollisions(collisions, force) {
   return lines.join("\n");
 }
 
+// A `create` row the apply must not overwrite: the filesystem says the repo's file carries content
+// the template does not, and the manifest (when present) agrees it is the repo's own content — not
+// the skill's own recorded content (`update`) and not a file the apply already merged (`intact`,
+// #90). Without a manifest the filesystem verdict is `update`, not `loss`, so this is false.
+function isLossRow(row) {
+  return row.fs.verdict === "loss" && (row.drift === null || row.drift.verdict === "loss");
+}
+
 function verdictLabel(row) {
   if (row.fs.verdict === "duplicate") return "duplicate";
-  // A `create` file the manifest records as `update` is the skill's own recorded content: the
-  // difference is the library's, not the repo's, so it is not a loss (#36).
-  if (row.fs.verdict === "loss" && row.drift?.verdict !== "update") return "loss";
+  if (isLossRow(row)) return "loss";
   if (row.drift) {
     const extra = row.drift.updateAvailable && row.drift.verdict !== "update" ? "+update" : "";
     return `${row.drift.verdict}${extra}`;
@@ -1253,12 +1317,15 @@ function renderFiles(plan, opts) {
     const w = row.write;
     const scope = w.member ? `${w.scope} (${w.member})` : w.scope;
     const label = verdictLabel(row);
-    const note = row.fs.note ? ` — ${row.fs.note}` : "";
+    // A `create` the apply already merged reads `intact` (#90) while the filesystem verdict is
+    // `loss`; its note ("overwriting drops them") describes the overwrite the apply must not do,
+    // not the state, so it is suppressed. A `patch`/`merge` `intact` keeps its note.
+    const note = row.fs.note && !(row.fs.verdict === "loss" && label === "intact") ? ` — ${row.fs.note}` : "";
     lines.push(`- \`${w.target}\` (${w.action}, ${scope}) — **${label}**${note}`);
     const showDiff =
       opts.diffPath !== null ||
       opts.diff ||
-      (row.fs.diff && (w.action === "merge" || w.action === "patch" || row.fs.verdict === "collision" || row.fs.verdict === "loss"));
+      (row.fs.diff && (w.action === "merge" || w.action === "patch" || row.fs.verdict === "collision" || row.fs.verdict === "loss" || row.fs.verdict === "update"));
     if (showDiff && row.fs.diff) {
       lines.push("");
       for (const dl of row.fs.diff.split("\n")) lines.push(`    ${dl}`);
@@ -1291,7 +1358,7 @@ function renderPreExisting(plan) {
 // human explicitly overrides. A `create` file the manifest records as `update` is the skill's own
 // recorded content — the difference is the library's, not the repo's — so it is not a loss.
 function renderLosses(plan, force) {
-  const rows = plan.fileRows.filter((r) => r.fs.verdict === "loss" && r.drift?.verdict !== "update");
+  const rows = plan.fileRows.filter((r) => isLossRow(r));
   const lines = ["## Losses (create drift — the repo's extra content would be dropped)", ""];
   if (rows.length === 0) {
     lines.push("_None._");
@@ -1302,6 +1369,28 @@ function renderLosses(plan, force) {
   } else {
     lines.push("_Do not overwrite these files: the repo's file carries content the template does not. Overwrite only on an explicit override (`--force`)._", "");
   }
+  for (const row of rows) {
+    lines.push(`- \`${row.write.target}\` (${row.recipeId}) — ${row.fs.lost.length} ${row.fs.unit}(s) the template lacks:`);
+    for (const l of row.fs.lost) lines.push(`  - \`${l}\``);
+  }
+  return lines.join("\n");
+}
+
+// A `create` target the repo has extended, with no manifest (#90): the repo's file carries content
+// the template does not, but the plan cannot tell the repo's own additions from the skill's own
+// earlier install — the filesystem is the source of truth (ADR 0001), so the verdict is `update`:
+// the library's content is the target and the repo's additions are preserved by a merge. This
+// section names the additions and the decision, so the agent merges instead of overwriting (which
+// would drop them) or skipping (which would leave the gate uninstalled). It is rendered only when
+// there is an update, so a repo with a manifest — where the same file reads `loss` — is unchanged.
+function renderUpdates(plan) {
+  const rows = plan.fileRows.filter((r) => r.fs.verdict === "update");
+  if (rows.length === 0) return null;
+  const lines = ["## Updates (create drift — the library's content is merged in, the repo's additions kept)", ""];
+  lines.push(
+    "_The repo's file carries content the template does not. Write the library's content and re-apply the repo's additions below — do not overwrite the file verbatim (that drops them) and do not skip it (that leaves the gate uninstalled). The diff shows the library's content against the repo's file; the additions are the lines/keys the template lacks._",
+    "",
+  );
   for (const row of rows) {
     lines.push(`- \`${row.write.target}\` (${row.recipeId}) — ${row.fs.lost.length} ${row.fs.unit}(s) the template lacks:`);
     for (const l of row.fs.lost) lines.push(`  - \`${l}\``);
@@ -1440,10 +1529,12 @@ function renderPlan(plan, opts) {
     out.push(`**Already set up** — ${plan.selected.length} recipe(s) applied, every file intact.`, "");
   } else {
     const dupes = plan.fileRows.filter((r) => r.fs.verdict === "duplicate").length;
-    const losses = plan.fileRows.filter((r) => r.fs.verdict === "loss" && r.drift?.verdict !== "update").length;
+    const losses = plan.fileRows.filter((r) => isLossRow(r)).length;
+    const updates = plan.fileRows.filter((r) => r.fs.verdict === "update").length;
     const dupNote = dupes > 0 ? ` ${dupes} block(s) already present — see Pre-existing content.` : "";
     const lossNote = losses > 0 ? ` ${losses} file(s) would lose repo content — see Losses.` : "";
-    out.push(`**Plan ready** — ${plan.selected.length} recipe(s) selected.${dupNote}${lossNote}`, "");
+    const updateNote = updates > 0 ? ` ${updates} file(s) carry repo additions — see Updates.` : "";
+    out.push(`**Plan ready** — ${plan.selected.length} recipe(s) selected.${dupNote}${lossNote}${updateNote}`, "");
   }
 
   out.push(renderStack(plan.stack), "");
@@ -1454,6 +1545,8 @@ function renderPlan(plan, opts) {
   out.push(renderCollisions(plan.collisions, opts.force), "");
   out.push(renderFiles(plan, opts), "");
   out.push(renderLosses(plan, opts.force), "");
+  const updatesSection = renderUpdates(plan);
+  if (updatesSection !== null) out.push(updatesSection, "");
   out.push(renderPreExisting(plan), "");
   out.push(renderCommands(plan.selected, plan.stack.workspace), "");
   out.push(renderGatesAndVerify(plan.selected, plan.stack.workspace, plan.duplicatePathsByRecipe), "");
@@ -1465,13 +1558,18 @@ function renderPlan(plan, opts) {
   if (driftSection !== null && (plan.manifestPresent || plan.selected.length > 0)) out.push(driftSection, "");
 
   if (plan.selected.length > 0) {
-    const losses = plan.fileRows.filter((r) => r.fs.verdict === "loss" && r.drift?.verdict !== "update").length;
+    const losses = plan.fileRows.filter((r) => isLossRow(r)).length;
     const lossNote =
       losses > 0 && !opts.force
         ? ` ${losses} file(s) would lose repo content and are NOT overwritten without \`--force\` (see Losses).`
         : "";
+    const updates = plan.fileRows.filter((r) => r.fs.verdict === "update").length;
+    const updateNote =
+      updates > 0
+        ? ` ${updates} file(s) carry repo additions and are merged, not overwritten (see Updates).`
+        : "";
     out.push(
-      `Approve? Apply the ${plan.selected.length} recipe(s) above: phase 1 writes every file, phase 2 runs every command, phase 3 runs every verify.${lossNote}`,
+      `Approve? Apply the ${plan.selected.length} recipe(s) above: phase 1 writes every file, phase 2 runs every command, phase 3 runs every verify.${lossNote}${updateNote}`,
     );
   }
   return out.join("\n").trimEnd() + "\n";
