@@ -12,10 +12,10 @@ Wire a TypeScript repo's code-quality gates from a library of recipes, or audit 
 Run the plan renderer and print its output verbatim. Never improvise the plan.
 
 ```
-node scripts/plan.mjs [projectDir] [--recipe <id>] [--force] [--diff [path]]   # default projectDir: .
+node scripts/plan.mjs [projectDir] [--recipe <id>] [--force] [--diff [path]] [--check]   # default projectDir: .
 ```
 
-`plan.mjs` runs `scripts/detect.mjs` and writes nothing. Both are dependency-free, node builtins only.
+`plan.mjs` runs `scripts/detect.mjs` and writes nothing. Both are dependency-free, node builtins only. `--check` prints the machine-readable drift report (one JSON document) instead of the plan and exits 0 only when it is clean — the `ci-drift` workflow's input ([PLAN-SCHEMA.md](scripts/PLAN-SCHEMA.md) → `--check`).
 
 | Entry state | What to do |
 |---|---|
@@ -60,6 +60,7 @@ The filesystem is the source of truth; `.code-quality.json` is an optimization. 
 - `--recipe <id>` — narrow to one recipe. The plan is still shown and approved; `when` is never bypassed; `conflicts` still surface; a recipe that `requires` another will not apply alone.
 - `--force` — overrides a **collision** or a **loss** (a `create` drift that would drop the repo's extra content), never a failed `when`.
 - `--diff [path]` — unified diffs on demand.
+- `--check` — print the machine-readable drift report (one JSON document: the per-recipe verdicts, the degraded note, and the rendered `## Drift (manifest)` section) instead of the plan, and exit 0 only when it is clean. The `ci-drift` workflow's input ([PLAN-SCHEMA.md](scripts/PLAN-SCHEMA.md) → `--check`).
 
 ## Reference
 
