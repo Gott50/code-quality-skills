@@ -233,8 +233,8 @@ Per gate:
 
 | Gate | Merge rule |
 |---|---|
-| coverage | per file and global, the **larger** of the current and recorded fractions **per metric** (cross-multiplied, the same comparison `atLeast` makes). A recorded file the artifact no longer lists is kept; a new file is added at its current fraction |
-| mutation | per file and global, the **larger** of the current and recorded fractions (cross-multiplied, the same comparison `atLeast` makes). A recorded file the artifact no longer lists is kept; a new file is added at its current fraction |
+| coverage | per file and global, the **larger** of the current and recorded fractions **per metric** (cross-multiplied, the same comparison `atLeast` makes). A current fraction with nothing to measure (`found` 0) never lowers a recorded floor. The per-file entries come from the current measurement only: a recorded file the artifact no longer lists is a deleted file and its entry drops (#62); a new file is added at its current fraction |
+| mutation | per file and global, the **larger** of the current and recorded fractions (cross-multiplied, the same comparison `atLeast` makes). A current fraction with nothing to measure (`total` 0) never lowers a recorded floor. The per-file entries come from the current measurement only: a recorded file the artifact no longer lists is a deleted file and its entry drops (#62); a new file is added at its current fraction |
 | lint / typecheck | the **smaller** of the current and recorded counts (a count is a ceiling) |
 | a recorded gate whose artifact is absent | **kept**, never dropped — dropping it would fall back to the greenfield wall, which is stricter, not a raise |
 | a gate with no recorded floor | the current level |

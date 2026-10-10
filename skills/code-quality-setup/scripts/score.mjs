@@ -221,8 +221,11 @@ export function measure(root, bases) {
 // falls. Per gate:
 //   - coverage / mutation — per file and global, the LARGER of the current and recorded fractions
 //     (cross-multiplied, the same comparison `atLeast` makes). Coverage carries one fraction per
-//     metric, so each metric keeps the larger of the two on its own. A recorded file whose artifact
-//     no longer lists it is kept; a new file is added at its current fraction.
+//     metric, so each metric keeps the larger of the two on its own. A current fraction with
+//     nothing to measure (`found`/`total` 0) is not a measurement and never lowers a recorded
+//     floor. The per-file entries come from the current measurement only: a recorded file the
+//     artifact no longer lists is a deleted file, and its entry drops (#62); a new file is added at
+//     its current fraction.
 //   - lint / typecheck — the SMALLER of the current and recorded counts (a count is a ceiling).
 //   - a recorded gate whose artifact is absent is KEPT, never dropped: dropping it would fall back
 //     to the greenfield wall, which is stricter, not a raise.
@@ -231,29 +234,42 @@ export function measure(root, bases) {
 // holds, and only a gate with no floor yet is raised to its measured level.
 function maxFrac(cur, rec) {
   if (!rec) return cur;
+  // Nothing to measure is not a measurement: it must not lower a recorded floor.
+  if ((cur.found ?? cur.total ?? 0) === 0) return rec;
   return atLeast(cur, rec) ? cur : rec;
 }
 
+// The per-file floors come from the current measurement only: a recorded file the artifact no
+// longer lists is a deleted file, and its entry drops on the raise (#62). A re-created file then
+// gets the global floor, not a stale per-file one.
 function mergeFracFiles(cur, rec) {
   const out = {};
   for (const [file, f] of Object.entries(cur ?? {})) out[file] = maxFrac(f, rec?.[file]);
-  for (const [file, f] of Object.entries(rec ?? {})) if (!(file in out)) out[file] = f;
   return out;
 }
 
+// Whether `v` is an exact fraction as the baseline records it.
+function isFrac(v) {
+  return !!v && Number.isInteger(v.hit) && Number.isInteger(v.found);
+}
+
 // A coverage fraction is a map of metric → exact fraction; the floor never falls, per metric, so
-// each metric keeps the larger of the current and recorded fractions.
+// each metric keeps the larger of the current and recorded fractions. The metrics come from the
+// current measurement: a metric the current artifact does not carry (a different tool's baseline)
+// is not carried forward, and a malformed recorded block cannot inject fake metrics. A current
+// measurement with no metrics at all (an empty artifact) is not a measurement, so the recorded
+// metrics are kept.
 function maxCoverageFrac(cur, rec) {
   const out = {};
   for (const [metric, frac] of Object.entries(cur ?? {})) out[metric] = maxFrac(frac, rec?.[metric]);
-  for (const [metric, frac] of Object.entries(rec ?? {})) if (!(metric in out)) out[metric] = frac;
+  if (Object.keys(out).length > 0) return out;
+  for (const [metric, frac] of Object.entries(rec ?? {})) if (isFrac(frac)) out[metric] = frac;
   return out;
 }
 
 function mergeCoverageFiles(cur, rec) {
   const out = {};
   for (const [file, f] of Object.entries(cur ?? {})) out[file] = maxCoverageFrac(f, rec?.[file]);
-  for (const [file, f] of Object.entries(rec ?? {})) if (!(file in out)) out[file] = f;
   return out;
 }
 
