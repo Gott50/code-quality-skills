@@ -28,7 +28,7 @@ const ZERO_SHA = "0000000000000000000000000000000000000000";
 const BAD_STATUSES = {
   NoCoverage: true,
   Survived: true,
-  TimedOut: true,
+  Timeout: true,
 } as const satisfies Record<string, boolean>;
 
 const FULL_CONFIG = "stryker.conf.mjs";
@@ -259,7 +259,7 @@ function verifyReport(
     }
     console.error(
       `\n[mutation-gate] ${config}: report ${reportFile} missing after run; ` +
-        `cannot verify 0 TimedOut / 0 Survived / 0 NoCoverage.`,
+        `cannot verify 0 Timeout / 0 Survived / 0 NoCoverage.`,
     );
     return false;
   }
@@ -268,7 +268,7 @@ function verifyReport(
     const detail = [...bad.entries()].map(([s, n]) => `${n} ${s}`).join(", ");
     console.error(
       `\n[mutation-gate] ${config}: report ${reportFile} has ${detail}; ` +
-        `expected 0 TimedOut, 0 Survived, 0 NoCoverage.`,
+        `expected 0 Timeout, 0 Survived, 0 NoCoverage.`,
     );
     return false;
   }
