@@ -1,9 +1,10 @@
 # `plan.mjs` — output schema and evaluation rules
 
-`node scripts/plan.mjs [projectDir] [--recipe <id>] [--force] [--diff [path]]` runs the detector
-(`detect.mjs`) and prints the plan the agent shows for approval. Zero dependencies, node builtins
-only, no package manager invoked, **writes nothing**. Exit 0 on a report; exit 1 with a message on
-stderr when the detector fails or no usable recipe remains.
+`node scripts/plan.mjs [projectDir] [--recipe <id>] [--force] [--diff [path]] [--check]` runs the
+detector (`detect.mjs`) and prints the plan the agent shows for approval. Zero dependencies, node
+builtins only, no package manager invoked, **writes nothing**. Exit 0 on a report; exit 1 with a
+message on stderr when the detector fails or no usable recipe remains. `--check` prints the
+machine-readable drift report instead of the plan and exits 0 only when it is clean (see below).
 
 `DETECT-SCHEMA.md` is the JSON it consumes; `RECIPE-CONTRACT.md` is the frontmatter and the
 substitution keys it renders. This file is the contract for the plan text.
@@ -17,6 +18,70 @@ substitution keys it renders. This file is the contract for the plan text.
 | `--force` | overrides a **collision** (the tool collisions in section 5) or a **loss** (a `create` drift that would drop the repo's extra content, section 7), never a failed `when`. |
 | `--diff` | print unified diffs for every file, not only the merge/patch/collision ones. |
 | `--diff <path>` | print only the file at `<path>` and its diff. |
+| `--check` | print the machine-readable drift report (one JSON document) instead of the plan, and exit 0 only when it is clean. See `--check` below. |
+
+## `--check`: the machine-readable drift report
+
+`--check` turns the plan into the drift report a CI job consumes (#52). It prints **one JSON
+document** to stdout instead of the plan text, and exits 0 only when the report is clean. It is a
+pure addition: without the flag the output and the exit codes are unchanged.
+
+```json
+{
+  "clean": false,
+  "manifestPresent": true,
+  "degraded": false,
+  "degradedReason": null,
+  "recipes": [
+    { "id": "biome-assist", "state": "intact" },
+    { "id": "oxlint-anti-slop", "state": "drifted" }
+  ],
+  "markdown": "## Drift (manifest)\n\nbiome-assist: intact, oxlint-anti-slop: drifted"
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `clean` | the report is clean: a manifest is present and no recipe has drifted (see the exit code below) |
+| `manifestPresent` | a readable `.code-quality.json` of the current `schemaVersion` was found |
+| `degraded` | the manifest is absent, corrupt, or from another `schemaVersion`; the report compares against the current library only |
+| `degradedReason` | why the report is degraded — `no manifest`, `manifest is not valid JSON`, or `manifest schemaVersion N ≠ 1` — or `null` |
+| `recipes` | the per-recipe verdicts, in the same order and with the same `id`/`state` the `## Drift (manifest)` section prints; `[]` when degraded |
+| `markdown` | the exact `## Drift (manifest)` section text — the same string `renderPlan` emits — so the consumer posts it verbatim |
+
+`markdown` is the section the plan prints, byte for byte: the heading, a blank line, then the
+`<id>: <state>` list (or the degraded note). The consumer (the `ci-drift` workflow, #54) posts it
+without re-deriving anything from the other fields.
+
+### The exit code
+
+`--check` exits **0** when `clean` is true and **1** otherwise. `clean` is "the report is clean": a
+manifest is present and no recipe state is a drift state. Drift is the repo's own content diverging
+from what the skill recorded:
+
+| State | Drift? | Why |
+|---|---|---|
+| `drifted` | yes | the repo hand-edited a file the recipe owns |
+| `missing` | yes | the repo deleted a file the recipe owns |
+| `loss` | yes | a `create` target the repo customized — the recipe's content is not there |
+| `new` | no | a selected recipe never applied: the repo may be mid-setup, or the library grew a recipe. Not the repo's content diverging |
+| `declined` | no | the user declined the recipe; a deliberate state, not drift |
+| `update` | no | the library's render moved; the repo's file is untouched (SKILL.md → Re-run) |
+| `stale` | no | the library dropped a recorded recipe; the repo's content is not known to have diverged |
+
+`clean` is deliberately not the plan's "Already set up" condition (a manifest present and every
+recipe `intact`): a repo mid-setup, or one the library grew a recipe for, has `new` recipes and is
+not drifting, so the CI job must not flag it.
+
+A degraded report is **not** clean: the check cannot establish that the repo is as the skill left
+it, and a false "clean" is worse than a false "dirty". The JSON's `degraded`/`degradedReason` and
+the `markdown` degraded note say why. The `ci-drift` workflow ignores the exit code (the job is
+non-blocking); the code is for a script that gates on the report.
+
+`--check` composes with the other flags: the report reflects the plan those flags produce (`--recipe`
+narrows the selection, so the report covers the narrowed set). The unsupported (no TypeScript) and
+detector-failure paths keep their existing stdout/stderr and exit codes — a consumer MUST treat
+stdout that is not the JSON document as "no report".
 
 ## Entry states
 
@@ -114,8 +179,9 @@ it is not a loss.
 
 `duplicate` is the hand-set-up repo (#35): the recipe's marker is absent, so the block reads `new`,
 but the target file already carries what the block contributes. Two signals, both requiring the
-**whole** block to be present — a partial match is not a duplicate (biome-assist's `.gitignore`
-block adds `node_modules/`, already present, and `.code-quality.json`, absent, so it still applies):
+**whole** block to be present — a partial match is not a duplicate (repo-hygiene's `.gitignore`
+block adds `.npm/`, `dist/`, `*.tsbuildinfo`, `.env`, `.env.local` and `*.log`; a repo that already
+ignores `dist/` but not the rest is a partial match, so the block still applies):
 
 - **line presence** — every non-blank payload line already appears in the file, compared after
   normalizing whitespace (a hand-written hook aligns its `||` with spaces);
@@ -155,9 +221,16 @@ degrades the report to "compare against the current library only" and nothing br
 ## The manifest hash convention
 
 The manifest is written by the apply step (agent-driven; there is no `apply.mjs`), one recipe at a
-time after that recipe's `verify` passed. `plan.mjs` only reads it. For the drift report to agree,
-the apply step MUST hash the content the recipe **owns** in each file, with the same normalization
-`plan.mjs` uses:
+time after that recipe's `verify` passed. `plan.mjs` only reads it. The apply step MUST write it
+through `scripts/manifest.mjs`, the canonical writer — never by hand. The manifest is a committed
+file (ADR 0002), so it must be in the one form the formatter recipes' `biome check .` leaves alone:
+**keys sorted, two spaces of indent, a trailing newline**. The writer emits exactly that, and it is
+idempotent — re-recording a recipe whose content is unchanged rewrites the same bytes — so the
+manifest is byte-stable across runs. Hand-written JSON is not byte-stable, and the formatter gate
+the recipes install fails on it (#34).
+
+For the drift report to agree, the apply step MUST hash the content the recipe **owns** in each
+file, with the same normalization `plan.mjs` uses:
 
 - `create` — the whole rendered file. A `create` the apply skipped as a `loss` is recorded the same
   way — the rendered template's hash, what the apply would have written — so the drift report can

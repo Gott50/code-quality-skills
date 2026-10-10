@@ -29,13 +29,15 @@ const MANIFEST_SCHEMA_VERSION = 1;
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const opts = { projectDir: ".", recipe: null, force: false, diff: false, diffPath: null };
+  const opts = { projectDir: ".", recipe: null, force: false, diff: false, diffPath: null, check: false };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--recipe") {
       opts.recipe = argv[++i];
       if (opts.recipe === undefined) throw new Error("--recipe needs an id");
+    } else if (a === "--check") {
+      opts.check = true;
     } else if (a === "--force") {
       opts.force = true;
     } else if (a === "--diff") {
@@ -200,8 +202,9 @@ function mergeKind(entry, recipeId) {
 // carries what the block contributes. This is the hand-set-up repo (#35) — the harness is there,
 // the manifest is not, so the marker is absent and the block reads `new` while the file already
 // runs the gate. Two signals, both requiring the WHOLE block to be present (a partial match is not
-// a duplicate: biome-assist's `.gitignore` block adds `node_modules/` (present) and
-// `.code-quality.json` (absent), and must still apply):
+// a duplicate: repo-hygiene's `.gitignore` block adds `.npm/`, `dist/`, `*.tsbuildinfo`, `.env`,
+// `.env.local` and `*.log`; a repo that already ignores `dist/` but not the rest is a partial
+// match, so the block still applies):
 //   - line presence: every non-blank payload line already appears in the file, compared after
 //     normalizing whitespace (a hand-written hook aligns its `||` with spaces);
 //   - command presence: the payload is a documentation section (it carries a heading) and every
@@ -1151,6 +1154,27 @@ function nothingAppliesHint(notSelected, packageManager) {
   ].join("\n");
 }
 
+// The `## Drift (manifest)` section text, or null when the plan has no drift information to
+// report. `renderPlan` prints it verbatim; `--check` carries it in the JSON's `markdown` field, so
+// the consumer posts the section byte-for-byte. The plan suppresses the section when nothing is
+// selected and there is no manifest — it already says "Nothing applies" and there is no library to
+// compare against — but `--check` reports the degraded note in that case anyway, because a CI job
+// must be able to say why it has no verdicts.
+function renderDriftSection(plan) {
+  if (plan.manifestPresent && plan.drift) {
+    const states = plan.drift.recipes.map((r) => `${r.id}: ${r.state}`).join(", ");
+    return ["## Drift (manifest)", "", states].join("\n");
+  }
+  if (plan.degraded) {
+    return [
+      "## Drift (manifest)",
+      "",
+      `_Degraded — ${plan.degradedReason}; comparing against the current library only._`,
+    ].join("\n");
+  }
+  return null;
+}
+
 function renderPlan(plan, opts) {
   const out = [];
   out.push("# code-quality-setup plan", "");
@@ -1184,12 +1208,10 @@ function renderPlan(plan, opts) {
   out.push(renderGatesAndVerify(plan.selected, plan.stack.workspace, plan.duplicatePathsByRecipe), "");
   out.push(renderWarnings(plan.errored, plan.templateErrors), "");
 
-  if (plan.manifestPresent && plan.drift) {
-    const states = plan.drift.recipes.map((r) => `${r.id}: ${r.state}`).join(", ");
-    out.push(`## Drift (manifest)`, "", states, "");
-  } else if (plan.degraded && plan.selected.length > 0) {
-    out.push(`## Drift (manifest)`, "", `_Degraded — ${plan.degradedReason}; comparing against the current library only._`, "");
-  }
+  // The drift section is suppressed when nothing is selected and there is no manifest: the plan
+  // already says "Nothing applies" and there is no library to compare against.
+  const driftSection = renderDriftSection(plan);
+  if (driftSection !== null && (plan.manifestPresent || plan.selected.length > 0)) out.push(driftSection, "");
 
   if (plan.selected.length > 0) {
     const losses = plan.fileRows.filter((r) => r.fs.verdict === "loss" && r.drift?.verdict !== "update").length;
@@ -1202,6 +1224,34 @@ function renderPlan(plan, opts) {
     );
   }
   return out.join("\n").trimEnd() + "\n";
+}
+
+// `--check` (#52): the machine-readable drift report the ci-drift workflow (#54) consumes. One JSON
+// document on stdout — the same per-recipe verdicts the `## Drift (manifest)` section prints, plus
+// the section text itself so the consumer posts it verbatim.
+//
+// `clean` is "the report is clean": a manifest is present and no recipe has drifted. Drift is the
+// repo's own content diverging from what the skill recorded — `drifted` (hand-edited), `missing`
+// (deleted), `loss` (a `create` target the repo customized). The other states are not drift:
+// `new` (a selected recipe never applied — the repo may be mid-setup, or the library grew a
+// recipe), `declined` (the user declined it), `update` (the library's render moved; the repo's file
+// is untouched — SKILL.md → Re-run), `stale` (the library dropped a recorded recipe). A degraded
+// report (no manifest, or one that is corrupt or from another schemaVersion) is not clean either:
+// the check cannot establish that the repo is as the skill left it, and a false "clean" is worse
+// than a false "dirty". See PLAN-SCHEMA.md → `--check`.
+const DRIFT_STATES = new Set(["drifted", "missing", "loss"]);
+
+function checkReport(plan) {
+  const recipes = (plan.drift?.recipes ?? []).map((r) => ({ id: r.id, state: r.state }));
+  const clean = plan.manifestPresent && !recipes.some((r) => DRIFT_STATES.has(r.state));
+  return {
+    clean,
+    manifestPresent: plan.manifestPresent,
+    degraded: plan.degraded,
+    degradedReason: plan.degradedReason,
+    recipes,
+    markdown: renderDriftSection(plan),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1235,6 +1285,12 @@ function main() {
   }
 
   const plan = buildPlan(report, opts);
+  if (opts.check) {
+    const check = checkReport(plan);
+    process.stdout.write(`${JSON.stringify(check, null, 2)}\n`);
+    process.exitCode = check.clean ? 0 : 1;
+    return;
+  }
   process.stdout.write(renderPlan(plan, opts));
 }
 

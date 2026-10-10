@@ -12,10 +12,10 @@ Wire a TypeScript repo's code-quality gates from a library of recipes, or audit 
 Run the plan renderer and print its output verbatim. Never improvise the plan.
 
 ```
-node scripts/plan.mjs [projectDir] [--recipe <id>] [--force] [--diff [path]]   # default projectDir: .
+node scripts/plan.mjs [projectDir] [--recipe <id>] [--force] [--diff [path]] [--check]   # default projectDir: .
 ```
 
-`plan.mjs` runs `scripts/detect.mjs` and writes nothing. Both are dependency-free, node builtins only.
+`plan.mjs` runs `scripts/detect.mjs` and writes nothing. Both are dependency-free, node builtins only. `--check` prints the machine-readable drift report (one JSON document) instead of the plan and exits 0 only when it is clean — the `ci-drift` workflow's input ([PLAN-SCHEMA.md](scripts/PLAN-SCHEMA.md) → `--check`).
 
 | Entry state | What to do |
 |---|---|
@@ -42,7 +42,14 @@ A file row whose verdict is **`loss`** (see the plan's *Losses* section) is a `c
 
 A file row whose verdict is **`no-op`** on a `patch` is the after-state the recipe body states already holding: the target declares every key the template declares, with the template's scalar values. Write nothing for that entry — the patch is done — and record it like any other file (RECIPE-CONTRACT.md → `files`).
 
-Record each recipe in `.code-quality.json` as it completes — recipe-granular, after its `verify` passes. A failed `verify` is reported as-is, not rolled back; that recipe stays unrecorded, so a re-run resumes where it stopped. Declining the plan writes nothing.
+Record each recipe in `.code-quality.json` as it completes — recipe-granular, after its `verify` passes — through the canonical writer, never by hand:
+
+```
+node scripts/manifest.mjs record [projectDir] --recipe <id> --recipe-hash <hash> \
+  --file <path>:<action>:<hash> ... [--skill-version <v>] [--environment <json>]
+```
+
+The writer sorts keys, indents with two spaces, and ends with a newline, so the committed manifest passes the formatter recipes' `format:check` (ADR 0002). The hashes are the ones [PLAN-SCHEMA.md](scripts/PLAN-SCHEMA.md) → the manifest hash convention defines. A declined recipe is recorded with `node scripts/manifest.mjs decline [projectDir] --recipe <id>`. A failed `verify` is reported as-is, not rolled back; that recipe stays unrecorded, so a re-run resumes where it stopped. Declining the plan writes nothing.
 
 ## 4. Re-run: the drift report
 
@@ -53,6 +60,7 @@ The filesystem is the source of truth; `.code-quality.json` is an optimization. 
 - `--recipe <id>` — narrow to one recipe. The plan is still shown and approved; `when` is never bypassed; `conflicts` still surface; a recipe that `requires` another will not apply alone.
 - `--force` — overrides a **collision** or a **loss** (a `create` drift that would drop the repo's extra content), never a failed `when`.
 - `--diff [path]` — unified diffs on demand.
+- `--check` — print the machine-readable drift report (one JSON document: the per-recipe verdicts, the degraded note, and the rendered `## Drift (manifest)` section) instead of the plan, and exit 0 only when it is clean. The `ci-drift` workflow's input ([PLAN-SCHEMA.md](scripts/PLAN-SCHEMA.md) → `--check`).
 
 ## Reference
 
