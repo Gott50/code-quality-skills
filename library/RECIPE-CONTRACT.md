@@ -1,6 +1,6 @@
 # Recipe contract
 
-A **recipe** is one Markdown file at `references/recipes/<id>.md`: YAML frontmatter that `scripts/detect.mjs` reads, plus a body the agent executes. This file is the single source of truth for both halves. `detect.mjs` MUST reject a recipe that breaks a **frontmatter** rule here. A rule about a *template's contents* — the `{{root}}` scoping rule below is the only one — is enforced at review time instead, because the detector reads frontmatter and never opens a template. The cheap detector check for the day it does: open each `files[]` entry's template and refuse `{{root}}` in a `root`-scoped entry.
+A **recipe** is one Markdown file at `recipes/<id>.md`: YAML frontmatter that `scripts/detect.mjs` reads, plus a body the agent executes. This file is the single source of truth for both halves. `detect.mjs` MUST reject a recipe that breaks a **frontmatter** rule here. A rule about a *template's contents* — the `{{root}}` scoping rule below is the only one — is enforced at review time instead, because the detector reads frontmatter and never opens a template. The cheap detector check for the day it does: open each `files[]` entry's template and refuse `{{root}}` in a `root`-scoped entry.
 
 The library is language-agnostic; a recipe is language-specific. Everything below is the shape every language's recipes share.
 
@@ -74,11 +74,11 @@ files:
     action: create                      # create | merge | patch
     scope: root                         # root | member | both (default: root)
     memberMode: extends-root            # extends-root | standalone | copy (default: standalone)
-    template: templates/biome-assist/biome.json   # REQUIRED, skill-relative
+    template: templates/biome-assist/biome.json   # REQUIRED, library-relative
 ```
 
 - `path` is workspace-root-relative and MUST NOT contain `..` or an absolute prefix.
-- `template` is always explicit. Naming convention: mirror the target under `templates/<id>/`, minus the leading dot (`templates/biome-assist/pre-commit.block` for `.husky/pre-commit`) — a dotfile inside the skill directory is not worth the packaging risk.
+- `template` is always explicit. Naming convention: mirror the target under `templates/<id>/`, minus the leading dot (`templates/biome-assist/pre-commit.block` for `.husky/pre-commit`) — a dotfile inside the library directory is not worth the packaging risk.
 - **A template MUST already satisfy every gate the whole selection installs**, not only its own recipe's. A formatter's own config that the formatter would rewrite is permanent drift from the first run; equally, a file a *different* recipe's gate checks fails that gate the moment it runs. `verify` cannot catch the second case by construction: the gate belongs to another recipe and its own `verify` ran before this recipe's files existed. The port found it twice — `scripts/mutation-gate.ts` was rejected by `require-safety-comment-for-type-assertion` (an oxlint rule, another recipe's gate) and rewritten by Biome's key sort (a third recipe's gate). Format and lint every template against the library's own gates before landing it.
 - `scope`:
   - `root` — one file at the workspace root.

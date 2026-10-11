@@ -11,7 +11,7 @@ shows it, and the human files it.
 Offer the channel on an **unexpected failure** — the skill did not do what its own contract says:
 
 - a **detector hard error** — `detect.mjs` exits 1 (the target is not a directory, or
-  `references/recipes/` is missing);
+  `library/recipes/` is missing);
 - a **malformed recipe** — a `{ id, error }` line in the plan's Warnings, or "no usable recipe
   remains";
 - a **`verify` that fails for a reason the plan did not predict** — the plan predicted a `loss` or

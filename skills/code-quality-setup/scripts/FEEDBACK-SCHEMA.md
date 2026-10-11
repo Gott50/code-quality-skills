@@ -75,7 +75,7 @@ else to configure, and the absence of the key is the whole "off" state.
   "stackError": null,
   "failure": {
     "recipe": "biome-assist",
-    "error": "ENOENT: no such file or directory, open '<project>/references/recipes/x.md'",
+    "error": "ENOENT: no such file or directory, open '<project>/library/recipes/x.md'",
     "planExcerpt": "## Warnings\n\n- `{ id: \"biome-assist\", error: \"…\" }`"
   },
   "redactions": ["absolute paths", "package names", "source"],

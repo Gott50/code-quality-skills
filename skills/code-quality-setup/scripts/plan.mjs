@@ -10,8 +10,8 @@
 // Usage: node scripts/plan.mjs [projectDir] [--recipe <id>] [--force] [--diff [path]]
 //
 // The output shape is specified in PLAN-SCHEMA.md next to this file; the recipe frontmatter and the
-// substitution keys it renders are specified in ../RECIPE-CONTRACT.md; the JSON it consumes is
-// specified in DETECT-SCHEMA.md.
+// substitution keys it renders are specified in the library's RECIPE-CONTRACT.md
+// (library/RECIPE-CONTRACT.md); the JSON it consumes is specified in DETECT-SCHEMA.md.
 
 import { readFileSync, existsSync, statSync, readdirSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
@@ -21,6 +21,9 @@ import { createHash } from "node:crypto";
 import { measure, safeRealpath, ARTIFACTS, readBaseline, compare } from "./score.mjs";
 
 const SKILL_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+// The library lives at the repo root, two levels up from the skill dir (skills/code-quality-setup/).
+// This is the repo-layout default; the fetched-cache / --library mechanism is a later ticket (#115).
+const LIBRARY_DIR = resolve(SKILL_DIR, "..", "..", "library");
 const DETECT = join(SKILL_DIR, "scripts", "detect.mjs");
 const MANIFEST_NAME = ".code-quality.json";
 const MANIFEST_SCHEMA_VERSION = 1;
@@ -173,8 +176,8 @@ function resolveScopes(scope, workspace) {
   return ["."];
 }
 
-function readTemplate(skillRelPath) {
-  return readFileSync(join(SKILL_DIR, skillRelPath), "utf8");
+function readTemplate(libraryRelPath) {
+  return readFileSync(join(LIBRARY_DIR, libraryRelPath), "utf8");
 }
 
 // ---------------------------------------------------------------------------
@@ -950,7 +953,7 @@ function buildPlan(report, opts) {
   const library = selected.map((r) => ({
     id: r.id,
     hash: hash(
-      readFileSync(join(SKILL_DIR, "references", "recipes", `${r.id}.md`), "utf8") +
+      readFileSync(join(LIBRARY_DIR, "recipes", `${r.id}.md`), "utf8") +
         writesByRecipe.get(r.id).map((w) => w.content).join("\n"),
     ),
     files: writesByRecipe.get(r.id).map((w) => ({ path: w.target, action: w.action, content: w.content })),

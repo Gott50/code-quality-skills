@@ -39,7 +39,7 @@ The agent prints the ranking, asks once, and makes one change per pass. The rais
 
 ## Recipes
 
-Each recipe is one file at `skills/code-quality-setup/references/recipes/<id>.md`: machine-checkable frontmatter plus a body the agent executes. The contract is [RECIPE-CONTRACT.md](skills/code-quality-setup/RECIPE-CONTRACT.md).
+Each recipe is one file at `library/recipes/<id>.md`: machine-checkable frontmatter plus a body the agent executes. The contract is [RECIPE-CONTRACT.md](library/RECIPE-CONTRACT.md).
 
 | Recipe | What it wires |
 |---|---|
@@ -68,11 +68,15 @@ Two different things:
 ## Layout
 
 ```
+library/                     the recipe library, fetched at runtime by the installed skill
+  RECIPE-CONTRACT.md         the recipe frontmatter and body contract
+  recipes/<id>.md            one file per recipe
+  templates/<id>/            the files each recipe writes
+  library.json               the generated index (scripts/build-library.mjs)
+scripts/build-library.mjs    regenerates library/library.json from the recipe frontmatter
 skills/code-quality-setup/   the installable setup skill
   SKILL.md                   the entry point
-  RECIPE-CONTRACT.md         the recipe frontmatter and body contract
-  references/recipes/        the recipe library
-  templates/<id>/            the files each recipe writes
+  references/feedback.md     the opt-in feedback channel
   scripts/                   detect.mjs, plan.mjs, score.mjs, and their schemas
 skills/code-quality-improve/ the installable improvement skill
   SKILL.md                   the entry point
