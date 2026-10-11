@@ -1,0 +1,13 @@
+{
+  "name": "code-quality-skills",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "library:check": "node scripts/check-library.mjs",
+    "format": "biome format --config-path=./biome.json --write library/templates",
+    "format:check": "biome format --config-path=./biome.json library/templates"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15"
+  }
+}
