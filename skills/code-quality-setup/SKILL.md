@@ -88,7 +88,7 @@ Ask once, after the plan. `--diff` prints unified diffs for every file; `--diff 
 
 ## 3. Apply
 
-There is no `apply.mjs`: the agent applies. Walk the selection in priority order and follow each recipe's `## Apply` in `library/recipes/<id>.md`. The three phases are global — every recipe's files, then every command, then every verify (see [RECIPE-CONTRACT.md](../../library/RECIPE-CONTRACT.md) → Apply order).
+There is no `apply.mjs`: the agent applies. Walk the selection in priority order and follow each recipe's `## Apply` in `library/recipes/<id>.md`. The three phases are global — every recipe's files, then every command, then every verify (see the library's `RECIPE-CONTRACT.md` → Apply order).
 
 ### The baseline write — install each gate at the measured level
 
@@ -123,6 +123,16 @@ node scripts/manifest.mjs record [projectDir] --recipe <id> --recipe-hash <hash>
 
 The writer sorts keys, indents with two spaces, and ends with a newline, so the committed manifest passes the formatter recipes' `format:check` (ADR 0002). The hashes are the ones [PLAN-SCHEMA.md](scripts/PLAN-SCHEMA.md) → the manifest hash convention defines. A declined recipe is recorded with `node scripts/manifest.mjs decline [projectDir] --recipe <id>`. A failed `verify` is reported as-is, not rolled back; that recipe stays unrecorded, so a re-run resumes where it stopped. Declining the plan writes nothing.
 
+### The library pin — recorded once the manifest exists
+
+A fresh consumer has no manifest when the fetch runs, so the fetch cannot record the pin (nothing is written before the plan is approved). Once the first recipe is recorded and `.code-quality.json` exists, record it from the values step 0 printed:
+
+```
+node scripts/manifest.mjs library [projectDir] --ref <ref> --schema-version <n> --content-hash <hash>
+```
+
+A consumer that already had a manifest had its pin recorded by the fetch; re-recording the same values is a no-op.
+
 ## 4. Re-run: the drift report
 
 The filesystem is the source of truth; `.code-quality.json` is an optimization. Per owned file: **intact**; **drifted** (hand-edited → show the diff, apply only on approval, never silently overwrite); **missing** (deleted by hand → reinstate on approval); **loss** (a `create` target the repo customized — the repo's file carries content the template does not, so it is skipped, not overwritten). A `merge` never drifts — its own marker block is replaced. A `patch` whose after-state holds is `intact`, not `drifted`: the recipe owns the keys its template declares, not the file, so the repo's other content and its extended collections are not drift. A re-render the current library changed is an **update**, not drift. With **no manifest**, a `create` target the repo has extended reads **update** too: the plan cannot tell the repo's own additions from the skill's own earlier install, so the apply merges (see Apply) instead of skipping the file and leaving the gate uninstalled. A `create` the apply merged is recorded with the file it wrote, so the next run reads `intact` — the recipe's owned content is present and the extras are the repo's.
@@ -156,7 +166,7 @@ The recipe, its templates and the rationale are attached verbatim; only the stac
 
 ## Reference
 
-- [RECIPE-CONTRACT.md](../../library/RECIPE-CONTRACT.md) — the recipe frontmatter and body contract.
-- [library/recipes/](../../library/recipes/) — the recipe library, one file per recipe.
+- The library's `RECIPE-CONTRACT.md` (in the fetched `libraryDir`) — the recipe frontmatter and body contract.
+- The library's `recipes/` (in the fetched `libraryDir`) — the recipe library, one file per recipe.
 - [references/feedback.md](references/feedback.md) — the opt-in feedback channel.
 - [scripts/DETECT-SCHEMA.md](scripts/DETECT-SCHEMA.md), [scripts/PLAN-SCHEMA.md](scripts/PLAN-SCHEMA.md), [scripts/SCORE-SCHEMA.md](scripts/SCORE-SCHEMA.md), [scripts/FEEDBACK-SCHEMA.md](scripts/FEEDBACK-SCHEMA.md) — the scripts' output contracts.
