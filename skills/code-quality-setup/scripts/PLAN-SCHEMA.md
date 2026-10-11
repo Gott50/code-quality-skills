@@ -16,6 +16,7 @@ substitution keys it renders. This file is the contract for the plan text.
 | Option | Effect |
 |---|---|
 | `[projectDir]` | the project to plan for (default `.`) |
+| `--library <path>` | the library directory to read recipes and templates from. Precedence: `--library`, else `$CODE_QUALITY_LIBRARY`, else the repo-layout default (`library/` two levels up from the skill dir). Passed through to `detect.mjs`; the fetch step's `libraryDir` is what gets passed here. |
 | `--recipe <id>` | narrow the selection to one recipe. `when` is never bypassed: an id that is not selected, or one that `requires` another recipe, plans nothing. `conflicts` still surface. |
 | `--force` | overrides a **collision** (the tool collisions in section 6) or a **loss** (a `create` drift that would drop the repo's extra content, section 8), never a failed `when` and never an **update** (a `create` drift the apply merges, section 9). |
 | `--diff` | print unified diffs for every file, not only the merge/patch/collision ones. |

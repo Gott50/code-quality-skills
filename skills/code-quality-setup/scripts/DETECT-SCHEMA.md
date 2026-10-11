@@ -1,12 +1,20 @@
 # `detect.mjs` — output schema and evaluation rules
 
-`node scripts/detect.mjs [projectDir] [--compact]` prints one JSON object to stdout and writes
-nothing. Zero dependencies, node builtins only, no package manager invoked. Exit 0 on a report,
-exit 1 with a message on stderr when the project or the recipe library is unreadable.
+`node scripts/detect.mjs [projectDir] [--library <path>] [--compact]` prints one JSON object to
+stdout and writes nothing. Zero dependencies, node builtins only, no package manager invoked. Exit 0
+on a report, exit 1 with a message on stderr when the project or the recipe library is unreadable.
 
 This file is the contract between the detector and everything downstream: the plan renderer, the
 applied-state manifest, and the recipes' `when` blocks. `RECIPE-CONTRACT.md` is the other half —
 it defines the frontmatter this script reads.
+
+## Options
+
+| Option | Effect |
+|---|---|
+| `[projectDir]` | the project to detect (default `.`) |
+| `--library <path>` | the library directory to read recipes from. Precedence: `--library`, else `$CODE_QUALITY_LIBRARY`, else the repo-layout default (`library/` two levels up from the skill dir). The fetch step's `libraryDir` is what gets passed here. |
+| `--compact` | print the JSON on one line instead of indented |
 
 ## Top level
 
@@ -180,5 +188,5 @@ equal the filename stem, a missing or empty `## Undo` section — is reported as
 `{ "id": "<filename stem>", "error": "<what is wrong>" }` in `recipes[]`, is never selected, and
 does not stop the other recipes from producing a matrix and a plan. Loud, never a silent skip.
 
-The run itself exits 1 only when there is nothing to report: the target is not a directory, or
-`library/recipes/` is missing.
+The run itself exits 1 only when there is nothing to report: the target is not a directory, or the
+resolved library's `recipes/` directory is missing.
