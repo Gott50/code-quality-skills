@@ -83,7 +83,9 @@ function readFloors(path) {
   const files = coverage?.files ?? {};
   for (const [key, frac] of Object.entries(files)) {
     if (!isCoverageFrac(frac)) {
-      console.error(`coverage-gate: baseline ${path} records no statements/functions floor for ${key}`);
+      console.error(
+        `coverage-gate: baseline ${path} records no statements/functions floor for ${key}`,
+      );
       process.exit(1);
     }
   }
@@ -104,9 +106,15 @@ function readIstanbul(doc) {
     const s = fc?.s ?? {};
     const f = fc?.f ?? {};
     files[key] = {
-      functions: { found: Object.keys(f).length, hit: Object.values(f).filter((n) => n > 0).length },
+      functions: {
+        found: Object.keys(f).length,
+        hit: Object.values(f).filter((n) => n > 0).length,
+      },
       sf: key,
-      statements: { found: Object.keys(s).length, hit: Object.values(s).filter((n) => n > 0).length },
+      statements: {
+        found: Object.keys(s).length,
+        hit: Object.values(s).filter((n) => n > 0).length,
+      },
     };
   }
   return files;
@@ -175,7 +183,8 @@ for (const r of Object.values(byFile)) {
       `functions ${fnPct.toFixed(2)}%  (${r.functions.hit}/${r.functions.found}) — floor ${fracText(floor.functions)}`,
     );
   }
-  if (below.length > 0) failing.push(`${relative(process.cwd(), r.sf)}\n    ${below.join("\n    ")}`);
+  if (below.length > 0)
+    failing.push(`${relative(process.cwd(), r.sf)}\n    ${below.join("\n    ")}`);
 }
 
 const totalStPct = tStF > 0 ? (tStH / tStF) * 100 : 100;
