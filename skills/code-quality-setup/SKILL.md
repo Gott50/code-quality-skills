@@ -7,6 +7,18 @@ description: Sets up or repairs code-quality gates in a TypeScript repo. Use whe
 
 Wire a TypeScript repo's code-quality gates from a library of recipes, or audit and repair the ones already there. The skill detects the stack, prints a plan, and applies it on approval. It writes files, installs packages, and can commit — never run it unprompted.
 
+## 0. Fetch
+
+The library is not shipped with the skill: it is fetched from this repo at a pinned commit and cached before anything is planned. Run the fetch first, and read the library from the cache path it prints.
+
+```
+node scripts/fetch.mjs [--ref <sha>] [--cache <dir>] [--manifest <path>] [--json]
+```
+
+The ref is `--ref`, else `library.ref` from `.code-quality.json`, else `main` resolved to a commit SHA. The library is extracted to `$XDG_CACHE_HOME/code-quality-skills/<ref>/library` (or `~/.cache/code-quality-skills/<ref>/library`; override with `--cache` or `CODE_QUALITY_CACHE`). `--json` prints one object — `{ ref, cacheDir, libraryDir, contentHash, schemaVersion }` — and `libraryDir` is where the recipes, templates, and `library.json` live; the `library/` paths the later steps name are this cache's `libraryDir`. A cache hit for the resolved ref is reused, never re-extracted.
+
+Offline, a network failure falls back to the newest cached ref (warned on stderr); with no cache at all the fetch exits 1. The content hash is the library's identity — the same ref hashes the same, and any changed byte moves it.
+
 ## 1. Plan
 
 Run the plan renderer and print its output verbatim. Never improvise the plan.
