@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
@@ -9,7 +9,7 @@ import { defineConfig } from "vitest/config";
 // is never stricter than the recorded floor. The caller checks the baseline
 // exists; a baseline whose coverage gate was never raised, or an unreadable
 // one, means 100: the greenfield wall.
-function recordedFloor(baselinePath: URL): number {
+function recordedFloor(baselinePath: string): number {
   try {
     // SAFETY: the baseline is JSON written by score.mjs; only the coverage
     // gate's `global.statements` fraction is read — the metric this threshold
@@ -37,9 +37,13 @@ function recordedFloor(baselinePath: URL): number {
 // the `test` script runs after vitest. No baseline is the greenfield wall
 // for every config, member or root.
 function globalFloor(): number {
-  const baselinePath = new URL("{{root}}/.code-quality-baseline.json", import.meta.url);
+  // A plain path, not `new URL(…, import.meta.url)`: the URL form is what
+  // fallow reads as a module import, and the baseline does not exist until
+  // `score.mjs --raise` writes it, so the URL form is a dead-code finding.
+  const here = dirname(fileURLToPath(import.meta.url));
+  const baselinePath = join(here, "{{root}}", ".code-quality-baseline.json");
   if (!existsSync(baselinePath)) return 100;
-  if (dirname(fileURLToPath(import.meta.url)) !== dirname(fileURLToPath(baselinePath))) return 0;
+  if (here !== dirname(baselinePath)) return 0;
   return recordedFloor(baselinePath);
 }
 

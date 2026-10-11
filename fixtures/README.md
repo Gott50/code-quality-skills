@@ -21,6 +21,20 @@ node skills/code-quality-setup/scripts/detect.mjs fixtures/<name>
 | `npm-eslint-prettier` | npm, single package, eslint + prettier at the root | the **`conflicts.tools` collision** and the **`conflicts.recipes` hold-back** at root level: `biome-assist-npm` collides with the project's prettier + eslint, and `eslint-prettier` is held back |
 | `debt-ts` | Bun, single package, strict `tsconfig.json`, one covered function plus deliberate debt under `src/` | the **debt-carrying apply target** — the five shapes the quality ratchet measures: **coverage** (`src/index.ts` at 56.67% lines; `src/unused.ts` never imported), **mutation** (`formatDuration`'s `< 60` boundary and its uncovered minutes branch leave survivors), **lint** (`anti-slop/no-runtime-typeof` at `src/index.ts:14`), **dead code** (`src/unused.ts` and the `legacyFormat` export), and **complexity** (`describeHttpStatus`, cyclomatic complexity 14) |
 
+**A fresh copy of an apply-target fixture must be a git repository with at least one commit.** The
+`fallow-audit` recipe's verify is `bun run fallow:audit`, and `fallow audit` detects its base ref from
+git: with no `.git` it exits 2 (`could not detect base branch`). The fixtures are tracked in this
+repo, but a copy of one carries no `.git`, so init and commit the copy before running the verify:
+
+```
+cp -R fixtures/debt-ts/. /tmp/acc-fixture && cd /tmp/acc-fixture
+git init -b main && git add -A && git commit -m init
+```
+
+One commit and no remote is enough — the audit reports `base_description: "local main"` and passes.
+Committing the pristine copy leaves the apply's own files as the changeset; the baselines the apply
+writes floor the known findings, so the audit still passes.
+
 The two conflict paths are reachable because the npm/pnpm formatter variant landed: `biome-assist-npm`
 declares `conflicts.tools: [prettier, eslint]` and `conflicts.recipes: [eslint-prettier]`, so a
 project that already runs ESLint + Prettier reports the collision *and* holds the competing recipe
