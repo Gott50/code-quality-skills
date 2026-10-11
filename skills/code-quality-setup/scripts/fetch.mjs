@@ -8,12 +8,18 @@
 // are parsed by hand, so no system `tar` is required.
 //
 // Usage:
-//   node scripts/fetch.mjs [--ref <sha>] [--cache <dir>] [--manifest <path>] [--json]
+//   node scripts/fetch.mjs [--ref <sha>] [--cache <dir>] [--manifest <path>] [--json] [--no-record]
 //
 // Ref resolution: --ref wins; else `library.ref` from the manifest (--manifest, default
 // ./.code-quality.json); else `main` resolved to a SHA (gh api, then unauthenticated api.github.com).
 // Offline: a network failure falls back to the newest cached ref (warned on stderr); no cache at all
 // is a hard error. A cache hit for the resolved ref never re-extracts.
+//
+// After the library is in the cache, the fetch records its pin — `{ ref, schemaVersion, contentHash }`
+// — in the manifest through the canonical writer (scripts/manifest.mjs library), so a later fetch
+// reads `library.ref` instead of re-resolving `main` (#130). The manifest is the apply step's
+// artifact: when it does not exist there is nothing to write to, so the fetch reports and skips.
+// `--no-record` skips the recording entirely.
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -29,6 +35,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
 
 const REPO = "Gott50/code-quality-skills";
@@ -42,7 +49,14 @@ const NETWORK_TIMEOUT_MS = 30_000;
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const opts = { ref: null, cache: null, manifest: null, json: false, help: false };
+  const opts = {
+    ref: null,
+    cache: null,
+    manifest: null,
+    json: false,
+    noRecord: false,
+    help: false,
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--ref") {
@@ -56,6 +70,8 @@ function parseArgs(argv) {
       if (opts.manifest === undefined) throw new Error("--manifest needs a value");
     } else if (a === "--json") {
       opts.json = true;
+    } else if (a === "--no-record") {
+      opts.noRecord = true;
     } else if (a === "--help" || a === "-h") {
       opts.help = true;
     } else {
@@ -67,7 +83,7 @@ function parseArgs(argv) {
 
 function printUsage() {
   process.stdout.write(
-    "usage: node scripts/fetch.mjs [--ref <sha>] [--cache <dir>] [--manifest <path>] [--json]\n",
+    "usage: node scripts/fetch.mjs [--ref <sha>] [--cache <dir>] [--manifest <path>] [--json] [--no-record]\n",
   );
 }
 
@@ -290,12 +306,75 @@ function readSchemaVersion(libraryDir) {
 }
 
 // ---------------------------------------------------------------------------
+// Recording the pin
+// ---------------------------------------------------------------------------
+
+// The manifest's current `library` block, or null when the manifest is absent or unreadable.
+function readManifestLibrary(manifestPath) {
+  const abs = resolve(manifestPath);
+  if (!existsSync(abs)) return null;
+  try {
+    const doc = JSON.parse(readFileSync(abs, "utf8"));
+    return doc?.library ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Record the fetched library's pin in the manifest through the canonical writer (manifest.mjs), so
+// a later fetch reads `library.ref` instead of re-resolving `main` (#130). The manifest is the
+// apply step's artifact: when it does not exist there is nothing to write to, so the fetch reports
+// and skips. Idempotent — an unchanged pin is not re-recorded, and manifest.mjs rewrites the same
+// bytes when it is.
+function recordLibrary(manifestPath, ref, hash, schemaVersion) {
+  const abs = resolve(manifestPath);
+  if (!existsSync(abs)) {
+    process.stderr.write(`fetch.mjs: no manifest at ${abs} — not recording the library pin\n`);
+    return;
+  }
+  if (schemaVersion === null) {
+    process.stderr.write(
+      `fetch.mjs: the fetched library carries no schemaVersion — not recording the library pin\n`,
+    );
+    return;
+  }
+  const current = readManifestLibrary(abs);
+  if (
+    current !== null &&
+    current.ref === ref &&
+    current.schemaVersion === schemaVersion &&
+    current.contentHash === hash
+  ) {
+    return;
+  }
+  const writer = join(dirname(fileURLToPath(import.meta.url)), "manifest.mjs");
+  try {
+    execFileSync(
+      process.execPath,
+      [
+        writer,
+        "library",
+        dirname(abs),
+        "--ref",
+        ref,
+        "--schema-version",
+        String(schemaVersion),
+        "--content-hash",
+        hash,
+      ],
+      { stdio: ["ignore", "ignore", "pipe"] },
+    );
+  } catch (err) {
+    const detail = String(err.stderr ?? "").trim() || err.message;
+    process.stderr.write(`fetch.mjs: could not record the library pin: ${detail}\n`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Output
 // ---------------------------------------------------------------------------
 
-function report(ref, cacheRoot, libraryDir, json) {
-  const hash = contentHash(libraryDir);
-  const schemaVersion = readSchemaVersion(libraryDir);
+function report(ref, cacheRoot, libraryDir, json, hash, schemaVersion) {
   if (json) {
     process.stdout.write(
       `${JSON.stringify({ ref, cacheDir: cacheRoot, libraryDir, contentHash: hash, schemaVersion })}\n`,
@@ -342,7 +421,8 @@ function fallback(cacheRoot, reason, json) {
     process.exit(1);
   }
   process.stderr.write(`fetch.mjs: using cached ref ${ref} (offline fallback)\n`);
-  report(ref, cacheRoot, join(cacheRoot, ref, LIBRARY_DIR), json);
+  const libraryDir = join(cacheRoot, ref, LIBRARY_DIR);
+  report(ref, cacheRoot, libraryDir, json, contentHash(libraryDir), readSchemaVersion(libraryDir));
 }
 
 // ---------------------------------------------------------------------------
@@ -356,7 +436,8 @@ async function main() {
     return;
   }
   const cacheRoot = resolveCacheRoot(opts);
-  const manifestRef = readManifestRef(opts.manifest ?? MANIFEST_NAME);
+  const manifestPath = opts.manifest ?? MANIFEST_NAME;
+  const manifestRef = readManifestRef(manifestPath);
 
   let ref = opts.ref ?? manifestRef ?? null;
   if (ref === null) {
@@ -380,7 +461,10 @@ async function main() {
     }
   }
 
-  report(ref, cacheRoot, libraryDir, opts.json);
+  const hash = contentHash(libraryDir);
+  const schemaVersion = readSchemaVersion(libraryDir);
+  if (!opts.noRecord) recordLibrary(manifestPath, ref, hash, schemaVersion);
+  report(ref, cacheRoot, libraryDir, opts.json, hash, schemaVersion);
 }
 
 try {

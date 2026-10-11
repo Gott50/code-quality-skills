@@ -13,12 +13,19 @@
 //     [--file <path>:<action>:<hash>]... [--skill-version <v>] [--environment <json>] [--applied-at <iso>]
 //   node scripts/manifest.mjs decline [projectDir] --recipe <id> [--applied-at <iso>]
 //   node scripts/manifest.mjs feedback [projectDir] --enable | --disable
+//   node scripts/manifest.mjs library [projectDir] --ref <sha> --schema-version <n> --content-hash <hash>
 //   node scripts/manifest.mjs canonicalize [projectDir]
 //
 // The schema is unchanged (schemaVersion 1, recipes[], declined[]; PLAN-SCHEMA.md → the manifest
 // hash convention). This file owns only the serialization. `record` and `decline` are idempotent:
 // re-recording a recipe whose content is unchanged rewrites the same bytes, so the manifest is
 // byte-stable across runs.
+//
+// `library` records the fetched library's pin (#130): the commit SHA the library was fetched at,
+// the library's own integer `schemaVersion`, and the content hash over its tree. The fetch step
+// (scripts/fetch.mjs) writes it so a later fetch reads `library.ref` instead of re-resolving
+// `main`, and the update check (#116) has a recorded version to compare against. Idempotent: an
+// unchanged pin rewrites the same bytes.
 //
 // `feedback` is the opt-in for the feedback channel (#71): a top-level boolean, off by default.
 // `--enable` writes `feedback: true`; `--disable` removes the key, so "off" is the absence of the
@@ -125,6 +132,9 @@ function parseArgs(argv) {
     environment: null,
     appliedAt: null,
     feedback: null,
+    ref: null,
+    schemaVersion: null,
+    contentHash: null,
   };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
@@ -135,6 +145,9 @@ function parseArgs(argv) {
     else if (a === "--skill-version") opts.skillVersion = argv[++i];
     else if (a === "--environment") opts.environment = argv[++i];
     else if (a === "--applied-at") opts.appliedAt = argv[++i];
+    else if (a === "--ref") opts.ref = argv[++i];
+    else if (a === "--schema-version") opts.schemaVersion = argv[++i];
+    else if (a === "--content-hash") opts.contentHash = argv[++i];
     else if (a === "--enable") opts.feedback = true;
     else if (a === "--disable") opts.feedback = false;
     else if (a.startsWith("--")) throw new Error(`unknown option: ${a}`);
@@ -239,6 +252,21 @@ function setFeedback(doc, enabled) {
   return next;
 }
 
+// The fetched library's pin (#130): the ref the library was fetched at, the library's own integer
+// `schemaVersion`, and the content hash over its tree. The fetch step records it so a later fetch
+// reads `library.ref` instead of re-resolving `main`, and the update check (#116) has a recorded
+// version to compare against. Idempotent: re-recording the same pin rewrites the same bytes (the
+// caller's `changed` check then skips the write).
+function setLibrary(doc, opts) {
+  const next = { ...doc };
+  next.library = {
+    ref: opts.ref,
+    schemaVersion: opts.schemaVersion,
+    contentHash: opts.contentHash,
+  };
+  return next;
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -246,7 +274,7 @@ function setFeedback(doc, enabled) {
 function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.command === null) {
-    throw new Error("a command is required: record | decline | feedback | canonicalize");
+    throw new Error("a command is required: record | decline | feedback | library | canonicalize");
   }
   const { doc, existed } = loadManifest(opts.projectDir);
 
@@ -261,6 +289,15 @@ function main() {
   } else if (opts.command === "feedback") {
     if (opts.feedback === null) throw new Error("feedback needs --enable or --disable");
     next = setFeedback(doc, opts.feedback);
+  } else if (opts.command === "library") {
+    if (opts.ref === null) throw new Error("library needs --ref <sha>");
+    if (opts.schemaVersion === null) throw new Error("library needs --schema-version <n>");
+    if (opts.contentHash === null) throw new Error("library needs --content-hash <hash>");
+    const schemaVersion = Number(opts.schemaVersion);
+    if (opts.schemaVersion.trim() === "" || !Number.isInteger(schemaVersion)) {
+      throw new Error(`--schema-version must be an integer, got "${opts.schemaVersion}"`);
+    }
+    next = setLibrary(doc, { ref: opts.ref, schemaVersion, contentHash: opts.contentHash });
   } else if (opts.command === "canonicalize") {
     next = doc;
   } else {
