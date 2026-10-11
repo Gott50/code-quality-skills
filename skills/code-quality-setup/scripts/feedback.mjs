@@ -18,6 +18,7 @@
 //   --plan-excerpt <text>       the plan excerpt (or --plan-excerpt-file <path>)
 //   --plan-excerpt-file <path>  read the plan excerpt from a file
 //   --stack <json>              the detector's stack report (default: run detect.mjs)
+//   --library <path>            the library dir for the detector (default: $CODE_QUALITY_LIBRARY, else the repo layout)
 //   --skill-version <v>         the skill version (default: the manifest's, else the constant)
 //   --gh | --no-gh              force gh availability (default: probe `gh --version`)
 //   --json                      print the machine-readable payload + filing instead of the report
@@ -57,6 +58,7 @@ Usage: node scripts/feedback.mjs [projectDir] --error <text> [options]
   --plan-excerpt <text>       the plan excerpt (or --plan-excerpt-file <path>)
   --plan-excerpt-file <path>  read the plan excerpt from a file
   --stack <json>              the detector's stack report (default: run detect.mjs)
+  --library <path>            the library dir for the detector (default: $CODE_QUALITY_LIBRARY, else the repo layout)
   --skill-version <v>         the skill version (default: the manifest's, else the constant)
   --gh | --no-gh              force gh availability (default: probe \`gh --version\`)
   --json                      print the machine-readable payload + filing instead of the report
@@ -318,6 +320,7 @@ function parseArgs(argv) {
     planExcerpt: null,
     planExcerptFile: null,
     stack: null,
+    library: null,
     skillVersion: null,
     json: false,
     gh: null,
@@ -333,6 +336,7 @@ function parseArgs(argv) {
     else if (a === "--plan-excerpt") opts.planExcerpt = argv[++i];
     else if (a === "--plan-excerpt-file") opts.planExcerptFile = argv[++i];
     else if (a === "--stack") opts.stack = argv[++i];
+    else if (a === "--library") opts.library = argv[++i];
     else if (a === "--skill-version") opts.skillVersion = argv[++i];
     else if (a === "--json") opts.json = true;
     else if (a === "--gh") opts.gh = true;
@@ -366,9 +370,11 @@ function readTextFile(path, label) {
 
 // The detector's stack report, best-effort: a detector hard error is one of the triggers, so a
 // failed run is expected and the report simply carries no stack.
-function runDetector(projectDir) {
+function runDetector(projectDir, library) {
   const detectPath = fileURLToPath(new URL("./detect.mjs", import.meta.url));
-  const res = spawnSync(process.execPath, [detectPath, projectDir], { encoding: "utf8" });
+  const args = [detectPath, projectDir];
+  if (library !== null && library !== undefined) args.push("--library", library);
+  const res = spawnSync(process.execPath, args, { encoding: "utf8" });
   if (res.error || res.status !== 0) {
     const detail = (res.stderr || res.error?.message || "").trim() || `detect.mjs exited ${res.status}`;
     return { stack: null, packages: null, error: detail };
@@ -463,7 +469,7 @@ function main() {
     stack = parsed?.stack ?? parsed;
     packages = parsed?.packages ?? null;
   } else {
-    const detected = runDetector(opts.projectDir);
+    const detected = runDetector(opts.projectDir, opts.library);
     stack = detected.stack;
     packages = detected.packages;
     stackError = detected.error;

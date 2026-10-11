@@ -15,7 +15,7 @@ The library is not shipped with the skill: it is fetched from this repo at a pin
 node scripts/fetch.mjs [--ref <sha>] [--cache <dir>] [--manifest <path>] [--json]
 ```
 
-The ref is `--ref`, else `library.ref` from `.code-quality.json`, else `main` resolved to a commit SHA. The library is extracted to `$XDG_CACHE_HOME/code-quality-skills/<ref>/library` (or `~/.cache/code-quality-skills/<ref>/library`; override with `--cache` or `CODE_QUALITY_CACHE`). `--json` prints one object — `{ ref, cacheDir, libraryDir, contentHash, schemaVersion }` — and `libraryDir` is where the recipes, templates, and `library.json` live; the `library/` paths the later steps name are this cache's `libraryDir`. A cache hit for the resolved ref is reused, never re-extracted.
+The ref is `--ref`, else `library.ref` from `.code-quality.json`, else `main` resolved to a commit SHA. The library is extracted to `$XDG_CACHE_HOME/code-quality-skills/<ref>/library` (or `~/.cache/code-quality-skills/<ref>/library`; override with `--cache` or `CODE_QUALITY_CACHE`). `--json` prints one object — `{ ref, cacheDir, libraryDir, contentHash, schemaVersion }` — and `libraryDir` is where the recipes, templates, and `library.json` live; the `library/` paths the later steps name are this cache's `libraryDir`. Pass that `libraryDir` to the plan step as `--library <libraryDir>` (or export it as `CODE_QUALITY_LIBRARY`); the plan and detector read the library from there. A cache hit for the resolved ref is reused, never re-extracted.
 
 Offline, a network failure falls back to the newest cached ref (warned on stderr); with no cache at all the fetch exits 1. The content hash is the library's identity — the same ref hashes the same, and any changed byte moves it.
 
@@ -24,10 +24,10 @@ Offline, a network failure falls back to the newest cached ref (warned on stderr
 Run the plan renderer and print its output verbatim. Never improvise the plan.
 
 ```
-node scripts/plan.mjs [projectDir] [--recipe <id>] [--force] [--diff [path]] [--check]   # default projectDir: .
+node scripts/plan.mjs [projectDir] [--library <path>] [--recipe <id>] [--force] [--diff [path]] [--check]   # default projectDir: .
 ```
 
-`plan.mjs` runs `scripts/detect.mjs` and writes nothing. Both are dependency-free, node builtins only. `--check` prints the machine-readable drift report (one JSON document) instead of the plan and exits 0 only when it is clean — the `ci-drift` workflow's input ([PLAN-SCHEMA.md](scripts/PLAN-SCHEMA.md) → `--check`).
+`--library <path>` (or `CODE_QUALITY_LIBRARY`) is the fetch step's `libraryDir`; without it the plan reads the repo-layout `library/`. `plan.mjs` runs `scripts/detect.mjs` and writes nothing. Both are dependency-free, node builtins only. `--check` prints the machine-readable drift report (one JSON document) instead of the plan and exits 0 only when it is clean — the `ci-drift` workflow's input ([PLAN-SCHEMA.md](scripts/PLAN-SCHEMA.md) → `--check`).
 
 ### The measurement — the floor the apply will install
 
@@ -102,6 +102,7 @@ The filesystem is the source of truth; `.code-quality.json` is an optimization. 
 
 ## 5. Options
 
+- `--library <path>` — the library directory to read recipes and templates from (the fetch step's `libraryDir`); also settable as `CODE_QUALITY_LIBRARY`. Without it the repo-layout `library/` is used.
 - `--recipe <id>` — narrow to one recipe. The plan is still shown and approved; `when` is never bypassed; `conflicts` still surface; a recipe that `requires` another will not apply alone.
 - `--force` — overrides a **collision** or a **loss** (a `create` drift that would drop the repo's extra content), never a failed `when` and never an **update** (a `create` drift the apply merges).
 - `--diff [path]` — unified diffs on demand.

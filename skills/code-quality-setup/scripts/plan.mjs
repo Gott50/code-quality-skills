@@ -7,7 +7,7 @@
 // in order, the gates and verify left behind, and a warning per unreadable recipe. It never writes
 // anything and never invokes a package manager.
 //
-// Usage: node scripts/plan.mjs [projectDir] [--recipe <id>] [--force] [--diff [path]]
+// Usage: node scripts/plan.mjs [projectDir] [--library <path>] [--recipe <id>] [--force] [--diff [path]]
 //
 // The output shape is specified in PLAN-SCHEMA.md next to this file; the recipe frontmatter and the
 // substitution keys it renders are specified in the library's RECIPE-CONTRACT.md
@@ -22,9 +22,17 @@ import { measure, safeRealpath, ARTIFACTS, readBaseline, compare } from "./score
 
 const SKILL_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // The library lives at the repo root, two levels up from the skill dir (skills/code-quality-setup/).
-// This is the repo-layout default; the fetched-cache / --library mechanism is a later ticket (#115).
-const LIBRARY_DIR = resolve(SKILL_DIR, "..", "..", "library");
+// This is the repo-layout default; the fetched cache (fetch.mjs) supplies its `libraryDir` through
+// `--library` or $CODE_QUALITY_LIBRARY instead.
+const DEFAULT_LIBRARY_DIR = resolve(SKILL_DIR, "..", "..", "library");
 const DETECT = join(SKILL_DIR, "scripts", "detect.mjs");
+
+// The library directory to read recipes and templates from: `--library <path>`, else
+// $CODE_QUALITY_LIBRARY, else the repo-layout default. Resolved to an absolute path so a relative
+// flag reads from the cwd.
+function resolveLibraryDir(flag) {
+  return resolve(flag ?? process.env.CODE_QUALITY_LIBRARY ?? DEFAULT_LIBRARY_DIR);
+}
 const MANIFEST_NAME = ".code-quality.json";
 const MANIFEST_SCHEMA_VERSION = 1;
 
@@ -33,11 +41,14 @@ const MANIFEST_SCHEMA_VERSION = 1;
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const opts = { projectDir: ".", recipe: null, force: false, diff: false, diffPath: null, check: false };
+  const opts = { projectDir: ".", library: null, recipe: null, force: false, diff: false, diffPath: null, check: false };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--recipe") {
+    if (a === "--library") {
+      opts.library = argv[++i];
+      if (opts.library === undefined) throw new Error("--library needs a path");
+    } else if (a === "--recipe") {
       opts.recipe = argv[++i];
       if (opts.recipe === undefined) throw new Error("--recipe needs an id");
     } else if (a === "--check") {
@@ -65,8 +76,8 @@ function parseArgs(argv) {
 // Detector
 // ---------------------------------------------------------------------------
 
-function runDetector(projectDir) {
-  const out = execFileSync(process.execPath, [DETECT, projectDir], {
+function runDetector(projectDir, libraryDir) {
+  const out = execFileSync(process.execPath, [DETECT, projectDir, "--library", libraryDir], {
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
     stdio: ["ignore", "pipe", "pipe"],
@@ -176,8 +187,8 @@ function resolveScopes(scope, workspace) {
   return ["."];
 }
 
-function readTemplate(libraryRelPath) {
-  return readFileSync(join(LIBRARY_DIR, libraryRelPath), "utf8");
+function readTemplate(libraryDir, libraryRelPath) {
+  return readFileSync(join(libraryDir, libraryRelPath), "utf8");
 }
 
 // ---------------------------------------------------------------------------
@@ -885,6 +896,7 @@ function classify(manifest, { library, files }) {
 
 function buildPlan(report, opts) {
   const { stack, recipes, selection, heldBack, collisions } = report;
+  const libraryDir = resolveLibraryDir(opts.library);
   const byId = new Map(recipes.map((r) => [r.id, r]));
   const errored = recipes.filter((r) => r.error !== null);
   const usable = recipes.filter((r) => r.error === null);
@@ -931,7 +943,7 @@ function buildPlan(report, opts) {
     for (const w of resolveWrites(r, stack.workspace)) {
       let content;
       try {
-        content = substitute(readTemplate(w.template), { ...subst, root: w.rootPrefix });
+        content = substitute(readTemplate(libraryDir, w.template), { ...subst, root: w.rootPrefix });
       } catch (err) {
         templateErrors.push({ id: r.id, error: `${w.template}: ${err.message}` });
         continue;
@@ -953,7 +965,7 @@ function buildPlan(report, opts) {
   const library = selected.map((r) => ({
     id: r.id,
     hash: hash(
-      readFileSync(join(LIBRARY_DIR, "recipes", `${r.id}.md`), "utf8") +
+      readFileSync(join(libraryDir, "recipes", `${r.id}.md`), "utf8") +
         writesByRecipe.get(r.id).map((w) => w.content).join("\n"),
     ),
     files: writesByRecipe.get(r.id).map((w) => ({ path: w.target, action: w.action, content: w.content })),
@@ -1682,7 +1694,7 @@ function main() {
 
   let report;
   try {
-    report = runDetector(opts.projectDir);
+    report = runDetector(opts.projectDir, resolveLibraryDir(opts.library));
   } catch (err) {
     const stderr = err.stderr ? String(err.stderr).trim() : err.message;
     process.stderr.write(`plan.mjs: detector failed\n${stderr}\n`);

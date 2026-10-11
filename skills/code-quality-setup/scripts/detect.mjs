@@ -6,7 +6,7 @@
 // evaluated `when` result with the reason it passed or failed. It never invokes a package manager
 // and never writes anything.
 //
-// Usage: node scripts/detect.mjs [projectDir] [--compact]
+// Usage: node scripts/detect.mjs [projectDir] [--library <path>] [--compact]
 //
 // The output shape is specified in DETECT-SCHEMA.md next to this file; the recipe frontmatter it
 // reads is specified in the library's RECIPE-CONTRACT.md (library/RECIPE-CONTRACT.md).
@@ -19,9 +19,15 @@ import { parseFrontmatter } from "./frontmatter.mjs";
 const SCHEMA_VERSION = 1;
 const SKILL_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // The library lives at the repo root, two levels up from the skill dir (skills/code-quality-setup/).
-// This is the repo-layout default; the fetched-cache / --library mechanism is a later ticket (#115).
-const LIBRARY_DIR = resolve(SKILL_DIR, "..", "..", "library");
-const RECIPES_DIR = join(LIBRARY_DIR, "recipes");
+// This is the repo-layout default; the fetched cache (fetch.mjs) supplies its `libraryDir` through
+// `--library` or $CODE_QUALITY_LIBRARY instead.
+const DEFAULT_LIBRARY_DIR = resolve(SKILL_DIR, "..", "..", "library");
+
+// The library directory to read recipes from: `--library <path>`, else $CODE_QUALITY_LIBRARY, else
+// the repo-layout default. Resolved to an absolute path so a relative flag reads from the cwd.
+function resolveLibraryDir(flag) {
+  return resolve(flag ?? process.env.CODE_QUALITY_LIBRARY ?? DEFAULT_LIBRARY_DIR);
+}
 
 // The gates a recipe's gate entry may name in `floor:` (RECIPE-CONTRACT.md →
 // "`floor` — the gate's ratchet"): the four unified-baseline gates, or
@@ -58,16 +64,17 @@ function extractUndo(body, label) {
 
 // A malformed recipe is reported, never fatal: one broken file must not cost the user the whole
 // matrix. Its entry carries `id` and `error` and nothing else, and it is never selected.
-function loadRecipes() {
-  if (!existsSync(RECIPES_DIR)) throw new Error(`no recipe directory at ${RECIPES_DIR}`);
-  const files = readdirSync(RECIPES_DIR)
+function loadRecipes(libraryDir) {
+  const recipesDir = join(libraryDir, "recipes");
+  if (!existsSync(recipesDir)) throw new Error(`no recipe directory at ${recipesDir}`);
+  const files = readdirSync(recipesDir)
     .filter((f) => f.endsWith(".md"))
     .sort();
   return files.map((file) => {
     const stem = basename(file, ".md");
     const label = `library/recipes/${file}`;
     try {
-      const text = readFileSync(join(RECIPES_DIR, file), "utf8");
+      const text = readFileSync(join(recipesDir, file), "utf8");
       const fm = parseFrontmatter(text, label);
       if (fm.id !== stem) throw new Error(`${label}: id "${fm.id}" must equal the filename stem`);
       if (!/^[a-z][a-z0-9-]*$/.test(fm.id)) throw new Error(`${label}: id "${fm.id}" is not kebab-case`);
@@ -603,7 +610,7 @@ function detectToolCollisions(recipes, selection, ctx) {
 // 6. Report
 // ---------------------------------------------------------------------------
 
-function detect(projectDir) {
+function detect(projectDir, libraryDir) {
   const root = resolve(projectDir);
   if (!isDir(root)) throw new Error(`not a directory: ${root}`);
   const rootManifest = readJson(join(root, "package.json"));
@@ -621,7 +628,7 @@ function detect(projectDir) {
   languages.typescriptStrictSource = languages.typescript ? strictness.source : null;
   languages.tsconfig = rootTsconfig?.configFile ?? null;
 
-  const recipes = loadRecipes();
+  const recipes = loadRecipes(libraryDir);
   const ctx = {
     root,
     languages,
@@ -670,11 +677,19 @@ function detect(projectDir) {
   };
 }
 
-const args = process.argv.slice(2);
-const compact = args.includes("--compact");
-const target = args.find((a) => !a.startsWith("--")) ?? ".";
 try {
-  const report = detect(target);
+  const args = process.argv.slice(2);
+  const compact = args.includes("--compact");
+  const libIdx = args.indexOf("--library");
+  let libraryFlag = null;
+  if (libIdx !== -1) {
+    libraryFlag = args[libIdx + 1];
+    if (libraryFlag === undefined) throw new Error("--library needs a path");
+  }
+  // Drop `--library` and its value so the value is never mistaken for the project dir.
+  const rest = libIdx === -1 ? args : args.filter((_, i) => i !== libIdx && i !== libIdx + 1);
+  const target = rest.find((a) => !a.startsWith("--")) ?? ".";
+  const report = detect(target, resolveLibraryDir(libraryFlag));
   process.stdout.write(`${JSON.stringify(report, null, compact ? 0 : 2)}\n`);
 } catch (err) {
   process.stderr.write(`detect.mjs: ${err.message}\n`);
