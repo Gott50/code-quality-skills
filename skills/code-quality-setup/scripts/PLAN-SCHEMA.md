@@ -312,6 +312,13 @@ The manifest also carries the opt-in `feedback` flag (#71): a top-level boolean,
 by `node scripts/manifest.mjs feedback [projectDir] --enable` and removed by `--disable`. It is not
 part of the drift comparison — see [FEEDBACK-SCHEMA.md](FEEDBACK-SCHEMA.md).
 
+The manifest also carries the fetched library's pin (#130): a top-level `library` object,
+`{ ref, schemaVersion, contentHash }` — the commit SHA the library was fetched at, the library's own
+integer `schemaVersion`, and the content hash over its tree. The fetch step records it through
+`node scripts/manifest.mjs library [projectDir] --ref <sha> --schema-version <n> --content-hash <hash>`,
+so a later fetch reads `library.ref` instead of re-resolving `main`, and the update check (#116) has
+a recorded version to compare against. It is not part of the drift comparison.
+
 For the drift report to agree, the apply step MUST hash the content the recipe **owns** in each
 file, with the same normalization `plan.mjs` uses:
 

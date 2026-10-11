@@ -12,10 +12,12 @@ Wire a TypeScript repo's code-quality gates from a library of recipes, or audit 
 The library is not shipped with the skill: it is fetched from this repo at a pinned commit and cached before anything is planned. Run the fetch first, and read the library from the cache path it prints.
 
 ```
-node scripts/fetch.mjs [--ref <sha>] [--cache <dir>] [--manifest <path>] [--json]
+node scripts/fetch.mjs [--ref <sha>] [--cache <dir>] [--manifest <path>] [--json] [--no-record]
 ```
 
 The ref is `--ref`, else `library.ref` from `.code-quality.json`, else `main` resolved to a commit SHA. The library is extracted to `$XDG_CACHE_HOME/code-quality-skills/<ref>/library` (or `~/.cache/code-quality-skills/<ref>/library`; override with `--cache` or `CODE_QUALITY_CACHE`). `--json` prints one object — `{ ref, cacheDir, libraryDir, contentHash, schemaVersion }` — and `libraryDir` is where the recipes, templates, and `library.json` live; the `library/` paths the later steps name are this cache's `libraryDir`. Pass that `libraryDir` to the plan step as `--library <libraryDir>` (or export it as `CODE_QUALITY_LIBRARY`); the plan and detector read the library from there. A cache hit for the resolved ref is reused, never re-extracted.
+
+The fetch records the pin — `{ ref, schemaVersion, contentHash }` — in `.code-quality.json` through the canonical writer (`manifest.mjs library`), so a later fetch reads `library.ref` instead of re-resolving `main`. The manifest is the apply step's artifact: the fetch records only when it already exists (it never creates one) and reports on stderr when it does not; `--no-record` skips the recording.
 
 Offline, a network failure falls back to the newest cached ref (warned on stderr); with no cache at all the fetch exits 1. The content hash is the library's identity — the same ref hashes the same, and any changed byte moves it.
 
