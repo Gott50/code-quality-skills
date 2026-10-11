@@ -9,15 +9,19 @@
 // Usage: node scripts/detect.mjs [projectDir] [--compact]
 //
 // The output shape is specified in DETECT-SCHEMA.md next to this file; the recipe frontmatter it
-// reads is specified in ../RECIPE-CONTRACT.md.
+// reads is specified in the library's RECIPE-CONTRACT.md (library/RECIPE-CONTRACT.md).
 
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join, resolve, relative, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseFrontmatter } from "./frontmatter.mjs";
 
 const SCHEMA_VERSION = 1;
 const SKILL_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const RECIPES_DIR = join(SKILL_DIR, "references", "recipes");
+// The library lives at the repo root, two levels up from the skill dir (skills/code-quality-setup/).
+// This is the repo-layout default; the fetched-cache / --library mechanism is a later ticket (#115).
+const LIBRARY_DIR = resolve(SKILL_DIR, "..", "..", "library");
+const RECIPES_DIR = join(LIBRARY_DIR, "recipes");
 
 // The gates a recipe's gate entry may name in `floor:` (RECIPE-CONTRACT.md →
 // "`floor` — the gate's ratchet"): the four unified-baseline gates, or
@@ -32,109 +36,11 @@ const FLOOR_GATES = {
 };
 
 // ---------------------------------------------------------------------------
-// 1. Strict-subset frontmatter reader (RECIPE-CONTRACT.md → "Reader rules")
+// 1. Strict-subset frontmatter reader — shared with scripts/build-library.mjs
 // ---------------------------------------------------------------------------
-
-// Flow-style values are JSON with the quotes left off. Quote the bare tokens, then JSON.parse.
-function parseFlow(src) {
-  const quoted = src
-    .replace(/([{,]\s*)([A-Za-z_][\w.-]*)\s*:/g, '$1"$2":')
-    .replace(/:\s*([^"'\s,[\]{}][^,}\]]*?)\s*(?=[,}])/g, (_m, w) => `: ${JSON.stringify(w)}`)
-    .replace(/([[,]\s*)([^"'\s,[\]{}][^,}\]]*?)\s*(?=[,\]])/g, (_m, p, w) => `${p}${JSON.stringify(w)}`);
-  try {
-    return JSON.parse(quoted);
-  } catch (err) {
-    throw new Error(`frontmatter: unreadable flow value ${JSON.stringify(src)} — ${err.message}`);
-  }
-}
-
-function parseScalar(raw) {
-  const s = raw.trim();
-  if (s === "") return null;
-  if (s === "true") return true;
-  if (s === "false") return false;
-  if (s === "null" || s === "~") return null;
-  if (/^-?\d+$/.test(s)) return Number(s);
-  if (s.startsWith("[") || s.startsWith("{")) return parseFlow(s);
-  return s;
-}
-
-function parseFrontmatter(text, label) {
-  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
-  if (!m) throw new Error(`${label}: no --- frontmatter block`);
-  const lines = m[1].split(/\r?\n/);
-  const indentOf = (l) => l.match(/^ */)[0].length;
-  let i = 0;
-
-  const skipBlank = () => {
-    while (i < lines.length && lines[i].trim() === "") i++;
-  };
-
-  function parseNode(minIndent) {
-    skipBlank();
-    if (i >= lines.length) return null;
-    const ind = indentOf(lines[i]);
-    if (ind < minIndent) return null;
-    return /^\s*-\s/.test(lines[i]) ? parseSeq(ind) : parseMap(ind);
-  }
-
-  function parseSeq(indent) {
-    const out = [];
-    while (i < lines.length) {
-      const line = lines[i];
-      if (line.trim() === "") {
-        i++;
-        continue;
-      }
-      if (indentOf(line) !== indent || !/^\s*-\s/.test(line)) break;
-      const rest = line.slice(indent + 1).trim();
-      if (rest === "") {
-        i++;
-        out.push(parseNode(indent + 1));
-        continue;
-      }
-      if (/^[A-Za-z_][\w-]*\s*:/.test(rest)) {
-        // "- key: value" — the map's own lines sit two columns deeper.
-        lines[i] = " ".repeat(indent + 2) + rest;
-        out.push(parseMap(indent + 2));
-        continue;
-      }
-      out.push(parseScalar(rest));
-      i++;
-    }
-    return out;
-  }
-
-  function parseMap(indent) {
-    const out = {};
-    while (i < lines.length) {
-      const line = lines[i];
-      if (line.trim() === "") {
-        i++;
-        continue;
-      }
-      if (indentOf(line) !== indent) break;
-      const mm = /^([A-Za-z_][\w-]*)\s*:\s*(.*)$/.exec(line.trim());
-      if (!mm) throw new Error(`${label}: line outside the strict subset: ${JSON.stringify(line)}`);
-      const [, key, rawVal] = mm;
-      if (rawVal.trim() === "") {
-        i++;
-        out[key] = parseNode(indent + 1);
-      } else {
-        out[key] = parseScalar(rawVal);
-        i++;
-      }
-    }
-    return out;
-  }
-
-  const root = parseMap(0);
-  skipBlank();
-  if (i < lines.length) {
-    throw new Error(`${label}: line outside the strict subset: ${JSON.stringify(lines[i])}`);
-  }
-  return root;
-}
+//
+// The reader lives in ./frontmatter.mjs (RECIPE-CONTRACT.md → "Reader rules"); detect.mjs and the
+// repo-root library generator import the same copy so the two never drift.
 
 // `{{plan.details}}` renders each selected recipe's undo bullets. A missing or empty section is a
 // hard error: a silent blank renders an empty "Undo:" in the guidance doc.
@@ -159,7 +65,7 @@ function loadRecipes() {
     .sort();
   return files.map((file) => {
     const stem = basename(file, ".md");
-    const label = `references/recipes/${file}`;
+    const label = `library/recipes/${file}`;
     try {
       const text = readFileSync(join(RECIPES_DIR, file), "utf8");
       const fm = parseFrontmatter(text, label);

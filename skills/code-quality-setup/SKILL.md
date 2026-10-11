@@ -49,7 +49,7 @@ Ask once, after the plan. `--diff` prints unified diffs for every file; `--diff 
 
 ## 3. Apply
 
-There is no `apply.mjs`: the agent applies. Walk the selection in priority order and follow each recipe's `## Apply` in `references/recipes/<id>.md`. The three phases are global — every recipe's files, then every command, then every verify (see [RECIPE-CONTRACT.md](RECIPE-CONTRACT.md) → Apply order).
+There is no `apply.mjs`: the agent applies. Walk the selection in priority order and follow each recipe's `## Apply` in `library/recipes/<id>.md`. The three phases are global — every recipe's files, then every command, then every verify (see [RECIPE-CONTRACT.md](../../library/RECIPE-CONTRACT.md) → Apply order).
 
 ### The baseline write — install each gate at the measured level
 
@@ -108,7 +108,7 @@ node scripts/feedback.mjs [projectDir] --recipe <id> --error <text>
 
 ## Reference
 
-- [RECIPE-CONTRACT.md](RECIPE-CONTRACT.md) — the recipe frontmatter and body contract.
-- [references/recipes/](references/recipes/) — the recipe library, one file per recipe.
+- [RECIPE-CONTRACT.md](../../library/RECIPE-CONTRACT.md) — the recipe frontmatter and body contract.
+- [library/recipes/](../../library/recipes/) — the recipe library, one file per recipe.
 - [references/feedback.md](references/feedback.md) — the opt-in feedback channel.
 - [scripts/DETECT-SCHEMA.md](scripts/DETECT-SCHEMA.md), [scripts/PLAN-SCHEMA.md](scripts/PLAN-SCHEMA.md), [scripts/SCORE-SCHEMA.md](scripts/SCORE-SCHEMA.md), [scripts/FEEDBACK-SCHEMA.md](scripts/FEEDBACK-SCHEMA.md) — the scripts' output contracts.

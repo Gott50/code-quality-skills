@@ -94,7 +94,7 @@ A directory-shaped candidate (`.husky`, `.github/workflows`) reports its content
 
 ## `recipes[]`
 
-One entry per `references/recipes/*.md`, carrying the parsed frontmatter plus the evaluated result:
+One entry per `library/recipes/*.md`, carrying the parsed frontmatter plus the evaluated result:
 
 ```jsonc
 {
@@ -181,4 +181,4 @@ equal the filename stem, a missing or empty `## Undo` section — is reported as
 does not stop the other recipes from producing a matrix and a plan. Loud, never a silent skip.
 
 The run itself exits 1 only when there is nothing to report: the target is not a directory, or
-`references/recipes/` is missing.
+`library/recipes/` is missing.
