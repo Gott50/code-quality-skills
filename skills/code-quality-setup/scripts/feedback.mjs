@@ -12,26 +12,33 @@
 // prints a note to stderr and exits 0 without building a report.
 //
 // Usage: node scripts/feedback.mjs [projectDir] --error <text> [options]
+//        node scripts/feedback.mjs [projectDir] --proposal <recipe-path> [options]
 //   --recipe <id>               the failing recipe id
 //   --error <text>              the failure text (or --error-file <path>)
 //   --error-file <path>         read the failure text from a file
 //   --plan-excerpt <text>       the plan excerpt (or --plan-excerpt-file <path>)
 //   --plan-excerpt-file <path>  read the plan excerpt from a file
+//   --proposal <recipe-path>    propose a new recipe: the recipe .md, its templates, a rationale
+//   --rationale <text>          the proposal's rationale (or --rationale-file <path>)
+//   --rationale-file <path>     read the rationale from a file
 //   --stack <json>              the detector's stack report (default: run detect.mjs)
-//   --library <path>            the library dir for the detector (default: $CODE_QUALITY_LIBRARY, else the repo layout)
+//   --library <path>            the library dir for the detector and the proposal's templates
+//                               (default: $CODE_QUALITY_LIBRARY, else the repo layout)
 //   --skill-version <v>         the skill version (default: the manifest's, else the constant)
 //   --gh | --no-gh              force gh availability (default: probe `gh --version`)
 //   --json                      print the machine-readable payload + filing instead of the report
 //   --help                      this text
 //
-// The payload, the redaction rules and the opt-in flag are specified in FEEDBACK-SCHEMA.md next to
-// this file; the agent-facing flow is references/feedback.md.
+// Two report types share this channel: a failure report (`--error`, the default) and a recipe
+// proposal (`--proposal`, #119). The payload, the redaction rules and the opt-in flag are specified
+// in FEEDBACK-SCHEMA.md next to this file; the agent-facing flow is references/feedback.md.
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseFrontmatter } from "./frontmatter.mjs";
 
 const SCHEMA_VERSION = 1;
 const SKILL_NAME = "code-quality-setup";
@@ -39,11 +46,19 @@ const SKILL_VERSION = "1";
 const MANIFEST_NAME = ".code-quality.json";
 const DESTINATION = "Gott50/code-quality-skills";
 const LABELS = ["feedback", "needs-triage"];
+const PROPOSAL_LABELS = ["recipe-proposal", "needs-triage"];
+// The library lives at the repo root, two levels up from the skill dir (skills/code-quality-setup/).
+// This is the repo-layout default; the fetched cache (fetch.mjs) supplies its `libraryDir` through
+// `--library` or $CODE_QUALITY_LIBRARY instead. The same resolution plan.mjs uses.
+const SKILL_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const DEFAULT_LIBRARY_DIR = resolve(SKILL_DIR, "..", "..", "library");
+const DEFAULT_RATIONALE = "No rationale given. Proposed via the code-quality-setup feedback channel.";
 // GitHub's unpublished URL length limit: the request line is capped at 8 KB and an over-long
 // `issues/new` URL is answered with 414. 8000 leaves room for the scheme and host.
 const MAX_URL_LENGTH = 8000;
 const TITLE_MAX = 80;
 const REPORT_FILE = "code-quality-feedback.md";
+const PROPOSAL_REPORT_FILE = "code-quality-recipe-proposal.md";
 
 const USAGE = `feedback.mjs — the opt-in feedback channel (#71)
 
@@ -51,20 +66,26 @@ Builds the redacted report for an unexpected failure (or the user's say-so), pri
 the filing path. It never sends anything: the agent shows the report, the human files it.
 
 Usage: node scripts/feedback.mjs [projectDir] --error <text> [options]
+       node scripts/feedback.mjs [projectDir] --proposal <recipe-path> [options]
 
   --recipe <id>               the failing recipe id
   --error <text>              the failure text (or --error-file <path>)
   --error-file <path>         read the failure text from a file
   --plan-excerpt <text>       the plan excerpt (or --plan-excerpt-file <path>)
   --plan-excerpt-file <path>  read the plan excerpt from a file
+  --proposal <recipe-path>    propose a new recipe: the recipe .md, its templates, a rationale
+  --rationale <text>          the proposal's rationale (or --rationale-file <path>)
+  --rationale-file <path>     read the rationale from a file
   --stack <json>              the detector's stack report (default: run detect.mjs)
-  --library <path>            the library dir for the detector (default: $CODE_QUALITY_LIBRARY, else the repo layout)
+  --library <path>            the library dir for the detector and the proposal's templates
+                              (default: $CODE_QUALITY_LIBRARY, else the repo layout)
   --skill-version <v>         the skill version (default: the manifest's, else the constant)
   --gh | --no-gh              force gh availability (default: probe \`gh --version\`)
   --json                      print the machine-readable payload + filing instead of the report
   --help                      this text
 
-The channel is off unless .code-quality.json carries \`feedback: true\`:
+Two report types share this channel: a failure report (\`--error\`, the default) and a recipe
+proposal (\`--proposal\`). The channel is off unless .code-quality.json carries \`feedback: true\`:
 
   node scripts/manifest.mjs feedback [projectDir] --enable
 
@@ -196,6 +217,136 @@ function renderReport(payload) {
 }
 
 // ---------------------------------------------------------------------------
+// Proposal payload (#119)
+// ---------------------------------------------------------------------------
+
+// The library dir: `--library <path>`, else $CODE_QUALITY_LIBRARY, else the repo layout. Resolved
+// to an absolute path so a relative flag reads from the cwd — the same resolution plan.mjs uses.
+function resolveLibraryDir(flag) {
+  return resolve(flag ?? process.env.CODE_QUALITY_LIBRARY ?? DEFAULT_LIBRARY_DIR);
+}
+
+// Read the proposed recipe and the templates its `files[].template` names, resolved against the
+// library. A missing recipe or a template the recipe names but the library lacks is a hard error:
+// the proposal is incomplete without them, and a silent omission would file a broken proposal.
+function readProposal(recipePath, libraryDir) {
+  const abs = resolve(recipePath);
+  if (!existsSync(abs)) throw new Error(`--proposal recipe not found: ${recipePath}`);
+  const content = readFileSync(abs, "utf8");
+  let fm;
+  try {
+    fm = parseFrontmatter(content, recipePath);
+  } catch (err) {
+    throw new Error(`--proposal recipe is not a valid recipe: ${err.message}`);
+  }
+  const id = typeof fm.id === "string" && fm.id ? fm.id : basename(abs, ".md");
+  const templates = [];
+  const seen = new Set();
+  for (const f of fm.files ?? []) {
+    const rel = f?.template;
+    if (typeof rel !== "string" || rel === "" || seen.has(rel)) continue;
+    seen.add(rel);
+    const tplPath = join(libraryDir, rel);
+    if (!existsSync(tplPath)) {
+      throw new Error(
+        `--proposal recipe "${id}" names a template that does not exist: ${rel} (looked in ${libraryDir})`,
+      );
+    }
+    templates.push({ path: rel, content: readFileSync(tplPath, "utf8") });
+  }
+  return { id, path: recipePath, content, templates };
+}
+
+// The proposal payload mirrors the failure payload's top-level keys and replaces `failure` with
+// `proposal`; `type` distinguishes the two. The recipe, its templates and the rationale are
+// attached VERBATIM: the proposal is filed to the project the recipe is meant to live in, and the
+// redaction is over-eager (it rewrites a URL to `https:<path>` and Biome's `"//"` microsyntax to
+// `<path>`), which would make the proposed recipe useless upstream. Only the stack report — the
+// machine-specific part — is redacted, exactly as in a failure report.
+function buildProposalPayload(ctx) {
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    type: "proposal",
+    skill: { name: SKILL_NAME, version: ctx.skillVersion },
+    proposal: {
+      recipe: {
+        id: ctx.proposal.id,
+        path: ctx.proposal.path,
+        content: ctx.proposal.content,
+      },
+      templates: ctx.proposal.templates.map((t) => ({ path: t.path, content: t.content })),
+      rationale: ctx.rationale,
+    },
+    stack: ctx.stack === null ? null : redactValue(ctx.stack, ctx),
+    packages: ctx.packages === null ? null : redactValue(ctx.packages, ctx),
+    stackError: ctx.stackError === null ? null : redactText(ctx.stackError, ctx),
+    redactions: ["absolute paths", "package names"],
+    generatedAt: ctx.generatedAt,
+  };
+}
+
+// A fence long enough to hold `content` verbatim: one backtick more than its longest run, so a
+// recipe body (which carries its own ``` fences) or a shell template never closes the fence early.
+function pushFenced(out, content, lang) {
+  const runs = String(content).match(/`+/g) ?? [];
+  const longest = runs.reduce((m, r) => Math.max(m, r.length), 0);
+  const fence = "`".repeat(Math.max(3, longest + 1));
+  out.push(fence + lang);
+  out.push(content);
+  out.push(fence);
+}
+
+// The fence's info string: the template's extension, or nothing when it has none.
+function fenceLang(path) {
+  const m = /\.([A-Za-z0-9]+)$/.exec(path);
+  return m ? m[1] : "";
+}
+
+function renderProposalReport(payload) {
+  const p = payload.proposal;
+  const out = [];
+  out.push("## code-quality-setup recipe proposal");
+  out.push("");
+  out.push(`- **skill**: \`${payload.skill.name}\` ${payload.skill.version}`);
+  out.push(`- **generated**: ${payload.generatedAt}`);
+  out.push(`- **recipe**: \`${p.recipe.id}\``);
+  out.push("");
+  out.push("### Rationale");
+  out.push("");
+  out.push(p.rationale || "_(none given)_");
+  out.push("");
+  out.push(`### Recipe — \`${p.recipe.path}\``);
+  out.push("");
+  pushFenced(out, p.recipe.content, "markdown");
+  out.push("");
+  out.push("### Templates");
+  out.push("");
+  if (p.templates.length === 0) {
+    out.push("_(none)_");
+    out.push("");
+  } else {
+    for (const t of p.templates) {
+      out.push(`#### \`${t.path}\``);
+      out.push("");
+      pushFenced(out, t.content, fenceLang(t.path));
+      out.push("");
+    }
+  }
+  out.push("### Stack");
+  out.push("");
+  if (payload.stackError) {
+    out.push(`_The detector could not run: ${payload.stackError}_`);
+    out.push("");
+  }
+  out.push("```json");
+  out.push(JSON.stringify({ stack: payload.stack, packages: payload.packages }, null, 2));
+  out.push("```");
+  out.push("");
+  out.push(`_Redacted: ${payload.redactions.join(", ")}._`);
+  return out.join("\n");
+}
+
+// ---------------------------------------------------------------------------
 // Filing
 // ---------------------------------------------------------------------------
 
@@ -207,11 +358,19 @@ function buildTitle(payload) {
   return title.trim() || "[feedback]";
 }
 
-function buildUrl(title, body) {
+function buildProposalTitle(payload) {
+  const first = (payload.proposal.rationale || "").split("\n").find((l) => l.trim() !== "") ?? "";
+  const head = first.trim().slice(0, TITLE_MAX);
+  const id = payload.proposal.recipe.id;
+  const title = head ? `[recipe-proposal] ${id}: ${head}` : `[recipe-proposal] ${id}`;
+  return title.trim() || "[recipe-proposal]";
+}
+
+function buildUrl(title, body, labels) {
   const query = [
     `title=${encodeURIComponent(title)}`,
     `body=${encodeURIComponent(body)}`,
-    `labels=${LABELS.map(encodeURIComponent).join(",")}`,
+    `labels=${labels.map(encodeURIComponent).join(",")}`,
   ].join("&");
   return `https://github.com/${DESTINATION}/issues/new?${query}`;
 }
@@ -220,11 +379,11 @@ function shellQuote(value) {
   return `'${String(value).replace(/'/g, `'\\''`)}'`;
 }
 
-function ghCommand(title, file) {
+function ghCommand(title, file, labels) {
   return [
     "gh issue create",
     `--repo ${DESTINATION}`,
-    ...LABELS.map((label) => `--label ${label}`),
+    ...labels.map((label) => `--label ${label}`),
     `--title ${shellQuote(title)}`,
     `--body-file ${shellQuote(file)}`,
   ].join(" ");
@@ -232,8 +391,8 @@ function ghCommand(title, file) {
 
 // The full report on disk, for `gh --body-file` and for the attach-it-yourself fallback. A local
 // artifact, never a send.
-function writeReportFile(body) {
-  const path = join(tmpdir(), REPORT_FILE);
+function writeReportFile(body, filename) {
+  const path = join(tmpdir(), filename);
   writeFileSync(path, `${body}\n`);
   return path;
 }
@@ -241,53 +400,53 @@ function writeReportFile(body) {
 // No `gh` and the URL is over the limit: the largest body prefix whose URL fits, plus a marker
 // pointing at the attached file. Sliced by code point so a surrogate pair is never split (which
 // would make `encodeURIComponent` throw).
-function truncateBody(title, body) {
+function truncateBody(title, body, labels) {
   const marker = "\n\n_Truncated to fit GitHub's URL length limit — the full report is attached as a file._";
   const chars = Array.from(body);
   let lo = 0;
   let hi = chars.length;
   while (lo < hi) {
     const mid = Math.ceil((lo + hi) / 2);
-    if (buildUrl(title, chars.slice(0, mid).join("") + marker).length <= MAX_URL_LENGTH) lo = mid;
+    if (buildUrl(title, chars.slice(0, mid).join("") + marker, labels).length <= MAX_URL_LENGTH) lo = mid;
     else hi = mid - 1;
   }
   return chars.slice(0, lo).join("") + marker;
 }
 
-function buildFiling(payload, ctx) {
-  const body = renderReport(payload);
-  const title = buildTitle(payload);
-  const url = buildUrl(title, body);
+// The filing is the same for both report types: a prefilled URL, `gh issue create`, or truncate and
+// attach. Only the title, body, labels and report-file name differ.
+function buildFiling({ title, body, labels, reportFile, ghAvailable }) {
+  const url = buildUrl(title, body, labels);
   const urlTooLong = url.length > MAX_URL_LENGTH;
   const filing = {
     destination: DESTINATION,
-    labels: LABELS,
+    labels,
     title,
     body,
     url,
     urlLength: url.length,
     urlTooLong,
     truncated: false,
-    ghAvailable: ctx.ghAvailable,
+    ghAvailable,
     ghCommand: null,
     reportFile: null,
   };
-  if (urlTooLong && !ctx.ghAvailable) {
+  if (urlTooLong && !ghAvailable) {
     // The URL is the only path and it does not fit: truncate it and attach the full report.
     filing.truncated = true;
-    filing.reportFile = writeReportFile(body);
-    filing.url = buildUrl(title, truncateBody(title, body));
+    filing.reportFile = writeReportFile(body, reportFile);
+    filing.url = buildUrl(title, truncateBody(title, body, labels), labels);
     filing.urlLength = filing.url.length;
-  } else if (ctx.ghAvailable) {
+  } else if (ghAvailable) {
     // `gh` is the richer path (no URL limit); the URL is still printed when it fits.
-    filing.reportFile = writeReportFile(body);
-    filing.ghCommand = ghCommand(title, filing.reportFile);
+    filing.reportFile = writeReportFile(body, reportFile);
+    filing.ghCommand = ghCommand(title, filing.reportFile, labels);
   }
   return filing;
 }
 
-function renderOutput(payload, filing) {
-  const out = [renderReport(payload), "", "---", "", "### Filing (nothing is sent by this script)", ""];
+function renderOutput(report, filing) {
+  const out = [report, "", "---", "", "### Filing (nothing is sent by this script)", ""];
   out.push(
     `- **destination**: \`${filing.destination}\` (labels: ${filing.labels.map((l) => `\`${l}\``).join(", ")})`,
   );
@@ -319,6 +478,9 @@ function parseArgs(argv) {
     errorFile: null,
     planExcerpt: null,
     planExcerptFile: null,
+    proposal: null,
+    rationale: null,
+    rationaleFile: null,
     stack: null,
     library: null,
     skillVersion: null,
@@ -335,6 +497,9 @@ function parseArgs(argv) {
     else if (a === "--error-file") opts.errorFile = argv[++i];
     else if (a === "--plan-excerpt") opts.planExcerpt = argv[++i];
     else if (a === "--plan-excerpt-file") opts.planExcerptFile = argv[++i];
+    else if (a === "--proposal") opts.proposal = argv[++i];
+    else if (a === "--rationale") opts.rationale = argv[++i];
+    else if (a === "--rationale-file") opts.rationaleFile = argv[++i];
     else if (a === "--stack") opts.stack = argv[++i];
     else if (a === "--library") opts.library = argv[++i];
     else if (a === "--skill-version") opts.skillVersion = argv[++i];
@@ -445,21 +610,25 @@ function main() {
     return;
   }
 
-  if (opts.error === null && opts.errorFile === null) {
-    throw new Error("a failure is required: --error <text> or --error-file <path>");
-  }
-  if (opts.error !== null && opts.errorFile !== null) {
-    throw new Error("give --error or --error-file, not both");
+  const isProposal = opts.proposal !== null;
+  if (isProposal) {
+    if (opts.error !== null || opts.errorFile !== null) {
+      throw new Error("give --proposal or --error, not both");
+    }
+  } else {
+    if (opts.error === null && opts.errorFile === null) {
+      throw new Error("a failure is required: --error <text> or --error-file <path>");
+    }
+    if (opts.error !== null && opts.errorFile !== null) {
+      throw new Error("give --error or --error-file, not both");
+    }
   }
   if (opts.planExcerpt !== null && opts.planExcerptFile !== null) {
     throw new Error("give --plan-excerpt or --plan-excerpt-file, not both");
   }
-  const errorText =
-    opts.errorFile !== null ? readTextFile(opts.errorFile, "--error-file") : opts.error;
-  const planExcerpt =
-    opts.planExcerptFile !== null
-      ? readTextFile(opts.planExcerptFile, "--plan-excerpt-file")
-      : (opts.planExcerpt ?? "");
+  if (opts.rationale !== null && opts.rationaleFile !== null) {
+    throw new Error("give --rationale or --rationale-file, not both");
+  }
 
   let stack = null;
   let packages = null;
@@ -478,9 +647,6 @@ function main() {
   const ctx = {
     roots: projectRoots(opts.projectDir),
     packageNames: packageNames(packages),
-    recipe: opts.recipe,
-    error: errorText,
-    planExcerpt,
     stack,
     packages,
     stackError,
@@ -489,14 +655,51 @@ function main() {
     ghAvailable: opts.gh ?? ghAvailable(),
   };
 
+  if (isProposal) {
+    ctx.proposal = readProposal(opts.proposal, resolveLibraryDir(opts.library));
+    ctx.rationale =
+      opts.rationaleFile !== null
+        ? readTextFile(opts.rationaleFile, "--rationale-file")
+        : (opts.rationale ?? DEFAULT_RATIONALE);
+    const payload = buildProposalPayload(ctx);
+    const body = renderProposalReport(payload);
+    const filing = buildFiling({
+      title: buildProposalTitle(payload),
+      body,
+      labels: PROPOSAL_LABELS,
+      reportFile: PROPOSAL_REPORT_FILE,
+      ghAvailable: ctx.ghAvailable,
+    });
+    if (opts.json) {
+      process.stdout.write(`${JSON.stringify({ payload, filing }, null, 2)}\n`);
+      return;
+    }
+    process.stdout.write(`${renderOutput(body, filing)}\n`);
+    return;
+  }
+
+  ctx.recipe = opts.recipe;
+  ctx.error = opts.errorFile !== null ? readTextFile(opts.errorFile, "--error-file") : opts.error;
+  ctx.planExcerpt =
+    opts.planExcerptFile !== null
+      ? readTextFile(opts.planExcerptFile, "--plan-excerpt-file")
+      : (opts.planExcerpt ?? "");
+
   const payload = buildPayload(ctx);
-  const filing = buildFiling(payload, ctx);
+  const body = renderReport(payload);
+  const filing = buildFiling({
+    title: buildTitle(payload),
+    body,
+    labels: LABELS,
+    reportFile: REPORT_FILE,
+    ghAvailable: ctx.ghAvailable,
+  });
 
   if (opts.json) {
     process.stdout.write(`${JSON.stringify({ payload, filing }, null, 2)}\n`);
     return;
   }
-  process.stdout.write(`${renderOutput(payload, filing)}\n`);
+  process.stdout.write(`${renderOutput(body, filing)}\n`);
 }
 
 try {
