@@ -21,6 +21,31 @@ The fetch records the pin — `{ ref, schemaVersion, contentHash }` — in `.cod
 
 Offline, a network failure falls back to the newest cached ref (warned on stderr); with no cache at all the fetch exits 1. The content hash is the library's identity — the same ref hashes the same, and any changed byte moves it.
 
+### The update check (after the fetch)
+
+The fetch pins the library to a commit SHA and records it in `.code-quality.json`. Run the check after the fetch to see whether the library has moved since that pin — it fetches only `library/library.json` at the current `main` (one small request, never the tarball) and compares the available ref to the recorded one.
+
+```
+node scripts/update.mjs [--ref <sha>] [--manifest <path>] [--library <path>] [--json]
+```
+
+It reports one of three states and writes nothing:
+
+| State | Meaning | Exit |
+|---|---|---|
+| `up-to-date` | the recorded ref is the available ref | 0 |
+| `update-available` | the recorded ref moved — both refs are named | 0 |
+| `incompatible` | the available library's `schemaVersion` exceeds the one this skill implements — *"update the skill first"* | 1 |
+
+`--json` prints one object — `{ status, recorded, available, message }`. `recorded` is the manifest's `library` block as `{ ref, schemaVersion, treeHash }` (or `null`); `available` is `{ ref, schemaVersion, indexHash }`. The two hashes are different scopes — `treeHash` is the whole-tree hash the fetch recorded, `indexHash` is the fetched `library.json`'s own hash — so they are never compared; the **ref** is the decision. `--library <path>` reads a local library directory instead of fetching (offline, and the deterministic path a test uses); `--ref <sha>` pins the available ref instead of resolving `main`. Offline with no `--library` is a clear message and a non-zero exit.
+
+When the check says **`update-available`**, offer the update — the apply stays on approval. `--apply` re-fetches the library at the new ref, runs the plan against it, and prints the plan's update verdicts; it writes nothing itself. Apply the plan's verdicts (the existing apply), then record the new pin through the canonical writer:
+
+```
+node scripts/update.mjs --apply [--ref <sha>] [--manifest <path>]
+node scripts/manifest.mjs library [projectDir] --ref <newRef> --schema-version <n> --content-hash <hash>
+```
+
 ## 1. Plan
 
 Run the plan renderer and print its output verbatim. Never improvise the plan.
@@ -120,6 +145,14 @@ node scripts/feedback.mjs [projectDir] --recipe <id> --error <text>
 ```
 
 `feedback.mjs` prints the redacted report and the filing path; it never sends anything — the human files it. See [references/feedback.md](references/feedback.md) and [scripts/FEEDBACK-SCHEMA.md](scripts/FEEDBACK-SCHEMA.md).
+
+The same channel carries a **recipe proposal**: when the user has written a recipe they want to contribute to the library, `--proposal` attaches the recipe, the templates its `files[].template` names, and a rationale, and files it as a `recipe-proposal` issue:
+
+```
+node scripts/feedback.mjs [projectDir] --proposal <recipe-path> --library <libdir> [--rationale <text>]
+```
+
+The recipe, its templates and the rationale are attached verbatim; only the stack report is redacted. A template the recipe names but the library lacks is a hard error, so the proposal is never filed incomplete.
 
 ## Reference
 

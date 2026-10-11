@@ -1,10 +1,11 @@
 # The feedback channel
 
-An opt-in way to report an unexpected failure in this skill back to its maintainers. It is **off
-by default** and it **never sends anything on its own**: the agent builds the redacted report,
-shows it, and the human files it.
+An opt-in way to report an unexpected failure in this skill back to its maintainers — or to
+propose a new recipe for the library. It is **off by default** and it **never sends anything on its
+own**: the agent builds the redacted report, shows it, and the human files it.
 
-`scripts/feedback.mjs` is the whole mechanism; `scripts/FEEDBACK-SCHEMA.md` is its contract.
+`scripts/feedback.mjs` is the whole mechanism; `scripts/FEEDBACK-SCHEMA.md` is its contract. Two
+report types share it: a **failure report** (`--error`) and a **recipe proposal** (`--proposal`).
 
 ## When to offer
 
@@ -49,6 +50,30 @@ node scripts/feedback.mjs [projectDir] --recipe <id> --error-file <path> [--plan
 The script prints the redacted report and the filing path. It writes nothing to the project and
 sends nothing.
 
+## Proposing a recipe
+
+When the user has written a recipe they want to contribute to the library — a new recipe `.md` and
+its templates — offer the **proposal** type instead of a failure report. It attaches the recipe,
+the templates its `files[].template` names, a rationale, and the redacted stack report, and files
+it as a `recipe-proposal` issue.
+
+```
+node scripts/feedback.mjs [projectDir] --proposal <recipe-path> --library <libdir> [--rationale <text>]
+```
+
+- `--proposal` — the recipe `.md` to propose. Its frontmatter `id` names the recipe; the templates
+  it names are read from the library.
+- `--library` — the library dir the templates are resolved against (default: `$CODE_QUALITY_LIBRARY`,
+  else the repo layout). A template the recipe names but the library lacks is a hard error, so the
+  proposal is never filed incomplete.
+- `--rationale` (or `--rationale-file`) — why the recipe belongs in the library. Optional; a
+  default is used when omitted.
+
+The recipe, its templates and the rationale are attached **verbatim** — the proposal is filed to
+the project the recipe is meant to live in, so nothing in it is redacted. Only the **stack report**
+is redacted (absolute paths and the project's own package names), exactly as in a failure report.
+Show the report first, exactly as for a failure report.
+
 ## Show the report first
 
 Print the report to the user **before** anything is filed, and say what was redacted: absolute
@@ -57,8 +82,9 @@ does not want something in it, they say so and you stop.
 
 ## File it
 
-The report's filing section names the destination (`Gott50/code-quality-skills`, labels `feedback`
-and `needs-triage`) and the path:
+The report's filing section names the destination (`Gott50/code-quality-skills`) and the path. A
+failure report is labelled `feedback` and `needs-triage`; a recipe proposal is labelled
+`recipe-proposal` and `needs-triage`. The path is one of:
 
 - **the prefilled URL** — the default. The user opens it and submits; it needs no auth.
 - **`gh issue create`** — the richer path, printed when `gh` is available or when the URL is too
