@@ -2,10 +2,10 @@
 // rank.mjs — the code-quality-improve ranking view.
 //
 // Zero dependencies, node builtins only. Reads the artifacts the gates already produced and prints
-// the ranked improvement targets: the coverage gaps, the mutation gaps, lint violations and
-// typecheck errors folded in as candidates, then fallow's own `--targets` ranking. It never runs a
-// gate and never invokes a package manager: the artifacts must already exist. A missing artifact is
-// a reported gap, never a crash.
+// the ranked improvement targets: the coverage gaps, the mutation gaps, lint violations, typecheck
+// errors and fallow's dead-code findings folded in as candidates, then fallow's own `--targets`
+// ranking. It never runs a gate and never invokes a package manager: the artifacts must already
+// exist. A missing artifact is a reported gap, never a crash.
 //
 // The order is by effort tier, cheap first: the folded-in candidates are repo-owned (the artifact
 // already exists and the fix needs no new harness), so they lead; fallow's targets follow by their
@@ -28,13 +28,16 @@ import { fileURLToPath } from "node:url";
 
 const SCHEMA_VERSION = 2;
 const BASELINE_NAME = ".code-quality-baseline.json";
+// fallow's own dead-code floor: a per-category list of the known findings, separate from
+// `.code-quality-baseline.json` (fallow's floors stay in fallow's own files, #77).
+const DEAD_CODE_BASELINE_NAME = ".fallow-dead-code-baseline.json";
 
 // The ranking's sort keys. The folded-in candidates are repo-owned — the artifact already exists and
 // the fix needs no new harness — so they lead (tier 0); fallow's targets follow by their own effort
 // estimate, and a capture that carried no effort sorts last. Confidence breaks an efficiency tie.
 const EFFORT_TIER = { low: 1, medium: 2, high: 3 };
 const CONFIDENCE_RANK = { high: 0, medium: 1, low: 2 };
-const GROUP_ORDER = { coverage: 0, mutation: 1, lint: 2, typecheck: 3 };
+const GROUP_ORDER = { coverage: 0, mutation: 1, lint: 2, typecheck: 3, "dead-code": 4 };
 
 // The artifact each source is read from, relative to the project root. The fallow targets are a
 // captured stdout (fallow writes no file of its own), like the score view's captures.
@@ -45,6 +48,7 @@ const ARTIFACTS = {
   mutation: "reports/mutation/report.json",
   oxlint: "reports/oxlint.json",
   tsc: "reports/tsc.log",
+  deadCode: "reports/fallow-dead-code.json",
 };
 
 // The capture command for each artifact, printed in the gap report so the agent knows how to
@@ -56,6 +60,7 @@ const CAPTURE = {
   mutation: "stryker run",
   oxlint: "oxlint --format json > reports/oxlint.json",
   tsc: "tsc --noEmit --pretty false > reports/tsc.log",
+  deadCode: "fallow dead-code --format json > reports/fallow-dead-code.json",
 };
 
 // The sibling skill's score view, resolved from this script's own location: the skills CLI installs
@@ -156,6 +161,63 @@ export function readFallowTargets(doc) {
   return Array.isArray(doc?.targets) ? doc.targets : [];
 }
 
+// The file a dead-code finding points at. Most categories carry `path`; the ones that carry
+// locations instead (duplicate exports, unlisted dependencies) and the boundary violations are
+// read from their first location. A finding with none is `(unknown)`, never a crash.
+function deadCodePath(f) {
+  if (typeof f?.path === "string") return f.path;
+  if (typeof f?.from_path === "string") return f.from_path;
+  if (Array.isArray(f?.locations) && typeof f.locations[0]?.path === "string") return f.locations[0].path;
+  if (Array.isArray(f?.imported_from) && typeof f.imported_from[0]?.path === "string") return f.imported_from[0].path;
+  return "(unknown)";
+}
+
+// The salient name a dead-code finding carries, for the candidate's detail. The member categories
+// carry a parent and a member; the rest carry one name field. A finding with none is blank.
+function deadCodeDetail(f) {
+  if (typeof f?.parent_name === "string" && typeof f?.member_name === "string") {
+    return `${f.parent_name}.${f.member_name}`;
+  }
+  for (const key of [
+    "export_name",
+    "package_name",
+    "member_name",
+    "specifier",
+    "component_name",
+    "prop_name",
+    "emit_name",
+    "input_name",
+    "output_name",
+    "event_name",
+    "action_name",
+    "key_name",
+    "callee",
+    "name",
+  ]) {
+    if (typeof f?.[key] === "string") return f[key];
+  }
+  return "";
+}
+
+// fallow's `dead-code --format json` capture: the per-category finding arrays. Every category is a
+// list of findings; `total_issues` is the count across all of them. The envelope's other keys
+// (`kind`, `summary`, `entry_points`, …) are not lists, and `next_steps` is a list of advice
+// objects, not findings — both are skipped. The categories are read from the artifact's own keys,
+// because a framework category (`unused_store_members`, …) is omitted entirely when it is empty.
+const DEAD_CODE_NON_CATEGORIES = new Set(["next_steps"]);
+
+export function readFallowDeadCode(doc) {
+  const categories = [];
+  for (const [category, list] of Object.entries(doc ?? {})) {
+    if (DEAD_CODE_NON_CATEGORIES.has(category) || !Array.isArray(list)) continue;
+    categories.push({
+      category,
+      findings: list.map((f) => ({ path: deadCodePath(f), detail: deadCodeDetail(f) })),
+    });
+  }
+  return { total: typeof doc?.total_issues === "number" ? doc.total_issues : null, categories };
+}
+
 // oxlint's `--format json`: `diagnostics[]`, each with a project-relative `filename`. Group by file.
 export function readOxlint(doc) {
   const files = {};
@@ -230,6 +292,31 @@ function mutationBelowFloor(level, file, baseline) {
   const floor = mut.files?.[file] ?? mut.global;
   if (!floor) return false;
   return !atLeast(level, floor);
+}
+
+// fallow's dead-code floor: `.fallow-dead-code-baseline.json`, a per-category list of the known
+// findings. The floor for a category is the length of its list — the number of findings fallow
+// already knows about. The file is fallow's own, separate from `.code-quality-baseline.json`
+// (fallow's floors stay in fallow's own files, #77). A missing or malformed file is no floor.
+function readDeadCodeFloor(root) {
+  const path = join(root, DEAD_CODE_BASELINE_NAME);
+  if (!existsSync(path)) return null;
+  try {
+    const doc = JSON.parse(readFileSync(path, "utf8"));
+    const floor = {};
+    for (const [category, list] of Object.entries(doc ?? {})) {
+      if (Array.isArray(list)) floor[category] = list.length;
+    }
+    return floor;
+  } catch {
+    return null;
+  }
+}
+
+// The total dead-code floor: the sum of the per-category floors, for the source line's summary.
+function deadCodeFloorTotal(floor) {
+  if (!floor) return null;
+  return Object.values(floor).reduce((n, c) => n + c, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -481,6 +568,54 @@ export function collect(root, bases) {
     gaps.push({ source: "typecheck", path: ARTIFACTS.tsc, reason: `absent — capture it with \`${CAPTURE.tsc}\`` });
   }
 
+  // dead-code — fallow's per-category finding lists, floored by fallow's own baseline
+  const deadPath = join(root, ARTIFACTS.deadCode);
+  if (existsSync(deadPath)) {
+    try {
+      const { total, categories } = readFallowDeadCode(readJson(deadPath));
+      const floor = readDeadCodeFloor(root);
+      const files = new Set();
+      let count = 0;
+      for (const { category, findings } of categories) {
+        // The floor is per category: the length of the baseline's list for that category. A
+        // category with more findings than its floor carries new ones. The ranking cannot tell
+        // which of the category's findings are the new ones without replicating fallow's own key
+        // scheme (legacy forms or the `dc1` canonical keys), so every finding in an over-floor
+        // category is marked — the same count-floor semantics lint and typecheck use. No baseline
+        // is no floor: nothing is marked, as with the other gates.
+        const aboveFloor = floor != null && findings.length > (floor[category] ?? 0);
+        for (const f of findings) {
+          files.add(f.path);
+          count += 1;
+          targets.push({
+            source: "dead-code",
+            path: f.path,
+            gate: "fallow-dead-code",
+            category,
+            detail: f.detail,
+            aboveFloor,
+            effort: null,
+            confidence: null,
+          });
+        }
+      }
+      sources["dead-code"] = {
+        path: ARTIFACTS.deadCode,
+        present: true,
+        count: total ?? count,
+        files: files.size,
+        floor: deadCodeFloorTotal(floor),
+        error: null,
+      };
+    } catch (err) {
+      sources["dead-code"] = { path: ARTIFACTS.deadCode, present: true, count: 0, files: 0, floor: null, error: String(err?.message ?? err) };
+      gaps.push({ source: "dead-code", path: ARTIFACTS.deadCode, reason: `unreadable: ${err?.message ?? err}` });
+    }
+  } else {
+    sources["dead-code"] = { path: ARTIFACTS.deadCode, present: false, count: 0, files: 0, floor: null, error: null };
+    gaps.push({ source: "dead-code", path: ARTIFACTS.deadCode, reason: `absent — capture it with \`${CAPTURE.deadCode}\`` });
+  }
+
   // The rank: effort tier first (cheap first), then the source's own order — see compareTargets.
   targets.sort(compareTargets);
   targets.forEach((t, i) => {
@@ -561,6 +696,10 @@ function sourceLine(name, s) {
       const floor = s.floor == null ? "" : `   floor ${s.floor}${s.count > s.floor ? "   ⚠ above floor" : ""}`;
       return `  ${label}${s.path} — ${s.count} error(s) in ${s.files} file(s)${floor}`;
     }
+    case "dead-code": {
+      const floor = s.floor == null ? "" : `   floor ${s.floor}${s.count > s.floor ? "   ⚠ above floor" : ""}`;
+      return `  ${label}${s.path} — ${s.count} issue(s) in ${s.files} file(s)${floor}`;
+    }
     default:
       return `  ${label}${s.path}`;
   }
@@ -609,6 +748,10 @@ function targetLines(t) {
     const mark = t.belowFloor ? "   ⚠ below floor" : "";
     const loc = t.line == null ? t.path : `${t.path}:${t.line}`;
     lines.push(`  ${t.rank}. [mutation] ${loc}   ${t.detail}   ${effortConfidence(t)}${mark}`);
+  } else if (t.source === "dead-code") {
+    const mark = t.aboveFloor ? "   ⚠ above floor" : "";
+    const detail = t.detail ? ` — ${t.detail}` : "";
+    lines.push(`  ${t.rank}. [dead-code] ${t.path}   ${t.category}${detail}   ${effortConfidence(t)}${mark}`);
   } else {
     lines.push(`  ${t.rank}. [${t.source}] ${t.path}   ${t.detail}   ${effortConfidence(t)}`);
   }
@@ -620,7 +763,7 @@ function renderText(report) {
   const lines = [];
   lines.push(`Improvement targets — ${report.root}`);
   lines.push("");
-  for (const name of ["baseline", "fallow", "coverage", "mutation", "lint", "typecheck"]) {
+  for (const name of ["baseline", "fallow", "coverage", "mutation", "lint", "typecheck", "dead-code"]) {
     lines.push(sourceLine(name, report.sources[name]));
   }
   lines.push("");

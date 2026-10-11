@@ -21,7 +21,7 @@ Capture the artifacts the gates produce, then print the ranking verbatim. Never 
 node scripts/rank.mjs [projectDir] [--json]   # default projectDir: .
 ```
 
-`rank.mjs` reads the artifacts and writes nothing. It never runs a gate and never invokes a package manager. The ranking is ordered by **effort tier, cheap first**: the coverage gaps, mutation gaps, lint violations and typecheck errors are folded in as candidates and lead — they are repo-owned, the artifact already exists and the fix needs no new harness — then fallow's own `--targets` ranking follows by its `effort` estimate, keeping fallow's own order within a tier. Every candidate prints its `effort` and `confidence` (`—` where the source has none), and each fallow line prints fallow's own rank. A missing artifact is a reported gap, not a crash — the gap names the capture command.
+`rank.mjs` reads the artifacts and writes nothing. It never runs a gate and never invokes a package manager. The ranking is ordered by **effort tier, cheap first**: the coverage gaps, mutation gaps, lint violations, typecheck errors and fallow's dead-code findings are folded in as candidates and lead — they are repo-owned, the artifact already exists and the fix needs no new harness — then fallow's own `--targets` ranking follows by its `effort` estimate, keeping fallow's own order within a tier. Every candidate prints its `effort` and `confidence` (`—` where the source has none), and each fallow line prints fallow's own rank. A missing artifact is a reported gap, not a crash — the gap names the capture command.
 
 The artifacts it reads, all relative to the project root:
 
@@ -33,7 +33,9 @@ The artifacts it reads, all relative to the project root:
 | mutation | `reports/mutation/report.json` | `stryker run` |
 | lint | `reports/oxlint.json` | `oxlint --format json > reports/oxlint.json` |
 | typecheck | `reports/tsc.log` | `tsc --noEmit --pretty false > reports/tsc.log` |
+| dead-code | `reports/fallow-dead-code.json` | `fallow dead-code --format json > reports/fallow-dead-code.json` |
 | floors | `.code-quality-baseline.json` | written by `score.mjs --raise` |
+| dead-code floor | `.fallow-dead-code-baseline.json` | written by `fallow:raise` |
 
 The output shape is [scripts/RANK-SCHEMA.md](scripts/RANK-SCHEMA.md).
 
