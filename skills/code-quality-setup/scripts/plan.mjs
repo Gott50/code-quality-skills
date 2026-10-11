@@ -365,7 +365,11 @@ function currentOwned(entry, recipeId) {
 
 function pick(doc, frag) {
   if (frag === null || typeof frag !== "object" || Array.isArray(frag)) {
-    return doc === undefined ? MISSING : doc;
+    if (doc === undefined) return MISSING;
+    // A seeded array the repo extended is the template's value, not the repo's (#104): the recipe
+    // owns the array's presence and its seeded elements, so the owned content is the template's
+    // array and a re-run reads `intact` instead of `update` forever.
+    return seededLeaf(frag, doc) ? frag : doc;
   }
   if (doc === null || typeof doc !== "object" || Array.isArray(doc)) return MISSING;
   const out = {};
@@ -409,7 +413,7 @@ function jsonMergeDelta(doc, frag) {
         walk(value, d[key], path);
       } else if (!dIsObj || !(key in d)) {
         added.push(path);
-      } else if (JSON.stringify(d[key]) !== JSON.stringify(value)) {
+      } else if (JSON.stringify(d[key]) !== JSON.stringify(value) && !seededLeaf(value, d[key])) {
         changed.push(path);
       }
     }
@@ -543,6 +547,17 @@ function covers(template, repo) {
   return template === repo;
 }
 
+// A JSON leaf the template *seeds*: an array the repo may extend (#104). The repo's array covers
+// the template's when every template element is present in it (the same `covers` test the
+// create-loss comparison uses), so an extended array is not a change — the recipe owns the array's
+// presence and its seeded elements, not the repo's additions. A scalar is the recipe's to set, so
+// it is compared by value. This is the JSON-merge half of "the recipe owns the keys it declares,
+// not the file": `tsconfig.json`'s `lib` is the case, where the repo adds `DOM`/`DOM.Iterable` and
+// the merge must not propose dropping them.
+function seededLeaf(templateValue, repoValue) {
+  return Array.isArray(templateValue) && Array.isArray(repoValue) && covers(repoValue, templateValue);
+}
+
 // The paths where `repo` carries content `template` does not (#44). Objects recurse by key: a key
 // the template lacks is lost whole, and a key present in both is compared deeper. Arrays compare by
 // element, not by position: a repo element no template element covers is lost, so a reordered array
@@ -609,6 +624,46 @@ function lostContent(existing, content, target) {
   };
 }
 
+// The "key" of a line: the text up to and including the first `:` or `=`, or the whole line when it
+// declares neither. A config line's key is the ownership boundary — the recipe owns the key, the
+// repo may change the value — the same boundary a `patch` draws (#37).
+function lineKey(line) {
+  const m = /^([^:=]*[:=])/.exec(line);
+  return m ? m[1] : line;
+}
+
+// Whether the repo's file carries the template's content (#103, #105): every non-blank template
+// line is present in the repo's file, or the repo's file has a line that *extends* it — the same
+// key, and every token of the template line present in the file. A template line the repo
+// *deleted* is not carried: its tokens are gone. This is "the recipe owns the keys it declares, not
+// the file" applied to a `create` target: a repo that extended a seeded value (an array element, a
+// rewritten step) still carries the library's content, so a re-run reads `intact` instead of
+// `update` forever (#105), and a file that is not the library's content plus additions — an earlier
+// library version's template — is not read as the repo's own additions (#103).
+//
+// A JSON target is compared structurally, the same test `lostContent` uses: the template's paths
+// must all be present in the repo's document (an array element the repo dropped is not carried).
+function carriesTemplate(repoFile, template, target) {
+  if (target.endsWith(".json")) {
+    const repo = tryParseJson(repoFile);
+    const tpl = tryParseJson(template);
+    if (repo !== null && tpl !== null) return lostPaths(tpl, repo, "").length === 0;
+  }
+  const norm = (s) => s.trim().replace(/\s+/g, " ");
+  const repoLines = repoFile.split("\n").map(norm);
+  const repoSet = new Set(repoLines);
+  const fileTokens = new Set(repoLines.join(" ").split(/\s+/).filter((t) => t !== ""));
+  const keys = new Set(repoLines.map(lineKey));
+  for (const raw of template.split("\n")) {
+    const line = norm(raw);
+    if (line === "") continue;
+    if (repoSet.has(line)) continue;
+    if (keys.has(lineKey(line)) && line.split(/\s+/).every((t) => fileTokens.has(t))) continue;
+    return false;
+  }
+  return true;
+}
+
 // Whether a `create` file's on-disk content is a loss (#36, #46): the repo's file carries content
 // the template does not, so the apply skipped it. The manifest recorded the rendered template's
 // hash — the apply records what it would have written, even for a skipped file — so the hash
@@ -639,7 +694,13 @@ function filesystemVerdict(write, content, projectRoot, recipeId, manifestPresen
       // No manifest (#90): the filesystem is the source of truth (ADR 0001), so the repo's file
       // is read as the skill's own earlier install plus the repo's additions — an `update` the
       // apply merges, not a `loss` it skips. The ratchet installs, and the additions survive.
-      if (!manifestPresent) {
+      //
+      // Only when the repo's file *carries the template's content* (#103): a file that is not the
+      // library's content plus additions — an earlier library version's template, whose lines the
+      // current template never had — is not the repo's own additions, so it is a `loss` (skip),
+      // not an `update` (merge). Following the Updates section's instruction on such a file would
+      // re-add the old template's lines and break the gate it installs.
+      if (!manifestPresent && carriesTemplate(existing, content, write.target)) {
         return {
           verdict: "update",
           note: `the repo's file carries ${lost.length} ${unit}(s) the template does not — merge them in, do not drop them`,
@@ -1414,6 +1475,12 @@ function renderCommands(selected, workspace) {
   rows.forEach((c, i) => {
     const scope = c.scope ?? "root";
     lines.push(`${i + 1}. [${c.recipe}] \`${c.run}\` (${scope} → ${resolveScopes(scope, workspace).join(", ")})`);
+    // A formatter sweep rewrites files the recipe does not own — the repo's own source included
+    // (biome-assist.md: "The plan must show this step as *reformats existing files*"). The plan
+    // cannot know which files until the sweep runs, so it says so instead of staying silent.
+    if (/\bcheck --write\b/.test(c.run)) {
+      lines.push(`   *reformats existing files* — the sweep rewrites every file it can format, including files this recipe does not own; the plan cannot name them before it runs.`);
+    }
   });
   return lines.join("\n");
 }

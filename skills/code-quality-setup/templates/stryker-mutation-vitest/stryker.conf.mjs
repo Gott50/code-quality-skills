@@ -1,4 +1,15 @@
 import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// The baseline sits beside this config — the workspace root — not beside the
+// cwd, because a member's Stryker run imports this file from its own
+// directory. A plain path, not `new URL(…, import.meta.url)`: the baseline is
+// a data file read at run time, and the URL form is what a static analyzer
+// (fallow) reads as a module import — one that does not resolve until
+// `score.mjs --raise` has written the file, so the skill's own config would
+// be the repo's dead-code finding.
+const BASELINE = join(dirname(fileURLToPath(import.meta.url)), ".code-quality-baseline.json");
 
 // The mutation floor: `gates.mutation.global` from the committed baseline
 // `.code-quality-baseline.json` (written by the skill's `score.mjs --raise`),
@@ -11,9 +22,7 @@ function breakThreshold() {
   try {
     // SAFETY: the baseline is JSON written by score.mjs; only the mutation
     // gate's `global` fraction is read.
-    const baseline = JSON.parse(
-      readFileSync(new URL("./.code-quality-baseline.json", import.meta.url), "utf8"),
-    );
+    const baseline = JSON.parse(readFileSync(BASELINE, "utf8"));
     const g = baseline?.gates?.mutation?.global;
     if (Number.isInteger(g?.killed) && Number.isInteger(g?.total) && g.total > 0) {
       return Math.floor((g.killed / g.total) * 100);

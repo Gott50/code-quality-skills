@@ -108,6 +108,14 @@ function areaOf(config: string): string {
 // about the root token alone.) Name the mechanism, never the token.
 const REPORT_FILE = "reports/mutation/report.json";
 
+// The pre-push gate's own report, for the files the push touches. Stryker's
+// jsonReporter accumulates files from previous runs into the same file, so the
+// gate resets and rewrites it — which would clobber the FULL-run report
+// `score.mjs --raise` reads and make a recorded file the push did not touch
+// look deleted, dropping its floor (#102). The scoped run therefore writes
+// beside it, and the full report stays the full measurement.
+const SCOPED_REPORT_FILE = "reports/mutation/report.scoped.json";
+
 /**
  * Per-file mutation levels for the changed files in a Stryker report:
  * `killed` counts `Killed` mutants only, `total` every mutant in the file,
@@ -250,7 +258,7 @@ function runStryker(config: string, files: string[]): boolean {
   // against the member; the report and cache stay rooted at the workspace root.
   const areaDir = AREA_CONFIGS.find(([, c]) => c === config)?.[0] ?? "";
   const incrementalFile = resolve(ROOT, `reports/mutation/incremental.${area}.json`);
-  const reportFile = resolve(ROOT, REPORT_FILE);
+  const reportFile = resolve(ROOT, SCOPED_REPORT_FILE);
   console.log(
     `\n[mutation-gate] ${config}: mutating ${files.length} changed file(s) ` +
       `(${files.join(", ")}) with incremental cache ${incrementalFile}`,
@@ -271,6 +279,8 @@ function runStryker(config: string, files: string[]): boolean {
       "--incremental",
       "--incrementalFile",
       incrementalFile,
+      "--jsonReporter.fileName",
+      SCOPED_REPORT_FILE,
     ],
     { cwd: resolve(ROOT, areaDir), encoding: "utf8" },
   );
