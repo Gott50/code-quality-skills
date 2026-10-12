@@ -751,14 +751,16 @@ function isCreateLoss(f, files) {
   );
 }
 
-// Whether two marker blocks differ only by formatting (#143): a repo-wide formatter sweep
-// (`dprint fmt`, `biome format --write`) rewrites the library's merged block — it re-aligns a
-// table's columns, pads the separator row's dashes, and adds or drops blank lines — without
-// changing the content. The block still carries the owned content, so the drift report reads
-// `intact`, not `drifted`; a hand-edit that changes the content still reads `drifted`. The
-// comparison normalizes each line's whitespace, drops blank lines, and canonicalizes a Markdown
-// table separator row (its dashes are alignment, not content), so alignment churn is invisible
-// while any token change is not.
+// Whether two texts differ only by formatting (#143, #153): a repo-wide formatter sweep
+// (`dprint fmt`, `biome format --write`) rewrites the library's content — it re-aligns a table's
+// columns, pads the separator row's dashes, adds or drops blank lines, and moves a line boundary
+// (it wraps a long line, `a && b` → `a` / `&& b`, or joins two short ones) — without changing the
+// content. The content still carries what the recipe owns, so the drift report reads `intact`, not
+// `drifted`/`loss`; a hand-edit that changes the content still reads `drifted`/`loss`. The
+// comparison normalizes each line's whitespace, drops blank lines, canonicalizes a Markdown table
+// separator row (its dashes are alignment, not content), and joins the normalized lines, so
+// alignment and reflow churn are invisible while any token change is not. It is used for a marker
+// block the recipe owns (#143) and for a `create` file the recipe wrote (#153).
 function formattingEquivalent(a, b) {
   const norm = (text) =>
     text
@@ -769,10 +771,12 @@ function formattingEquivalent(a, b) {
         // A Markdown table separator row's dashes are alignment, not content.
         if (!/^\|[\s:|-]+\|$/.test(line)) return line;
         return line.replace(/\s+/g, "").replace(/-+/g, "-");
-      });
-  const la = norm(a);
-  const lb = norm(b);
-  return la.length === lb.length && la.every((line, i) => line === lb[i]);
+      })
+      // Join the normalized lines: a formatter also moves a line boundary, so a line-by-line
+      // comparison misses the reflow. The joined text is the token stream with single spaces, so
+      // any token change still differs while a pure reflow does not.
+      .join(" ");
+  return norm(a) === norm(b);
 }
 
 // The verdict for one write, from the filesystem alone (no manifest): create → new/no-op/drift/
@@ -790,6 +794,13 @@ function filesystemVerdict(write, content, projectRoot, recipeId, manifestPresen
   if (write.action === "create") {
     if (existing === null) return { verdict: "new", diff: unifiedDiff("", content, write.target) };
     if (existing === content) return { verdict: "no-op" };
+    // A formatter-only rewrite of a file the recipe created (#153): a repo-wide sweep (`dprint
+    // fmt`) reformats the template the apply wrote — it reflows lines and re-aligns whitespace —
+    // without changing the content. The file still carries the recipe's content, so it is a
+    // `no-op` (nothing to do), not a `loss` (the repo's extra content would be dropped) or a
+    // `drift` (the library moved). A hand-edit that changes the content is not formatting-
+    // equivalent, so it still reads `loss`/`drift`/`update` as before.
+    if (formattingEquivalent(existing, content)) return { verdict: "no-op" };
     const { unit, items: lost } = lostContent(existing, content, write.target);
     if (lost.length > 0) {
       // No manifest (#90): the filesystem is the source of truth (ADR 0001), so the repo's file
@@ -981,14 +992,31 @@ function classify(manifest, { library, files }) {
         mergeKind(f, lib.id) === "markers" &&
         present !== null &&
         formattingEquivalent(present, currentOwned(f, lib.id));
+      // A formatter-only rewrite of a `create` file the recipe wrote (#153): a repo-wide sweep
+      // (`dprint fmt`) reformats the template the apply wrote — it reflows lines and re-aligns
+      // whitespace — without changing the content. The file still carries the recipe's content, so
+      // it is `intact`, not `loss` (the repo's extra content would be dropped) or `drifted` (a
+      // hand-edit). A hand-edit that changes the content is not formatting-equivalent, so it still
+      // reads `loss`/`drifted`. The `update` branch consults it too: a manifest recorded from the
+      // file on disk (the swept file) rather than from the rendered template has
+      // `presentHash === recordedHash` and would otherwise read `update` forever.
+      const formattedCreate =
+        f.action === "create" &&
+        present !== null &&
+        formattingEquivalent(present, currentOwned(f, lib.id));
       let verdict;
       if (duplicate) verdict = "intact";
       else if (presentHash === null) verdict = "missing";
       else if (presentHash === currentHash) verdict = "intact";
       else if (mergedCreate) verdict = "intact";
-      else if (recordedHash !== null && presentHash === recordedHash && !formatted)
+      else if (
+        recordedHash !== null &&
+        presentHash === recordedHash &&
+        !formatted &&
+        !formattedCreate
+      )
         verdict = "update";
-      else if (formatted) verdict = "intact";
+      else if (formatted || formattedCreate) verdict = "intact";
       else if (isCreateLoss(f, files)) verdict = "loss";
       else verdict = "drifted";
       return {
@@ -997,7 +1025,11 @@ function classify(manifest, { library, files }) {
         kind: f.action === "merge" ? mergeKind(f, lib.id) : null,
         verdict,
         updateAvailable:
-          recordedHash !== null && recordedHash !== currentHash && !mergedCreate && !formatted,
+          recordedHash !== null &&
+          recordedHash !== currentHash &&
+          !mergedCreate &&
+          !formatted &&
+          !formattedCreate,
         recordedHash,
         currentHash,
         presentHash,
