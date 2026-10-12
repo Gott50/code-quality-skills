@@ -1,9 +1,10 @@
 import base from "{{root}}/stryker.conf.mjs";
 
 // A workspace member's Stryker config: the root base plus the member's own
-// scope. Stryker reads its config from the cwd and resolves `mutate` and
-// `testFiles` against it, so the gate runs this config from the member
-// directory and every glob below is member-relative.
+// scope. Stryker reads its config from the cwd and resolves `mutate` against
+// it, so the gate runs this config from the member directory and every glob
+// below is member-relative. The base's `commandRunner.command` (`npx vitest
+// run`) also runs from that cwd, so it drives the member's own tests.
 export default {
   ...base,
   // The report must land at the workspace root, not in the member: the gate
@@ -20,5 +21,4 @@ export default {
     "!**/*-bin.ts",
     "!**/coverage/**",
   ],
-  testFiles: ["test/**/*.test.ts"],
 };

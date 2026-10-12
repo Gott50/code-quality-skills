@@ -34,6 +34,7 @@ This recipe runs last (`priority: 0`, below every gate) because it documents the
 
 - Both targets re-render from the current selection, so a later run that selects a new recipe produces a changed `docs/code-quality.md` and a changed `{{plan.gates}}` table. That difference is drift by design: the plan shows it as the doc catching up, and applies on approval.
 - `AGENTS.md` is a `merge`: re-running replaces this recipe's marker block, leaving the rest of the file untouched.
+- A repo-wide formatter sweep (`dprint fmt`, `biome format --write`) that re-aligns the block's table is not drift: the plan reads a formatter-only rewrite of the marker block as `intact`, so a clean apply followed by the sweep's own `commands` entry converges. A hand-edit that changes the block's content still reads `drifted`.
 
 ## Undo
 

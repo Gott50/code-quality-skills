@@ -159,7 +159,9 @@ The first line after the title is the state:
    replaced by `true` (#49): the plan has already proven the block's content is present (the
    `duplicate` verdict), so the verify passes and the recipe is recorded. The agent runs the verify
    **as rendered**, not as the recipe's frontmatter states it (RECIPE-CONTRACT.md → `verify`).
-13. **Warnings** — one `{ id, error }` line per unreadable recipe (or unreadable template).
+13. **Warnings** — one `{ id, error }` line per unreadable recipe (or unreadable template), plus one
+   line per selected recipe whose verify needs a git base (the `fallow-audit` gate) when the project
+   has no commits — `fallow audit` exits 2 with `could not detect base branch` there.
 14. **Drift (manifest)** — the per-recipe state from the manifest, or a degraded note. The state is
    the worst file verdict (`missing` > `loss` > `drifted` > `update` > `intact`), so a recipe whose
    only non-intact file is a skipped `create` loss reads `loss`, not `drifted` (#46).
@@ -303,6 +305,15 @@ recorded hash matches the file and the file still carries every path/line the cu
 The recipe's owned content is present and the extras are the repo's, so a re-run must not overwrite
 the file with the bare template. An old manifest recorded the bare template's hash, so the recorded
 hash does not match the merged file and this branch never fires for it.
+A marker block a repo-wide formatter sweep rewrote (#143) is `intact`, not `drifted`: the sweep
+(`dprint fmt`, `biome format --write`) re-aligns the block's table columns, pads the separator row's
+dashes, and adds or drops blank lines without changing the content, so the block still carries the
+owned content. The comparison normalizes each line's whitespace, drops blank lines, and
+canonicalizes a Markdown table separator row (its dashes are alignment, not content); a hand-edit
+that changes the content still reads `drifted`. Without this, a clean apply followed by the sweep's
+own `commands` entry can never converge — the plan reports `drifted`, the re-apply replaces the
+block, and the sweep rewrites it again. The rule is checked after `update`, so a library move keeps
+its verdict.
 Per recipe the worst file verdict wins (`missing` > `loss` > `drifted` > `update` > `intact`); a
 recipe the manifest does not know is `new`, one the library no longer selects is `stale`, one the
 user declined is `declined`. A manifest that is absent, corrupt, or from another `schemaVersion`

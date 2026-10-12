@@ -36,14 +36,30 @@ function breakThreshold() {
 const breakAt = breakThreshold();
 
 export default {
+  // The `command` runner, not `vitest`: `@stryker-mutator/vitest-runner` 10.0.0
+  // is broken on Vitest 5. Vitest 5 matches `testNamePattern` against the suite
+  // chain joined with " > " (a documented breaking change), while the runner
+  // builds that pattern from names it joins with a single space — so the
+  // per-test filter matches nothing, every covered mutant runs zero tests and
+  // is reported Survived (stryker-js#6210, fix still unreleased in #6214). The
+  // `command` runner drives the real `vitest` CLI and reads its exit code, so
+  // it is immune to the runner's internals. The cost is the whole suite per
+  // mutant instead of the covering tests; the gate scopes `--mutate` to the
+  // changed files, which keeps that bounded.
+  commandRunner: { command: "npx vitest run" },
   concurrency: 4,
-  // The vitest runner ignores this (it is always perTest); stated so the two
-  // configs read the same.
-  coverageAnalysis: "perTest",
+  // The `command` runner reports no per-test coverage, so there is nothing to
+  // analyse; `perTest` would be a lie. The gate's floors come from the report
+  // JSON, not from coverage analysis.
+  coverageAnalysis: "off",
   htmlReporter: {
     fileName: "reports/mutation/index.html",
   },
-  ignorePatterns: ["node_modules", ".git", "reports", "coverage", "tmp"],
+  // `.claude` and `.agents` are the skills CLI's install dirs: `.claude/skills/<name>`
+  // is a symlink, and Stryker's sandbox copy dies with ENOTSUP on it (#138).
+  // Excluding them also keeps the skill's own test files out of the sandbox,
+  // where `npx vitest run` would otherwise pick them up.
+  ignorePatterns: ["node_modules", ".git", "reports", "coverage", "tmp", ".claude", ".agents"],
   jsonReporter: { fileName: "reports/mutation/report.json" },
   // The mutation scope. `scripts/` and `tools/` are deliberately outside it:
   // they are not the project's code, and `--mutate` on the command line would
@@ -56,12 +72,8 @@ export default {
     "!**/*-bin.ts",
     "!**/coverage/**",
   ],
-  plugins: ["@stryker-mutator/vitest-runner"],
   reporters: ["html", "json", "clear-text", "progress"],
-  // The vitest runner reads the top-level `testFiles` globs (the bun runner
-  // reads its own `bun.testFiles` directory list instead).
-  testFiles: ["test/**/*.test.ts"],
-  testRunner: "vitest",
+  testRunner: "command",
   // The gate: `break` is the threshold that sets the exit code (Stryker 10),
   // floored at the baseline's global mutation score; `high`/`low` only colour
   // the report, so a config with `high`/`low` alone never fails a build.

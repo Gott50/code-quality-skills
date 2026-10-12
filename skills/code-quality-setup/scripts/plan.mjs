@@ -191,6 +191,31 @@ function readTemplate(libraryDir, libraryRelPath) {
   return readFileSync(join(libraryDir, libraryRelPath), "utf8");
 }
 
+// Whether the project is a git repository with at least one commit. A gate whose base is the
+// merge-base with the branch's upstream (fallow's `audit`) has no base to detect on a repo with no
+// commits — `fallow audit` exits 2 with `could not detect base branch` — so the plan warns before
+// the verify runs. `git rev-parse --verify HEAD` exits non-zero when HEAD is unborn (no commits) or
+// the directory is not a repository at all; both are the same "no base" state for the gate.
+function hasCommits(root) {
+  try {
+    execFileSync("git", ["rev-parse", "--verify", "HEAD"], {
+      cwd: root,
+      stdio: ["ignore", "ignore", "ignore"],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// The selected recipes whose verify depends on a git base: a `verify` entry that names the
+// `fallow-audit` gate (the changeset gate, whose `fallow audit` command detects a base branch). The
+// requirement is the recipe's, not the project's, so the warning is scoped to the recipes that
+// carry it.
+function gitBaseRecipes(selected) {
+  return selected.filter((r) => (r.verify ?? []).some((v) => v.gate === "fallow-audit"));
+}
+
 // ---------------------------------------------------------------------------
 // Merge ownership (RECIPE-CONTRACT.md → merge; #11 → the two kinds)
 // ---------------------------------------------------------------------------
@@ -688,6 +713,30 @@ function isCreateLoss(f, files) {
   return f.action === "create" && files[f.path] != null && lostContent(files[f.path], f.content, f.path).items.length > 0;
 }
 
+// Whether two marker blocks differ only by formatting (#143): a repo-wide formatter sweep
+// (`dprint fmt`, `biome format --write`) rewrites the library's merged block — it re-aligns a
+// table's columns, pads the separator row's dashes, and adds or drops blank lines — without
+// changing the content. The block still carries the owned content, so the drift report reads
+// `intact`, not `drifted`; a hand-edit that changes the content still reads `drifted`. The
+// comparison normalizes each line's whitespace, drops blank lines, and canonicalizes a Markdown
+// table separator row (its dashes are alignment, not content), so alignment churn is invisible
+// while any token change is not.
+function formattingEquivalent(a, b) {
+  const norm = (text) =>
+    text
+      .split("\n")
+      .map((line) => line.trim().replace(/\s+/g, " "))
+      .filter((line) => line !== "")
+      .map((line) => {
+        // A Markdown table separator row's dashes are alignment, not content.
+        if (!/^\|[\s:|-]+\|$/.test(line)) return line;
+        return line.replace(/\s+/g, "").replace(/-+/g, "-");
+      });
+  const la = norm(a);
+  const lb = norm(b);
+  return la.length === lb.length && la.every((line, i) => line === lb[i]);
+}
+
 // The verdict for one write, from the filesystem alone (no manifest): create → new/no-op/drift/
 // update/loss, merge → new/no-op/add/replace/collision, patch → new/patch. `diff` is the inline
 // unified diff. `manifestPresent` decides the `create` verdict for a file the repo has extended
@@ -857,12 +906,23 @@ function classify(manifest, { library, files }) {
         presentHash === recordedHash &&
         files[f.path] != null &&
         lostContent(f.content, files[f.path], f.path).items.length === 0;
+      // A formatter-only rewrite of a marker block the recipe owns (#143): a repo-wide formatter
+      // sweep (`dprint fmt`) rewrote the block's whitespace/alignment, so the hash moved but the
+      // content did not. The block still carries the owned content, so it is `intact`, not
+      // `drifted` — otherwise a clean apply followed by the sweep's own `commands` entry can
+      // never converge. A hand-edit that changes the content still reads `drifted` (see
+      // `formattingEquivalent`). Checked after `update` so a library move keeps its verdict.
+      const formatted =
+        f.action === "merge" &&
+        mergeKind(f, lib.id) === "markers" &&
+        formattingEquivalent(present, currentOwned(f, lib.id));
       let verdict;
       if (duplicate) verdict = "intact";
       else if (presentHash === null) verdict = "missing";
       else if (presentHash === currentHash) verdict = "intact";
       else if (mergedCreate) verdict = "intact";
       else if (recordedHash !== null && presentHash === recordedHash) verdict = "update";
+      else if (formatted) verdict = "intact";
       else if (isCreateLoss(f, files)) verdict = "loss";
       else verdict = "drifted";
       return {
@@ -1007,6 +1067,10 @@ function buildPlan(report, opts) {
     selectedIds,
     narrowNote,
     duplicatePathsByRecipe,
+    // A selected recipe whose verify needs a git base, on a repo with no commits: the verify would
+    // fail with `could not detect base branch` (#141). The plan surfaces the requirement before the
+    // apply, so the consumer commits first (or pins a base) instead of hitting a confusing failure.
+    gitWarnings: hasCommits(report.root) ? [] : gitBaseRecipes(selected).map((r) => r.id),
     notSelected: usable
       .filter((r) => !selectedIds.includes(r.id))
       .map((r) => ({
@@ -1545,14 +1609,23 @@ function renderGatesAndVerify(selected, workspace, duplicatePathsByRecipe) {
   return lines.join("\n").trimEnd();
 }
 
-function renderWarnings(errored, templateErrors) {
+function renderWarnings(errored, templateErrors, gitWarnings) {
   const lines = ["## Warnings", ""];
-  if (errored.length === 0 && templateErrors.length === 0) {
+  if (errored.length === 0 && templateErrors.length === 0 && gitWarnings.length === 0) {
     lines.push("_None._");
     return lines.join("\n");
   }
   for (const r of errored) lines.push(`- \`{ id: "${r.id}", error: ${JSON.stringify(r.error)} }\``);
   for (const t of templateErrors) lines.push(`- \`{ id: "${t.id}", error: ${JSON.stringify(t.error)} }\``);
+  for (const id of gitWarnings) {
+    lines.push(
+      [
+        `- \`${id}\`: the project has no commits, so the audit's base cannot be detected —`,
+        "`fallow audit` exits 2 with `could not detect base branch`. Commit before the verify,",
+        "or pin the base with `FALLOW_AUDIT_BASE=<ref>` (or `fallow audit --base <ref>`).",
+      ].join(" "),
+    );
+  }
   return lines.join("\n");
 }
 
@@ -1632,7 +1705,7 @@ function renderPlan(plan, opts) {
   out.push(renderPreExisting(plan), "");
   out.push(renderCommands(plan.selected, plan.stack.workspace), "");
   out.push(renderGatesAndVerify(plan.selected, plan.stack.workspace, plan.duplicatePathsByRecipe), "");
-  out.push(renderWarnings(plan.errored, plan.templateErrors), "");
+  out.push(renderWarnings(plan.errored, plan.templateErrors, plan.gitWarnings), "");
 
   // The drift section is suppressed when nothing is selected and there is no manifest: the plan
   // already says "Nothing applies" and there is no library to compare against.

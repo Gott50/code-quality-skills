@@ -12,8 +12,9 @@
 //   2. template formatting — every biome-parseable template under `.code-quality/templates/**` is
 //      `biome format`-clean after the {{root}} / {{plan.*}} placeholders are substituted with dummy
 //      values. Files biome cannot parse (by extension, or a parse error) are skipped and printed.
-//      When the project carries no biome (no `node_modules/.bin/biome` and no `bunx`), the check is
-//      skipped, not failed.
+//      The project's own `biome.json` is used when it exists; otherwise the library's own
+//      convention (2-space, 100 columns) is used, never biome's defaults. When the project carries
+//      no biome (no `node_modules/.bin/biome` and no `bunx`), the check is skipped, not failed.
 //
 // Zero dependencies beyond the shared frontmatter reader. Usage:
 // node scripts/check-local.mjs [projectDir] [--json]
@@ -57,6 +58,15 @@ const PARSEABLE = new Set([
   ".jsx",
   ".tsx",
 ]);
+
+// The library's own formatter convention (the repo's biome.json): 2-space indentation, 100-column
+// lines. Used when the project carries no biome config of its own. Biome's defaults (tabs, 80
+// columns) would reject the library's own templates and flip the verdict once the recipe's sweep
+// installs a 2-space biome.json.
+const LIBRARY_FORMATTER = {
+  formatter: { enabled: true, indentStyle: "space", indentWidth: 2, lineWidth: 100 },
+  javascript: { formatter: { quoteStyle: "double", semicolons: "always" } },
+};
 
 // The placeholders the apply pipeline substitutes (plan.mjs → substitute()). Only these are
 // replaced: the oxlint rule templates legitimately carry `{{name}}`/`{{target}}` inside message
@@ -176,6 +186,7 @@ function checkTemplates(templatesDir, projectDir) {
   }
 
   const tmp = mkdtempSync(join(tmpdir(), "check-local-"));
+  let configTmp = null;
   try {
     for (const [abs, rel] of parseable) {
       const dest = join(tmp, rel);
@@ -183,9 +194,24 @@ function checkTemplates(templatesDir, projectDir) {
       writeFileSync(dest, substitute(readFileSync(abs, "utf8")));
     }
 
-    const configPath = join(projectDir, "biome.json");
-    const configArgs = existsSync(configPath) ? [`--config-path=${configPath}`] : [];
-    const formatArgs = [...biome.args, "format", ...configArgs, "--reporter=json", "."];
+    // The project's own biome config when it has one; otherwise the library's own convention,
+    // never biome's defaults. The fallback config is written outside the scanned tree so biome
+    // does not format it as a template, and passing it as `--config-path` also keeps a template
+    // named `biome.json` from being read as a nested root configuration.
+    const projectConfig = join(projectDir, "biome.json");
+    let configPath = projectConfig;
+    if (!existsSync(projectConfig)) {
+      configTmp = mkdtempSync(join(tmpdir(), "check-local-config-"));
+      configPath = join(configTmp, "biome.json");
+      writeFileSync(configPath, `${JSON.stringify(LIBRARY_FORMATTER, null, 2)}\n`);
+    }
+    const formatArgs = [
+      ...biome.args,
+      "format",
+      `--config-path=${configPath}`,
+      "--reporter=json",
+      ".",
+    ];
     let stdout = "";
     try {
       stdout = execFileSync(biome.cmd, formatArgs, {
@@ -223,6 +249,7 @@ function checkTemplates(templatesDir, projectDir) {
     }
   } finally {
     rmSync(tmp, { recursive: true, force: true });
+    if (configTmp !== null) rmSync(configTmp, { recursive: true, force: true });
   }
 
   printSkipped();

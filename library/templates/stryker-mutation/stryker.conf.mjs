@@ -53,7 +53,9 @@ export default {
   htmlReporter: {
     fileName: "reports/mutation/index.html",
   },
-  ignorePatterns: ["node_modules", ".git", "reports", "coverage", "tmp"],
+  // `.claude` and `.agents` are the skills CLI's install dirs: `.claude/skills/<name>`
+  // is a symlink, and Stryker's sandbox copy dies with ENOTSUP on it (#138).
+  ignorePatterns: ["node_modules", ".git", "reports", "coverage", "tmp", ".claude", ".agents"],
   jsonReporter: { fileName: "reports/mutation/report.json" },
   // The mutation scope. `scripts/` and `tools/` are deliberately outside it:
   // the bun runner eagerly imports every file in the mutation set into the test
