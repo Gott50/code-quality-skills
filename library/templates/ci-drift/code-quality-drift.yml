@@ -29,8 +29,8 @@ jobs:
       # The library is fetched, not committed: pull it at the pin recorded in
       # `.code-quality.json` (`library.ref`) so the report describes the repo
       # against the library it was set up with. `--no-record` keeps the job
-      # read-only, and the step is non-fatal so a network failure degrades the
-      # report instead of failing the PR.
+      # read-only, and the step is non-fatal so a network failure leaves the
+      # job green with no report instead of failing the PR.
       - name: Fetch the library at the recorded pin
         id: library
         continue-on-error: true
