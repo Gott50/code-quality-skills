@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // check-library.mjs — validate the recipe library at the repo root.
 //
-// Three independent checks; the script exits non-zero if any fails:
+// Four independent checks; the script exits non-zero if any fails:
 //
 //   1. index freshness — regenerate library/library.json exactly as
 //      scripts/build-library.mjs does and compare bytes. The generator is
@@ -15,9 +15,16 @@
 //      library/templates/** is `biome format`-clean after the {{root}} /
 //      {{plan.*}} placeholders are substituted with dummy values. Files biome
 //      cannot parse (by extension, or a parse error) are skipped and printed.
+//   4. template lint — every template is laid out as a consumer would see it
+//      (the oxlint config at the root, its plugin under tools/, the rest at
+//      their recipe-relative paths) and linted against that config, so the
+//      scripts the recipes install satisfy the rules the same selection
+//      installs. Templates oxlint does not lint (by extension) are skipped and
+//      printed.
 //
 // Zero dependencies beyond the shared frontmatter reader and the repo's own
-// biome devDependency. Usage: node scripts/check-library.mjs
+// biome devDependency; the lint check installs the oxlint devDependencies the
+// oxlint-anti-slop recipe pins into a scratch dir. Usage: node scripts/check-library.mjs
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -39,6 +46,9 @@ const FLOORS = new Set(["coverage", "mutation", "lint", "typecheck", "fallow-hea
 
 // Extensions biome parses and formats. Everything else is skipped and printed.
 const PARSEABLE = new Set([".json", ".jsonc", ".js", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".jsx", ".tsx"]);
+
+// Extensions oxlint lints. Everything else is skipped and printed.
+const LINTABLE = new Set([".js", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".jsx", ".tsx"]);
 
 // The placeholders the apply pipeline substitutes (plan.mjs → substitute()).
 // Only these are replaced: the oxlint rule templates legitimately carry
@@ -231,11 +241,112 @@ function checkTemplates() {
   return { checked: parseable.length, skipped };
 }
 
+// --- 4. template lint -------------------------------------------------------
+
+// The oxlint config the oxlint-anti-slop recipe installs, and the plugin it
+// registers. The templates are linted against it in a scratch consumer layout:
+// the config at the root, the plugin under tools/oxlint/anti-slop/ (which the
+// config's ignorePatterns excludes), and every other template at its
+// recipe-relative path. oxlint resolves no imports, so the paths need only
+// keep the config's own relative specifier and ignore patterns valid.
+const OXLINT_DIR = join(TEMPLATES_DIR, "oxlint-anti-slop");
+const OXLINT_CONFIG_REL = join("oxlint-anti-slop", "oxlint.config.ts");
+const OXLINT_TOOLS_REL = join("oxlint-anti-slop", "tools");
+
+// The oxlint devDependencies the recipe's package.json fragment pins.
+function oxlintDeps() {
+  const pkg = JSON.parse(readFileSync(join(OXLINT_DIR, "package.json"), "utf8"));
+  return pkg.devDependencies ?? {};
+}
+
+// Install the recipe's oxlint devDependencies into the scratch dir and return
+// the oxlint binary. The repo does not depend on oxlint itself, so the check
+// carries its own install; bun's global cache makes a repeat run cheap.
+function installOxlint(tmp) {
+  writeFileSync(
+    join(tmp, "package.json"),
+    `${JSON.stringify(
+      { name: "check-library-lint", private: true, type: "module", devDependencies: oxlintDeps() },
+      null,
+      2,
+    )}\n`,
+  );
+  execFileSync("bun", ["install", "--silent"], { cwd: tmp, stdio: ["ignore", "pipe", "pipe"] });
+  return join(tmp, "node_modules", ".bin", "oxlint");
+}
+
+function checkTemplateLint() {
+  const skipped = [];
+  const tmp = mkdtempSync(join(tmpdir(), "check-library-lint-"));
+  let checked = 0;
+  try {
+    for (const abs of walk(TEMPLATES_DIR)) {
+      const rel = relative(TEMPLATES_DIR, abs);
+      const ext = extname(abs).toLowerCase();
+      if (!LINTABLE.has(ext)) {
+        skipped.push([rel, `not a linted type (${ext || "no extension"})`]);
+        continue;
+      }
+      // The config lands at the root, its plugin under tools/; everything else
+      // keeps its recipe-relative path.
+      let dest;
+      if (rel === OXLINT_CONFIG_REL) dest = join(tmp, "oxlint.config.ts");
+      else if (rel.startsWith(OXLINT_TOOLS_REL)) dest = join(tmp, rel.slice("oxlint-anti-slop/".length));
+      else dest = join(tmp, rel);
+      mkdirSync(dirname(dest), { recursive: true });
+      writeFileSync(dest, substitute(readFileSync(abs, "utf8")));
+    }
+    for (const [rel, why] of skipped) process.stdout.write(`skip templates/${rel} — ${why}\n`);
+
+    let oxlint;
+    try {
+      oxlint = installOxlint(tmp);
+    } catch (err) {
+      fail(`lint: could not install oxlint — ${err.message}`);
+      return { checked, skipped };
+    }
+
+    let stdout = "";
+    try {
+      stdout = execFileSync(oxlint, ["--format", "json", "."], {
+        cwd: tmp,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (err) {
+      // oxlint exits non-zero when it reports diagnostics; its JSON is still on
+      // stdout. Only a run that produced no output at all is a failure to run.
+      stdout = err.stdout ?? "";
+      if (!stdout) {
+        fail(`lint: oxlint failed to run — ${err.message}`);
+        return { checked, skipped };
+      }
+    }
+
+    let report;
+    try {
+      report = JSON.parse(stdout);
+    } catch {
+      fail("lint: could not parse oxlint's JSON output");
+      return { checked, skipped };
+    }
+
+    for (const d of report.diagnostics ?? []) {
+      fail(`templates/${d.filename}: ${d.code} ${d.message}`);
+    }
+    checked = report.number_of_files ?? 0;
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+  return { checked, skipped };
+}
+
 // --- run --------------------------------------------------------------------
 
 checkIndex();
 const recipeCount = checkRecipes();
 const { checked, skipped } = checkTemplates();
+const lint = checkTemplateLint();
 
 if (errors.length > 0) {
   process.stderr.write(`check-library: FAILED (${errors.length})\n`);
@@ -244,5 +355,5 @@ if (errors.length > 0) {
 }
 
 process.stdout.write(
-  `check-library: ok — index fresh, ${recipeCount} recipes valid, ${checked} templates formatted (${skipped.length} skipped)\n`,
+  `check-library: ok — index fresh, ${recipeCount} recipes valid, ${checked} templates formatted (${skipped.length} skipped), ${lint.checked} templates linted\n`,
 );

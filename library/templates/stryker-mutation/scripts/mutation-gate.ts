@@ -2,25 +2,19 @@
  * Pre-push mutation gate. Invoked explicitly by the hook (`bun <script>` under
  * Bun, `npx tsx <script>` under npm and pnpm), so it carries no shebang.
  *
- * Reads the pre-push hook stdin (one line per pushed ref:
- * `<local ref> <local sha> <remote ref> <remote sha>`), diffs the pushed
- * commits against the remote tip, and runs Stryker scoped to ONLY the changed
- * source files (via --mutate) with --incremental caching. A changed file
- * below its mutation floor fails the push.
- *
- * Scoping to changed files keeps the gate practical: a push touching one file
- * mutates that file, not the whole area. Incremental mode reuses cached
- * results for unchanged files, so retry loops after a failed push are fast.
+ * Reads the pre-push hook stdin (`<local ref> <local sha> <remote ref> <remote
+ * sha>` per line), diffs the pushed commits against the remote tip, and runs
+ * Stryker scoped to ONLY the changed source files (via --mutate) with
+ * --incremental caching. A changed file below its mutation floor fails the push.
  *
  * The Stryker exit code only enforces the mutation score, and Stryker counts
- * timed-out mutants as killed, so a clean-score run can still contain
- * timeouts. The gate therefore also parses each area's report JSON and
- * enforces the per-file mutation floor from the committed baseline
- * `.code-quality-baseline.json` (written by the skill's `score.mjs --raise`):
- * a recorded file must meet its exact `{killed, total}` fraction
- * (cross-multiplied, so no float rounding creeps in), an unrecorded file must
- * meet `gates.mutation.global`, and a timed-out mutant always fails whatever
- * the floor. With no baseline every floor is 100% — the greenfield wall.
+ * timed-out mutants as killed, so a clean-score run can still contain timeouts.
+ * The gate therefore also parses each area's report JSON and enforces the
+ * per-file floor from the committed baseline `.code-quality-baseline.json`
+ * (written by `score.mjs --raise`): a recorded file must meet its exact
+ * `{killed, total}` fraction (cross-multiplied, so no float rounding creeps
+ * in), an unrecorded file must meet `gates.mutation.global`, and a timed-out
+ * mutant always fails whatever the floor. With no baseline every floor is 100%.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync } from "node:fs";
@@ -44,8 +38,20 @@ interface Floors {
   global: Frac;
 }
 
-// Read once at startup. An unreadable baseline fails the gate — a floor file
-// that cannot be read must not silently become 100%.
+/**
+ * Per-file mutation levels: `killed` counts `Killed` mutants only, `total`
+ * every mutant, `timedOut` the `Timeout` ones (which Stryker's own score counts
+ * as killed), and `zeroTestSurvivors` the covered survivors whose mutant run
+ * executed zero tests.
+ */
+interface Level {
+  killed: number;
+  timedOut: number;
+  total: number;
+  zeroTestSurvivors: number;
+}
+
+// An unreadable baseline fails the gate — it must not silently become 100%.
 function readFloors(): Floors {
   const path = resolve(ROOT, ".code-quality-baseline.json");
   if (!existsSync(path)) return { files: {}, global: FULL };
@@ -65,28 +71,23 @@ function readFloors(): Floors {
 
 /** The floor for one file: its own if the baseline records it, else global. */
 function floorOf(fileName: string, areaPrefix: string): Frac {
-  // The report's keys are relative to the area the config ran in (the member
-  // directory for a member config), the baseline's keys to the workspace
-  // root, so the area prefix turns one into the other.
+  // The report's keys are area-relative, the baseline's workspace-root-relative,
+  // so the area prefix turns one into the other.
   return FLOORS.files[`${areaPrefix}${fileName}`] ?? FLOORS.files[fileName] ?? FLOORS.global;
 }
 
 const FULL_CONFIG = "stryker.conf.mjs";
 
 // The workspace root the gate was invoked from. Stryker runs in each area's
-// directory (so a member config's own globs resolve against the member), while
-// the report and incremental cache stay rooted here, where `.gitignore` covers
-// them.
+// directory, while the report and incremental cache stay rooted here.
 const ROOT = process.cwd();
 
-// The mutation floors, read once at startup. ROOT must be initialized first:
-// the baseline sits at the workspace root the gate was invoked from.
+// The mutation floors, read once at startup (ROOT must be initialized first).
 const FLOORS = readFloors();
 
-// The Stryker CLI, run through whichever package manager the project uses:
-// `bunx` under Bun, `npx` under npm and pnpm. Derived from the lockfile — the
-// same evidence the detector uses to name the manager, so the two never
-// disagree — which lets one gate script serve every package manager.
+// The Stryker CLI, run through the project's package manager: `bunx` under Bun,
+// `npx` under npm and pnpm. Derived from the lockfile, the same evidence the
+// detector uses, so the two never disagree.
 const RUNNER = existsSync("bun.lock") || existsSync("bun.lockb") ? "bunx" : "npx";
 
 /** Short name of a config, used for its incremental-cache file. */
@@ -95,52 +96,27 @@ function areaOf(config: string): string {
   return config.replace(/^stryker\./, "").replace(/\.conf\.mjs$/, "") || "full";
 }
 
-// The report every config writes, at the workspace root. A member config runs
-// with cwd = the member directory, so its `jsonReporter.fileName` names the
-// member's path back to the workspace root followed by this path — the root,
-// whatever the member's depth — and the gate reads this same root path for
-// every config. The incremental cache stays per-area, so members do not share
-// cache state.
-//
-// This template is root-scoped, so it must not carry the root token: the
-// renderer would rewrite it and `create`'s byte-compare would report drift on a
-// file nobody edited. (The plan keys are legal in any scope; this rule is
-// about the root token alone.) Name the mechanism, never the token.
-const REPORT_FILE = "reports/mutation/report.json";
-
-// The pre-push gate's own report, for the files the push touches. Stryker's
-// jsonReporter accumulates files from previous runs into the same file, so the
-// gate resets and rewrites it — which would clobber the FULL-run report
-// `score.mjs --raise` reads and make a recorded file the push did not touch
-// look deleted, dropping its floor (#102). The scoped run therefore writes
-// beside it, and the full report stays the full measurement.
+// The gate's own report, written beside the FULL-run report `score.mjs --raise`
+// reads so the scoped run never clobbers it (#102). Root-scoped: no root token.
 const SCOPED_REPORT_FILE = "reports/mutation/report.scoped.json";
 
 /**
- * Per-file mutation levels for the changed files in a Stryker report:
- * `killed` counts `Killed` mutants only, `total` every mutant in the file,
- * and `timedOut` the `Timeout` ones (which Stryker's own score counts as
- * killed).
- *
- * With --incremental, Stryker re-emits cached files from the incremental file
- * into the report even when they are not part of the current --mutate set, so
- * levels must be scoped to the pushed files; a cached survivor from a file
- * that is not being pushed must not fail the push.
- *
- * An empty changedFiles set matches every file in the report. The full-suite
- * fallback (new branch with no merge-base) runs Stryker over the whole repo
- * and passes an empty set, so it must still be verified rather than skipped.
+ * Per-file mutation levels for the changed files in a Stryker report. With
+ * --incremental, Stryker re-emits cached files into the report even when they
+ * are not in the current --mutate set, so levels are scoped to the pushed
+ * files. An empty changedFiles set matches every file (the full-suite fallback
+ * for a new branch with no merge-base), so it must still be verified.
  */
-function fileLevels(
-  reportFile: string,
-  changedFiles: Set<string>,
-): Map<string, { killed: number; timedOut: number; total: number }> {
-  const levels = new Map<string, { killed: number; timedOut: number; total: number }>();
+function fileLevels(reportFile: string, changedFiles: Set<string>): Map<string, Level> {
+  const levels = new Map<string, Level>();
   if (!existsSync(reportFile)) return levels;
   // SAFETY: Stryker's jsonReporter writes files[].mutants[].status as a string
-  // enum; other report fields are not read by this gate.
+  // enum and coveredBy/testsCompleted as the numbers the runner reported.
   const report = JSON.parse(readFileSync(reportFile, "utf8")) as {
-    files?: Record<string, { mutants?: Array<{ status?: string }> }>;
+    files?: Record<
+      string,
+      { mutants?: Array<{ status?: string; coveredBy?: string[]; testsCompleted?: number }> }
+    >;
   };
   for (const [fileName, file] of Object.entries(report.files ?? {})) {
     if (changedFiles.size > 0 && !changedFiles.has(fileName)) continue;
@@ -149,6 +125,15 @@ function fileLevels(
       killed: mutants.filter((m) => m.status === "Killed").length,
       timedOut: mutants.filter((m) => m.status === "Timeout").length,
       total: mutants.length,
+      // A covered survivor whose mutant run executed zero tests is the
+      // silent-zero-tests failure mode: the per-test filter matched nothing, so
+      // "Survived" is meaningless (stryker-js#6210).
+      zeroTestSurvivors: mutants.filter(
+        (m) =>
+          m.status === "Survived" &&
+          (m.coveredBy?.length ?? 0) > 0 &&
+          (m.testsCompleted ?? 0) === 0,
+      ).length,
     });
   }
   return levels;
@@ -194,24 +179,18 @@ function globToRegExp(glob: string): RegExp {
 }
 
 // Directory prefix -> scoped Stryker config covering that area. One catch-all
-// entry for a single-package repo; a workspace adds one entry per member
-// (prefix -> that member's config), which is why the mapping is a list. The
-// plan renderer substitutes this literal from the detector's member list, so
-// the mapping never drifts from the members on disk.
+// entry for a single-package repo; a workspace adds one per member. The plan
+// renderer substitutes this literal from the detector's member list.
 const AREA_CONFIGS: ReadonlyArray<readonly [string, string]> = {{plan.areas}};
 
 /**
- * The config's own `mutate` globs are the mutation scope, and the gate must
- * respect them: `--mutate` on the command line OVERRIDES the config, so a
- * changed file the config would never mutate (a build script, a vendored
- * plugin) would land in the mutation set. Under the Bun runner that is fatal:
- * its preload imports every file in the set, so a script whose module-level
- * code exits non-zero kills the whole push. Filtering through the config's own
- * globs is the only way to keep such a file out.
+ * The config's own `mutate` globs are the mutation scope: `--mutate` on the
+ * command line OVERRIDES the config, so a file the config would never mutate
+ * (a build script, a vendored plugin) would land in the set — fatal under the
+ * Bun runner, whose preload imports every file in it.
  */
 async function mutateScopeOf(config: string): Promise<MutateScope> {
-  // Dynamic import: the specifier is the config path the gate was invoked with
-  // (a runtime value), not a module known at author time.
+  // Dynamic import: the specifier is a runtime value, not a module known at author time.
   // SAFETY: the config is an ESM module whose default export is the Stryker
   // config object; only `mutate` is read, and a missing or non-array value
   // falls back to an empty scope.
@@ -234,8 +213,7 @@ function inMutationScope(file: string, scope: MutateScope): boolean {
 function scopeFor(files: string[], scopes: Map<string, MutateScope>): Map<string, string[]> {
   const scope = new Map<string, string[]>();
   for (const file of files) {
-    // The most specific prefix wins: a member file belongs to its member's
-    // config, not to the root catch-all.
+    // The most specific prefix wins: a member file belongs to its member's config.
     const match = AREA_CONFIGS.filter(([prefix]) => file.startsWith(prefix)).sort(
       (a, b) => b[0].length - a[0].length,
     )[0];
@@ -264,9 +242,7 @@ function runStryker(config: string, files: string[]): boolean {
       `(${files.join(", ")}) with incremental cache ${incrementalFile}`,
   );
   // Reset the report so counts reflect only this run: Stryker's jsonReporter
-  // accumulates files from previous runs into the same file, so a stale
-  // report could fail a push on files that are not being pushed (or pass
-  // vacuously if the current files were skipped).
+  // accumulates files from previous runs into the same file.
   rmSync(reportFile, { force: true });
   const r = spawnSync(
     RUNNER,
@@ -292,12 +268,9 @@ function runStryker(config: string, files: string[]): boolean {
 
 /**
  * A missing report fails closed — unless Stryker's own output confirms a
- * genuinely zero-mutant run. Stryker writes no report when it instruments
- * zero mutants (e.g. a push touching only type-only files); any other count
- * (or unparseable output) must not be misclassified as a clean pass. Anchor
- * on the instrumenter's own line ("Instrumented <N> source file(s) with <M>
- * mutant(s)") instead of a bare "with N mutant" phrase, so progress lines or
- * other interleaved output cannot match by noise.
+ * genuinely zero-mutant run. Anchor on the instrumenter's own line
+ * ("Instrumented <N> source file(s) with <M> mutant(s)") so progress lines
+ * cannot match by noise.
  */
 function reportMissing(config: string, reportFile: string, stdout: string): boolean {
   const instrumented = stdout.match(/Instrumented \d+ source file\(s\) with (\d+) mutant/);
@@ -313,12 +286,37 @@ function reportMissing(config: string, reportFile: string, stdout: string): bool
 }
 
 /**
- * Verify a completed Stryker run's report. The exit code only enforces the
- * mutation score, and Stryker counts timed-out mutants as killed, so a
- * clean-score run can still contain timeouts. Enforce the per-file mutation
- * floor from the baseline for the pushed files in the report — a timed-out
- * mutant fails whatever the floor. Changed files absent from the report have
- * zero mutants (or were deleted), so there is nothing to verify for them.
+ * The failure messages for one file's mutation level: a covered survivor whose
+ * mutant run executed zero tests (stryker-js#6210), any timed-out mutant, and
+ * a kill fraction below the file's floor.
+ */
+function fileFailures(fileName: string, level: Level, areaPrefix: string): string[] {
+  const failures: string[] = [];
+  if (level.zeroTestSurvivors > 0) {
+    failures.push(
+      `${fileName}: ${level.zeroTestSurvivors} covered mutant(s) survived with 0 tests run — ` +
+        `the test runner's per-test filter matched nothing (stryker-js#6210); the score is not trustworthy`,
+    );
+  }
+  if (level.timedOut > 0) {
+    failures.push(
+      `${fileName}: ${level.timedOut} timed-out mutant(s) — timeouts fail whatever the floor`,
+    );
+  }
+  const floor = floorOf(fileName, areaPrefix);
+  if (level.total > 0 && level.killed * floor.total < floor.killed * level.total) {
+    failures.push(
+      `${fileName}: ${level.killed}/${level.total} killed — floor ${floor.killed}/${floor.total}`,
+    );
+  }
+  return failures;
+}
+
+/**
+ * Verify a completed Stryker run's report: enforce the per-file floor for the
+ * pushed files, fail on any timed-out mutant, and fail on a covered survivor
+ * whose mutant run executed zero tests (stryker-js#6210). Changed files absent
+ * from the report have zero mutants (or were deleted), so nothing to verify.
  */
 function verifyReport(
   config: string,
@@ -332,24 +330,12 @@ function verifyReport(
   if (!existsSync(reportFile)) return reportMissing(config, reportFile, stdout);
   const failures: string[] = [];
   for (const [fileName, level] of fileLevels(reportFile, changedFiles)) {
-    if (level.timedOut > 0) {
-      failures.push(
-        `${fileName}: ${level.timedOut} timed-out mutant(s) — timeouts fail whatever the floor`,
-      );
-    }
-    const floor = floorOf(fileName, areaPrefix);
-    if (level.total > 0 && level.killed * floor.total < floor.killed * level.total) {
-      failures.push(
-        `${fileName}: ${level.killed}/${level.total} killed — floor ${floor.killed}/${floor.total}`,
-      );
-    }
+    failures.push(...fileFailures(fileName, level, areaPrefix));
   }
-  if (failures.length > 0) {
-    console.error(`\n[mutation-gate] ${config}: report ${reportFile}:`);
-    for (const failure of failures) console.error(`  - ${failure}`);
-    return false;
-  }
-  return true;
+  if (failures.length === 0) return true;
+  console.error(`\n[mutation-gate] ${config}: report ${reportFile}:`);
+  for (const failure of failures) console.error(`  - ${failure}`);
+  return false;
 }
 
 const stdin = readFileSync(0, "utf8").trim();

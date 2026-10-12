@@ -56,31 +56,32 @@ function isCoverageFrac(v) {
   return !!v && isFrac(v.statements) && isFrac(v.functions);
 }
 
-// The baseline's coverage floors: `global` is the floor for a file the
-// baseline does not record, `files` its per-file floors keyed as recorded
-// (workspace-root-relative), and `abs` the same floors keyed by the absolute
-// path each recorded key resolves to beside the baseline file — the form the
-// Istanbul keys are matched in. An unreadable baseline fails the gate — a
-// floor file that cannot be read must not silently become 100%. A coverage
-// block that does not carry both metrics is unreadable too: the floor is per
-// metric, and a missing one must not silently become 100%.
-function readFloors(path) {
-  if (!existsSync(path)) return { abs: new Map(), files: {}, global: FULL };
-  let doc;
+// The baseline as parsed, or exit 1 when the file is unreadable: a floor file
+// that cannot be read must not silently become 100%.
+function readBaseline(path) {
   try {
     // SAFETY: the baseline is JSON written by score.mjs; only the coverage
     // gate's `global` fraction and `files` map are read.
-    doc = JSON.parse(readFileSync(path, "utf8"));
+    return JSON.parse(readFileSync(path, "utf8"));
   } catch (err) {
     console.error(`coverage-gate: baseline ${path} is unreadable: ${err}`);
     process.exit(1);
   }
-  const coverage = doc?.gates?.coverage;
-  if (coverage?.global !== undefined && !isCoverageFrac(coverage.global)) {
+}
+
+// The baseline's global floor, or exit 1 when it is malformed. A coverage
+// block that does not carry both metrics is unreadable: the floor is per
+// metric, and a missing one must not silently become 100%.
+function readGlobalFloor(path, global) {
+  if (global !== undefined && !isCoverageFrac(global)) {
     console.error(`coverage-gate: baseline ${path} records no statements/functions floor`);
     process.exit(1);
   }
-  const files = coverage?.files ?? {};
+  return global ?? FULL;
+}
+
+// Exit 1 when any recorded per-file floor is malformed.
+function checkFileFloors(path, files) {
   for (const [key, frac] of Object.entries(files)) {
     if (!isCoverageFrac(frac)) {
       console.error(
@@ -89,10 +90,28 @@ function readFloors(path) {
       process.exit(1);
     }
   }
+}
+
+// The baseline's coverage block, or exit 1 when a floor is malformed.
+function readCoverage(path, doc) {
+  const coverage = doc?.gates?.coverage ?? {};
+  const files = coverage.files ?? {};
+  checkFileFloors(path, files);
+  return { files, global: readGlobalFloor(path, coverage.global) };
+}
+
+// The baseline's coverage floors: `global` is the floor for a file the
+// baseline does not record, `files` its per-file floors keyed as recorded
+// (workspace-root-relative), and `abs` the same floors keyed by the absolute
+// path each recorded key resolves to beside the baseline file — the form the
+// Istanbul keys are matched in.
+function readFloors(path) {
+  if (!existsSync(path)) return { abs: new Map(), files: {}, global: FULL };
+  const { files, global } = readCoverage(path, readBaseline(path));
   const abs = new Map(
     Object.entries(files).map(([key, frac]) => [resolve(dirname(path), key), frac]),
   );
-  return { abs, files, global: coverage?.global ?? FULL };
+  return { abs, files, global };
 }
 
 const floors = readFloors(baselinePath);
