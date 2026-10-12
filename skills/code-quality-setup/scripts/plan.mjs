@@ -943,7 +943,7 @@ function buildPlan(report, opts) {
     for (const w of resolveWrites(r, stack.workspace)) {
       let content;
       try {
-        content = substitute(readTemplate(libraryDir, w.template), { ...subst, root: w.rootPrefix });
+        content = substitute(readTemplate(r.libraryDir ?? libraryDir, w.template), { ...subst, root: w.rootPrefix });
       } catch (err) {
         templateErrors.push({ id: r.id, error: `${w.template}: ${err.message}` });
         continue;
@@ -965,7 +965,7 @@ function buildPlan(report, opts) {
   const library = selected.map((r) => ({
     id: r.id,
     hash: hash(
-      readFileSync(join(libraryDir, "recipes", `${r.id}.md`), "utf8") +
+      readFileSync(join(r.libraryDir ?? libraryDir, "recipes", `${r.id}.md`), "utf8") +
         writesByRecipe.get(r.id).map((w) => w.content).join("\n"),
     ),
     files: writesByRecipe.get(r.id).map((w) => ({ path: w.target, action: w.action, content: w.content })),
@@ -1311,7 +1311,7 @@ function renderSelection(selected) {
     return lines.join("\n");
   }
   selected.forEach((r, i) => {
-    lines.push(`${i + 1}. **${r.id}** — ${r.title}`);
+    lines.push(`${i + 1}. **${r.id}${r.source === "local" ? " (local)" : ""}** — ${r.title}`);
     lines.push(`   ${r.purpose}`);
     lines.push(`   cost: ${fmtCost(r.cost)} · priority: ${r.priority}`);
   });
@@ -1327,7 +1327,7 @@ function renderNotSelected(notSelected) {
   for (const r of notSelected) {
     const failing = (r.reasons ?? []).filter((x) => !x.pass);
     const detail = r.narrow ?? (failing.length > 0 ? failing[0].detail : "not selected");
-    lines.push(`- **${r.id}** — ${detail}`);
+    lines.push(`- **${r.id}${r.source === "local" ? " (local)" : ""}** — ${detail}`);
   }
   return lines.join("\n");
 }

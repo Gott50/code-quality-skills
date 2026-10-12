@@ -11,6 +11,14 @@ the machine-readable drift report instead of the plan and exits 0 only when it i
 `DETECT-SCHEMA.md` is the JSON it consumes; `RECIPE-CONTRACT.md` is the frontmatter and the
 substitution keys it renders. This file is the contract for the plan text.
 
+Every recipe the detector reports carries `source` (`"library"` or `"local"`) and `libraryDir` (the
+absolute directory it was loaded from) — the detector merges the project's local library
+(`<projectRoot>/.code-quality/`) over the remote library, local winning on an id collision. The plan
+reads each recipe's templates and its recipe file from that recipe's own `libraryDir`, so a local
+recipe's write is rendered from `.code-quality/templates/` and its hash is read from
+`.code-quality/recipes/<id>.md`. A local recipe is marked with a ` (local)` suffix on its id in the
+**Selection** list and in the **Not selected** (applicability) matrix.
+
 ## Options
 
 | Option | Effect |
@@ -104,14 +112,17 @@ The first line after the title is the state:
 1. **Stack** — languages (with strictness and its source), package manager (with its evidence), and
    the workspace kind and members.
 2. **Selection** — the selected recipes, priority order, each with title, purpose, and cost
-   (`heavy` is flagged `⚠ slow verify`).
+   (`heavy` is flagged `⚠ slow verify`). A recipe the detector loaded from the project's local
+   library (`.code-quality/`) is marked with a ` (local)` suffix on its id.
 3. **Measurement (the floor the apply will install)** — one row per gate the selection will install
    (a selected recipe's gate that declares `floor`): the gate, the level it measures now, the floor
    the apply will install (the recorded floor when the gate has one, else the measured level, else
    the wall), whether the apply raises or keeps it, and the floor's source (`unified` or `fallow`).
    See below.
 4. **Not selected** — every usable recipe that is not selected, with its first failing
-   `reason.detail` (or `applicable — not selected (narrowed by --recipe)` under `--recipe`).
+   `reason.detail` (or `applicable — not selected (narrowed by --recipe)` under `--recipe`). A
+   recipe the detector loaded from the project's local library (`.code-quality/`) is marked with a
+   ` (local)` suffix on its id.
 5. **Held back** — the detector's `heldBack`, with its reason.
 6. **Collisions** — the detector's `collisions` for the selected recipes, each with its evidence;
    `--force` marks them overridden.

@@ -1,9 +1,10 @@
 # code-quality-skills
 
-Two installable agent skills for a TypeScript repo's code-quality gates:
+Three installable agent skills for a TypeScript repo's code-quality gates:
 
 - **`code-quality-setup`** wires the gates in — formatting, linting, typechecking, tests, coverage, mutation testing, git hooks, and CI — from a library of recipes. It detects the stack, prints a plan, and applies it on approval.
 - **`code-quality-improve`** raises the score one target at a time: it ranks the improvement targets, prints the ranking, and on approval makes one change, verifies it, and raises that gate's floor.
+- **`code-quality-author`** grows the recipe library: it ranks the gaps the shared library leaves in a project, and on approval authors a local recipe for the one the user picks, validates it, and installs it.
 
 ## Install
 
@@ -11,11 +12,12 @@ Two installable agent skills for a TypeScript repo's code-quality gates:
 npx skills@latest add Gott50/code-quality-skills
 ```
 
-The repo exposes two skills, so `-s <name>` is load-bearing — without it the CLI installs both:
+The repo exposes three skills, so `-s <name>` is load-bearing — without it the CLI installs all three:
 
 ```sh
 npx skills@latest add Gott50/code-quality-skills -s code-quality-setup
 npx skills@latest add Gott50/code-quality-skills -s code-quality-improve
+npx skills@latest add Gott50/code-quality-skills -s code-quality-author
 ```
 
 The [skills CLI](https://github.com/vercel-labs/skills) copies each skill into `.agents/skills/<name>/` and records it in `skills-lock.json`. Then ask your agent to "set up code quality in this repo", and later to "improve the code-quality score".
@@ -36,6 +38,14 @@ The agent prints the plan, asks once, and applies it. It never improvises the pl
 - `scripts/rank.mjs` — reads the artifacts the gates produced and prints the ranked improvement targets: the repo-owned candidates (coverage, mutation, lint, typecheck) first, then fallow's own `--targets` ranking by effort tier, with the effort and confidence printed for every candidate. A missing artifact is a reported gap, not a crash.
 
 The agent prints the ranking, asks once, and makes one change per pass. The raise step invokes `code-quality-setup`'s `score.mjs --raise` (or the project's `fallow:raise`), so the floor merge lives in one place.
+
+`code-quality-author` ships two dependency-free scripts (node builtins only) and one reference:
+
+- `scripts/gaps.mjs` — spawns the setup skill's detector and prints the ranked gaps the shared library leaves in the project: a tooling category no selected recipe covers, then a recipe one `when` predicate away.
+- `scripts/check-local.mjs` — validates `.code-quality/` against the recipe contract and the template formatting.
+- `references/authoring.md` — the local layout, the two gap kinds, and the fields that matter when authoring.
+
+The agent prints the gaps, asks once, and authors one recipe per pass. Authoring ends by installing the recipe: the project is the fixture, so a written-but-unapplied recipe is unproven.
 
 ## Recipes
 
@@ -82,6 +92,11 @@ skills/code-quality-improve/ the installable improvement skill
   SKILL.md                   the entry point
   scripts/rank.mjs           the ranking view
   references/raise.md        the per-gate floor and raise command
+skills/code-quality-author/  the installable authoring skill
+  SKILL.md                   the entry point
+  scripts/gaps.mjs           the ranked gaps the shared library leaves
+  scripts/check-local.mjs    the local library's contract and formatting check
+  references/authoring.md    the local layout and the fields that matter when authoring
 fixtures/                    throwaway projects the detector and recipes are verified against
 .agents/skills/              vendored third-party skills (mattpocock/skills)
 ```

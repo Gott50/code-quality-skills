@@ -1,17 +1,19 @@
 # Clean-install proof
 
 The `skills` CLI install contract, exercised end to end from a fresh directory: install, list,
-update, remove. Two runs, both with `skills` v1.7.1 on Node v26.8.1:
+update, remove. Three runs, all with `skills` v1.7.2 on Node v26.8.1:
 
-- **2026-10-10**, against the local repo with both skills present — the two-skill run: the CLI
-  reports **Found 2 skills**, so `-s <name>` is load-bearing.
+- **2026-10-12**, against the local repo with all three skills present — the three-skill run
+  (reproduced below): the CLI reports **Found 3 skills**, so `-s <name>` is load-bearing.
+- **2026-10-10**, against the local repo with two skills present — the two-skill run: the CLI
+  reported **Found 2 skills**. Superseded by the run below; same shape.
 - **2026-10-09**, against `Gott50/code-quality-skills` at `ec4845b` (one skill) — the GitHub-source
   run, which proves the clone path and the update step.
 
-## Two skills: `-s <name>` selects one
+## Three skills: `-s <name>` selects one
 
-The repo exposes two skills, so the CLI offers both and `-s <name>` picks one. Without `-s` it
-installs both.
+The repo exposes three skills, so the CLI offers all three and `-s <name>` picks one. Without `-s` it
+installs all three.
 
 ```sh
 $ mkdir /tmp/cqs-proof && cd /tmp/cqs-proof
@@ -25,10 +27,14 @@ $ npx skills@latest add <repo> -l
 │
 ◇  Local path validated
 │
-◇  Found 2 skills
+◇  Found 3 skills
 
 │
 ◇  Available Skills
+│
+│    code-quality-author
+│
+│      Authors a code-quality recipe into a project's local library and installs it. Use when a project needs a gate the recipe library does not cover, or a recipe variant for its stack.
 │
 │    code-quality-improve
 │
@@ -42,7 +48,7 @@ $ npx skills@latest add <repo> -l
 └  Use --skill <name> to install specific skills
 
 
-$ npx skills@latest add <repo> -s code-quality-improve -y
+$ npx skills@latest add <repo> -s code-quality-author -y
 
 │
 ●   claude  Agent detected — installing non-interactively
@@ -51,25 +57,26 @@ $ npx skills@latest add <repo> -s code-quality-improve -y
 │
 ◇  Local path validated
 │
-◇  Found 2 skills
+◇  Found 3 skills
 │
-●  Selected 1 skill: code-quality-improve
+●  Selected 1 skill: code-quality-author
 
 │
 ◇  Installation Summary ──────────────────────────────────────────────────╮
 │                                                                         │
-│  ./.agents/skills/code-quality-improve                                  │
+│  ./.agents/skills/code-quality-author                                   │
 │    universal: Amp, Antigravity, Antigravity CLI, Cline, Codex +16 more  │
 │    symlink → Claude Code                                                │
 │                                                                         │
 ├─────────────────────────────────────────────────────────────────────────╯
 │
+◒  Installing skills…...
 ◇  Installation complete
 
 │
 ◇  Installed 1 skill ─────────────────────────────────────────────────────╮
 │                                                                         │
-│  ✓ ./.agents/skills/code-quality-improve                                │
+│  ✓ ./.agents/skills/code-quality-author                                 │
 │    universal: Amp, Antigravity, Antigravity CLI, Cline, Codex +16 more  │
 │    symlinked: Claude Code                                               │
 │                                                                         │
@@ -82,32 +89,38 @@ $ npx skills@latest add <repo> -s code-quality-improve -y
 $ npx skills@latest list
 Project Skills
 
-code-quality-improve ./.agents/skills/code-quality-improve
+code-quality-author ./.agents/skills/code-quality-author
   Agents: GitHub Copilot, Claude Code  Source: <repo>
 
 
 $ find .agents/skills -type f
-.agents/skills/code-quality-improve/SKILL.md
-.agents/skills/code-quality-improve/agents/openai.yaml
-.agents/skills/code-quality-improve/references/raise.md
-.agents/skills/code-quality-improve/scripts/RANK-SCHEMA.md
-.agents/skills/code-quality-improve/scripts/rank.mjs
+.agents/skills/code-quality-author/SKILL.md
+.agents/skills/code-quality-author/agents/openai.yaml
+.agents/skills/code-quality-author/references/authoring.md
+.agents/skills/code-quality-author/scripts/CHECK-LOCAL-SCHEMA.md
+.agents/skills/code-quality-author/scripts/GAPS-SCHEMA.md
+.agents/skills/code-quality-author/scripts/check-local.mjs
+.agents/skills/code-quality-author/scripts/gaps.mjs
 
 
 $ cat skills-lock.json
 {
   "version": 1,
   "skills": {
-    "code-quality-improve": {
+    "code-quality-author": {
       "source": "<repo>",
       "sourceType": "local",
-      "computedHash": "1a0ca8c1f1742e650070ee41c07e994cebccf9fe627e638df0198a02a0715a56"
+      "computedHash": "05748a39e732208b48b7c43ba3aabf90b2a8e6991b46001e9ac2a411da3a8104"
     }
   }
 }
 
 
-$ npx skills@latest remove code-quality-improve -y
+$ npx skills@latest remove code-quality-author -y
+│
+●   claude  Agent detected — removing non-interactively
+│
+◇  Found 1 unique installed skill(s)
 │
 ◇  Removal process complete
 │
@@ -124,11 +137,17 @@ $ cat skills-lock.json
 }
 ```
 
-The install copies the whole `skills/code-quality-improve/` tree — `SKILL.md`, `agents/openai.yaml`,
-`references/raise.md`, `scripts/RANK-SCHEMA.md`, `scripts/rank.mjs` — into
-`.agents/skills/code-quality-improve/` and records it in `skills-lock.json`; `remove` clears the
-entry. The lockfile's `computedHash` covers every file in the skill directory, which is what makes
-`update` see a change to a script or a reference.
+The install copies the whole `skills/code-quality-author/` tree — `SKILL.md`, `agents/openai.yaml`,
+`references/authoring.md`, `scripts/GAPS-SCHEMA.md`, `scripts/CHECK-LOCAL-SCHEMA.md`,
+`scripts/gaps.mjs`, `scripts/check-local.mjs` — into `.agents/skills/code-quality-author/` and records
+it in `skills-lock.json`; `remove` clears the entry. The lockfile's `computedHash` covers every file
+in the skill directory, which is what makes `update` see a change to a script or a reference.
+
+`code-quality-author` is the companion to `code-quality-setup` and spawns that skill's scripts, so
+both must be installed for it to run: its `scripts/check-local.mjs` imports
+`../../code-quality-setup/scripts/frontmatter.mjs`, and `scripts/gaps.mjs` spawns
+`../../code-quality-setup/scripts/detect.mjs`. Both resolve in the installed layout
+(`.agents/skills/code-quality-author/scripts/` → `.agents/skills/code-quality-setup/scripts/`).
 
 `<repo>` is the path the source was given — the local checkout — and the lockfile records it
 verbatim (a relative path for a local source).
@@ -140,8 +159,8 @@ skills to update"), so the update step is proven on the GitHub source.
 ## The GitHub-source run (one skill)
 
 Run 2026-10-09 against `Gott50/code-quality-skills` at `ec4845b`, with `skills` v1.7.1 on Node
-v26.8.1. This run predates the second skill, so the CLI reported **Found 1 skill**; the repo now
-exposes two, and the CLI reports **Found 2 skills** (see above).
+v26.8.1. This run predates the second and third skills, so the CLI reported **Found 1 skill**; the
+repo now exposes three, and the CLI reports **Found 3 skills** (see above).
 
 ```sh
 $ mkdir /tmp/cqs-proof && cd /tmp/cqs-proof

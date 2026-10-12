@@ -102,13 +102,18 @@ A directory-shaped candidate (`.husky`, `.github/workflows`) reports its content
 
 ## `recipes[]`
 
-One entry per `library/recipes/*.md`, carrying the parsed frontmatter plus the evaluated result:
+One entry per `library/recipes/*.md`, carrying the parsed frontmatter plus the evaluated result. The
+matrix is in **filename order** (`<id>.md`) — the order the loader has always produced, and the
+order the merged local + library list is sorted into (see *Local recipes*).
 
 ```jsonc
 {
   "id": "biome-assist",
   "error": null,          // a string when the recipe file could not be read; then this is the only
                           // other field present, and the recipe is never selected
+  "source": "library",    // "library" (the fetched library) or "local" (the project's .code-quality/)
+  "libraryDir": "/abs/path/to/library",  // the directory this recipe was loaded from; the plan and
+                          // the proposal reader resolve the recipe's own templates against it
   "title": "…", "purpose": "…", "cost": "fast", "priority": 50,
   "applicable": true,     // every `when` check passed
   "selected": true,       // applicable AND survived conflicts
@@ -170,6 +175,22 @@ never silently dropped:
   "evidence": ["root/package.json declares prettier", "formatter: .prettierrc"] }
 ```
 
+## Local recipes
+
+A project may carry its own recipes in a library-shaped directory at `<projectRoot>/.code-quality/`:
+`.code-quality/recipes/<id>.md` (the same frontmatter contract as `library/recipes/`) and
+`.code-quality/templates/<id>/…`. The local recipes directory **is** the local index — there is no
+local `library.json`, and the detector never reads one.
+
+The layer is **optional**: a project with no `.code-quality/` behaves exactly as before. When it is
+present, the detector loads the remote library first, then the local layer, and merges them with
+**local winning on id collision** — a local recipe with the same `id` as a library recipe replaces
+it, and the merged list is sorted by filename (`<id>.md`), the order the loader has always
+produced. Each matrix entry's `source` says which layer it came
+from, and `libraryDir` is the directory it was loaded from (the project's `.code-quality/` for a
+local recipe), so the plan and the proposal reader resolve a recipe's own templates against the
+right root.
+
 ## What it does not do
 
 - No package manager, no network, no writes.
@@ -185,8 +206,9 @@ never silently dropped:
 The detector refuses to guess, but one broken recipe file must not cost the user the whole matrix.
 A recipe that cannot be read — a frontmatter line outside the strict subset, an `id` that does not
 equal the filename stem, a missing or empty `## Undo` section — is reported as
-`{ "id": "<filename stem>", "error": "<what is wrong>" }` in `recipes[]`, is never selected, and
-does not stop the other recipes from producing a matrix and a plan. Loud, never a silent skip.
+`{ "id": "<filename stem>", "error": "<what is wrong>", "source": "library" | "local" }` in
+`recipes[]`, is never selected, and does not stop the other recipes from producing a matrix and a
+plan. Loud, never a silent skip.
 
 The run itself exits 1 only when there is nothing to report: the target is not a directory, or the
 resolved library's `recipes/` directory is missing.

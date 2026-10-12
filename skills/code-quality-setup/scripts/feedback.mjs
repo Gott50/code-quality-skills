@@ -227,8 +227,11 @@ function resolveLibraryDir(flag) {
 }
 
 // Read the proposed recipe and the templates its `files[].template` names, resolved against the
-// library. A missing recipe or a template the recipe names but the library lacks is a hard error:
-// the proposal is incomplete without them, and a silent omission would file a broken proposal.
+// recipe's OWN library root. A recipe at `<root>/recipes/<id>.md` — the library layout, and the
+// local `.code-quality/recipes/<id>.md` — reads its templates from `<root>/templates/`; a recipe at
+// any other path falls back to the resolved library dir. A missing recipe or a template the recipe
+// names but the root lacks is a hard error: the proposal is incomplete without them, and a silent
+// omission would file a broken proposal.
 function readProposal(recipePath, libraryDir) {
   const abs = resolve(recipePath);
   if (!existsSync(abs)) throw new Error(`--proposal recipe not found: ${recipePath}`);
@@ -240,16 +243,18 @@ function readProposal(recipePath, libraryDir) {
     throw new Error(`--proposal recipe is not a valid recipe: ${err.message}`);
   }
   const id = typeof fm.id === "string" && fm.id ? fm.id : basename(abs, ".md");
+  const recipeDir = dirname(abs);
+  const templateRoot = basename(recipeDir) === "recipes" ? dirname(recipeDir) : libraryDir;
   const templates = [];
   const seen = new Set();
   for (const f of fm.files ?? []) {
     const rel = f?.template;
     if (typeof rel !== "string" || rel === "" || seen.has(rel)) continue;
     seen.add(rel);
-    const tplPath = join(libraryDir, rel);
+    const tplPath = join(templateRoot, rel);
     if (!existsSync(tplPath)) {
       throw new Error(
-        `--proposal recipe "${id}" names a template that does not exist: ${rel} (looked in ${libraryDir})`,
+        `--proposal recipe "${id}" names a template that does not exist: ${rel} (looked in ${templateRoot})`,
       );
     }
     templates.push({ path: rel, content: readFileSync(tplPath, "utf8") });

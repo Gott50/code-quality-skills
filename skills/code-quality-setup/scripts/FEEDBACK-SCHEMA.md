@@ -30,7 +30,7 @@ The channel is off unless `.code-quality.json` carries `feedback: true`. The fla
 | `--rationale <text>` | the proposal's rationale (or `--rationale-file <path>`) |
 | `--rationale-file <path>` | read the rationale from a file |
 | `--stack <json>` | the detector's stack report (the `detect.mjs` output, or just its `stack`); default: run `detect.mjs` |
-| `--library <path>` | the library dir for the detector and the proposal's templates; default: `$CODE_QUALITY_LIBRARY`, else the repo layout |
+| `--library <path>` | the library dir for the detector; the proposal's templates resolve against the recipe's own library root, falling back to this; default: `$CODE_QUALITY_LIBRARY`, else the repo layout |
 | `--skill-version <v>` | the skill version; default: the manifest's `skill.version`, else the constant |
 | `--gh` / `--no-gh` | force `gh` availability; default: probe `gh --version` |
 | `--json` | print the machine-readable `{ payload, filing }` instead of the report |
@@ -146,7 +146,7 @@ recipe proposal: it carries `type: "proposal"` and a `proposal` object in place 
 | `proposal.recipe.id` | the recipe's frontmatter `id` (else the filename stem) |
 | `proposal.recipe.path` | the `--proposal` path as given, **verbatim** |
 | `proposal.recipe.content` | the recipe `.md` **verbatim** |
-| `proposal.templates[]` | one entry per distinct `files[].template` the recipe names, resolved against the library: `{ path, content }`, **verbatim** |
+| `proposal.templates[]` | one entry per distinct `files[].template` the recipe names, resolved against the recipe's own library root: `{ path, content }`, **verbatim** |
 | `proposal.rationale` | `--rationale` (or `--rationale-file`), else a default, **verbatim** |
 | `stack`, `packages`, `stackError` | the detector's report, **redacted** — the same fields and redaction as the failure payload |
 | `redactions` | `["absolute paths", "package names"]` — applied to the stack report only (see below) |
@@ -158,9 +158,16 @@ project the recipe is meant to live in, and the redaction is over-eager — it r
 useless upstream. Only the **stack report** (the machine-specific part) is redacted, exactly as in
 a failure report. The `redactions` field names the classes applied to that report.
 
-A `--proposal` whose recipe file is missing, or whose recipe names a `files[].template` the library
-does not contain, is a hard error (exit 1): the proposal is incomplete without them, and a silent
-omission would file a broken proposal.
+A proposal's templates resolve against the **recipe's own library root**, not the `--library` dir:
+a recipe at `<root>/recipes/<id>.md` — the library layout, and the local
+`.code-quality/recipes/<id>.md` — reads its templates from `<root>/templates/`, so a local recipe
+resolves its templates from `.code-quality/templates/`. A recipe at any other path falls back to
+the resolved library dir (`--library`, else `$CODE_QUALITY_LIBRARY`, else the repo layout). The
+stack report is always built from the resolved library dir.
+
+A `--proposal` whose recipe file is missing, or whose recipe names a `files[].template` the
+recipe's library root does not contain, is a hard error (exit 1): the proposal is incomplete
+without them, and a silent omission would file a broken proposal.
 
 ## Redaction
 
@@ -214,7 +221,7 @@ The report file is a local artifact, never a send. `feedback.mjs` writes it only
 | Code | When |
 |---|---|
 | 0 | a report was printed; the channel is off; `--help` |
-| 1 | a bad invocation (unknown option, neither `--error` nor `--proposal`, both, an unreadable `--error-file`/`--rationale-file`, a `--stack` that is not JSON, a `--proposal` recipe that is missing or names a template the library lacks) |
+| 1 | a bad invocation (unknown option, neither `--error` nor `--proposal`, both, an unreadable `--error-file`/`--rationale-file`, a `--stack` that is not JSON, a `--proposal` recipe that is missing or names a template its library root lacks) |
 
 ## What it does not do
 
