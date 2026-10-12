@@ -915,6 +915,7 @@ function classify(manifest, { library, files }) {
       const formatted =
         f.action === "merge" &&
         mergeKind(f, lib.id) === "markers" &&
+        present !== null &&
         formattingEquivalent(present, currentOwned(f, lib.id));
       let verdict;
       if (duplicate) verdict = "intact";
