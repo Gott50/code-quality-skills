@@ -312,8 +312,11 @@ owned content. The comparison normalizes each line's whitespace, drops blank lin
 canonicalizes a Markdown table separator row (its dashes are alignment, not content); a hand-edit
 that changes the content still reads `drifted`. Without this, a clean apply followed by the sweep's
 own `commands` entry can never converge — the plan reports `drifted`, the re-apply replaces the
-block, and the sweep rewrites it again. The rule is checked after `update`, so a library move keeps
-its verdict.
+block, and the sweep rewrites it again. The rule is also consulted in the `update` branch: a
+manifest recorded from the file on disk (the swept block) rather than from the rendered template
+would otherwise read `update` forever, so a formatting-equivalent block is `intact` even when the
+recorded hash matches the file. A genuine library move — the render's content changed — is not
+formatting-equivalent, so it still reads `update`.
 Per recipe the worst file verdict wins (`missing` > `loss` > `drifted` > `update` > `intact`); a
 recipe the manifest does not know is `new`, one the library no longer selects is `stale`, one the
 user declined is `declined`. A manifest that is absent, corrupt, or from another `schemaVersion`
@@ -353,7 +356,15 @@ file, with the same normalization `plan.mjs` uses:
   extras are the repo's), instead of `loss` forever (the bare template's hash never matches the
   merged file) or `update` (which would overwrite the file with the bare template and drop the
   additions).
-- `merge` (markers) — the marker-delimited block, with trailing newlines stripped.
+- `merge` (markers) — the marker-delimited block **as the recipe renders it** — the rendered
+  template's block, with trailing newlines stripped — **not** the block as it stands in the file on
+  disk. The two differ after a repo-wide formatter sweep (`dprint fmt`, `biome format --write`)
+  rewrites the merged block's alignment: recording the swept block would make a re-run read
+  `update` (the recorded hash matches the file, the render differs) and re-apply the block, the
+  non-convergence #143 fixed. Recording the rendered block keeps the re-run `intact` — the file's
+  block is formatting-equivalent to the render, so `formattingEquivalent` yields `intact`. The
+  `update` branch also consults `formattingEquivalent` (see Verdicts), so a manifest recorded from
+  the file on disk still converges to `intact` rather than `update`.
 - `merge` (JSON) — the fragment's named leaves, canonicalized with `JSON.stringify`.
 - `patch` — the template's declared keys, canonicalized: sorted by dotted path, one per line, each
   rendered as `path = <value>` for a scalar and `path` alone for a collection. The value is the

@@ -971,7 +971,11 @@ function classify(manifest, { library, files }) {
       // content did not. The block still carries the owned content, so it is `intact`, not
       // `drifted` — otherwise a clean apply followed by the sweep's own `commands` entry can
       // never converge. A hand-edit that changes the content still reads `drifted` (see
-      // `formattingEquivalent`). Checked after `update` so a library move keeps its verdict.
+      // `formattingEquivalent`). The `update` branch consults it too: a manifest recorded from the
+      // file on disk (the swept block) rather than from the rendered template has
+      // `presentHash === recordedHash` and would otherwise read `update` forever, so a
+      // formatting-equivalent block is `intact` even then. A genuine library move — the render's
+      // content changed — is not formatting-equivalent, so it still reads `update`.
       const formatted =
         f.action === "merge" &&
         mergeKind(f, lib.id) === "markers" &&
@@ -982,7 +986,8 @@ function classify(manifest, { library, files }) {
       else if (presentHash === null) verdict = "missing";
       else if (presentHash === currentHash) verdict = "intact";
       else if (mergedCreate) verdict = "intact";
-      else if (recordedHash !== null && presentHash === recordedHash) verdict = "update";
+      else if (recordedHash !== null && presentHash === recordedHash && !formatted)
+        verdict = "update";
       else if (formatted) verdict = "intact";
       else if (isCreateLoss(f, files)) verdict = "loss";
       else verdict = "drifted";
@@ -991,7 +996,8 @@ function classify(manifest, { library, files }) {
         action: f.action,
         kind: f.action === "merge" ? mergeKind(f, lib.id) : null,
         verdict,
-        updateAvailable: recordedHash !== null && recordedHash !== currentHash && !mergedCreate,
+        updateAvailable:
+          recordedHash !== null && recordedHash !== currentHash && !mergedCreate && !formatted,
         recordedHash,
         currentHash,
         presentHash,
