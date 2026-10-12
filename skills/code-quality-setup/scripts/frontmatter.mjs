@@ -10,7 +10,10 @@ function parseFlow(src) {
   const quoted = src
     .replace(/([{,]\s*)([A-Za-z_][\w.-]*)\s*:/g, '$1"$2":')
     .replace(/:\s*([^"'\s,[\]{}][^,}\]]*?)\s*(?=[,}])/g, (_m, w) => `: ${JSON.stringify(w)}`)
-    .replace(/([[,]\s*)([^"'\s,[\]{}][^,}\]]*?)\s*(?=[,\]])/g, (_m, p, w) => `${p}${JSON.stringify(w)}`);
+    .replace(
+      /([[,]\s*)([^"'\s,[\]{}][^,}\]]*?)\s*(?=[,\]])/g,
+      (_m, p, w) => `${p}${JSON.stringify(w)}`,
+    );
   try {
     return JSON.parse(quoted);
   } catch (err) {

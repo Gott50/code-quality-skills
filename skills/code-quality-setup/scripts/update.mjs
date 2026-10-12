@@ -236,7 +236,12 @@ async function check(opts) {
     };
   }
   if (recorded.ref === available.ref) {
-    return { status: "up-to-date", recorded, available: availableBlock, message: "the recorded ref is the available ref" };
+    return {
+      status: "up-to-date",
+      recorded,
+      available: availableBlock,
+      message: "the recorded ref is the available ref",
+    };
   }
   return {
     status: "update-available",
@@ -300,7 +305,9 @@ function apply(opts, availableRef, json) {
     `--schema-version ${schemaVersion} --content-hash ${contentHash}\n`;
 
   if (json) {
-    process.stdout.write(`${JSON.stringify({ status: "apply", ref: availableRef, libraryDir, plan, note })}\n`);
+    process.stdout.write(
+      `${JSON.stringify({ status: "apply", ref: availableRef, libraryDir, plan, note })}\n`,
+    );
     return;
   }
   process.stdout.write(plan);
@@ -318,7 +325,9 @@ async function main() {
     return;
   }
   if (opts.apply && opts.library !== null) {
-    throw new Error("--apply cannot be combined with --library — it re-fetches the library at the new ref");
+    throw new Error(
+      "--apply cannot be combined with --library — it re-fetches the library at the new ref",
+    );
   }
 
   const result = await check(opts);

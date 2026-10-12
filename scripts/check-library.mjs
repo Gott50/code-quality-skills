@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // check-library.mjs — validate the recipe library at the repo root.
 //
-// Four independent checks; the script exits non-zero if any fails:
+// Five independent checks; the script exits non-zero if any fails:
 //
 //   1. index freshness — regenerate library/library.json exactly as
 //      scripts/build-library.mjs does and compare bytes. The generator is
@@ -21,13 +21,28 @@
 //      scripts the recipes install satisfy the rules the same selection
 //      installs. Templates oxlint does not lint (by extension) are skipped and
 //      printed.
+//   5. skill script formatting — the skill's own shipped scripts under
+//      skills/*/scripts/ are `biome check`-clean under the repo's biome.json,
+//      the same config the skill installs. A consumer's `biome check .` runs
+//      over the files the skill just copied in, so a script that is not
+//      formatted to the convention fails there; the repo's own format:check
+//      covers only library/templates, so this is the only place that holds
+//      them. Files biome cannot parse (by extension) are skipped and printed.
 //
 // Zero dependencies beyond the shared frontmatter reader and the repo's own
 // biome devDependency; the lint check installs the oxlint devDependencies the
 // oxlint-anti-slop recipe pins into a scratch dir. Usage: node scripts/check-library.mjs
 
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,11 +56,38 @@ const TEMPLATES_DIR = join(LIBRARY_DIR, "templates");
 const INDEX = join(LIBRARY_DIR, "library.json");
 const BIOME_CONFIG = join(REPO_ROOT, "biome.json");
 
+// The skill's own shipped scripts. The skills CLI copies each skill directory
+// into a consumer's .agents/skills/<name>/, so these files land in the consumer
+// repo and are covered by its `biome check .`.
+const SKILLS_DIR = join(REPO_ROOT, "skills");
+const SKILL_SCRIPT_DIRS = readdirSync(SKILLS_DIR, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => join(SKILLS_DIR, entry.name, "scripts"))
+  .filter((dir) => existsSync(dir));
+
 // The six gates a `floor` may name (RECIPE-CONTRACT.md → `floor`).
-const FLOORS = new Set(["coverage", "mutation", "lint", "typecheck", "fallow-health", "fallow-dead-code"]);
+const FLOORS = new Set([
+  "coverage",
+  "mutation",
+  "lint",
+  "typecheck",
+  "fallow-health",
+  "fallow-dead-code",
+]);
 
 // Extensions biome parses and formats. Everything else is skipped and printed.
-const PARSEABLE = new Set([".json", ".jsonc", ".js", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".jsx", ".tsx"]);
+const PARSEABLE = new Set([
+  ".json",
+  ".jsonc",
+  ".js",
+  ".mjs",
+  ".cjs",
+  ".ts",
+  ".mts",
+  ".cts",
+  ".jsx",
+  ".tsx",
+]);
 
 // Extensions oxlint lints. Everything else is skipped and printed.
 const LINTABLE = new Set([".js", ".mjs", ".cjs", ".ts", ".mts", ".cts", ".jsx", ".tsx"]);
@@ -89,7 +131,8 @@ function buildIndex() {
       throw new Error(`${label}: ${err.message}`);
     }
     if (fm.id !== stem) throw new Error(`${label}: id "${fm.id}" must equal the filename stem`);
-    if (!/^[a-z][a-z0-9-]*$/.test(fm.id)) throw new Error(`${label}: id "${fm.id}" is not kebab-case`);
+    if (!/^[a-z][a-z0-9-]*$/.test(fm.id))
+      throw new Error(`${label}: id "${fm.id}" is not kebab-case`);
     return {
       id: fm.id,
       title: fm.title ?? fm.id,
@@ -154,7 +197,9 @@ function checkRecipes() {
     }
     for (const g of fm.gates ?? []) {
       if (g.floor !== undefined && !FLOORS.has(g.floor)) {
-        fail(`${label}: gate "${g.id}" has floor "${g.floor}" — not one of ${[...FLOORS].join(", ")}`);
+        fail(
+          `${label}: gate "${g.id}" has floor "${g.floor}" — not one of ${[...FLOORS].join(", ")}`,
+        );
       }
     }
   }
@@ -200,11 +245,15 @@ function checkTemplates() {
     const { cmd, args } = resolveBiome();
     let stdout = "";
     try {
-      stdout = execFileSync(cmd, [...args, "format", `--config-path=${BIOME_CONFIG}`, "--reporter=json", "."], {
-        cwd: tmp,
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "pipe"],
-      });
+      stdout = execFileSync(
+        cmd,
+        [...args, "format", `--config-path=${BIOME_CONFIG}`, "--reporter=json", "."],
+        {
+          cwd: tmp,
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
     } catch (err) {
       stdout = err.stdout ?? "";
       if (!stdout) {
@@ -291,7 +340,8 @@ function checkTemplateLint() {
       // keeps its recipe-relative path.
       let dest;
       if (rel === OXLINT_CONFIG_REL) dest = join(tmp, "oxlint.config.ts");
-      else if (rel.startsWith(OXLINT_TOOLS_REL)) dest = join(tmp, rel.slice("oxlint-anti-slop/".length));
+      else if (rel.startsWith(OXLINT_TOOLS_REL))
+        dest = join(tmp, rel.slice("oxlint-anti-slop/".length));
       else dest = join(tmp, rel);
       mkdirSync(dirname(dest), { recursive: true });
       writeFileSync(dest, substitute(readFileSync(abs, "utf8")));
@@ -341,12 +391,76 @@ function checkTemplateLint() {
   return { checked, skipped };
 }
 
+// --- 5. skill script formatting ---------------------------------------------
+
+// The skill's own scripts must satisfy the same biome config the skill installs
+// (2-space, lineWidth 100, double quotes, semicolons, assist on), or a
+// consumer's `biome check .` fails on the files the skill just copied in. Run
+// biome's `check` (format + assist + lint) over the scripts and fail on any
+// error-severity diagnostic; warnings and infos are not errors. Files biome
+// cannot parse (by extension) are skipped and printed.
+function checkSkillScripts() {
+  const parseable = [];
+  const skipped = [];
+  for (const dir of SKILL_SCRIPT_DIRS) {
+    for (const abs of walk(dir)) {
+      const rel = relative(REPO_ROOT, abs);
+      const ext = extname(abs).toLowerCase();
+      if (!PARSEABLE.has(ext)) {
+        skipped.push([rel, `not a biome-parsed type (${ext || "no extension"})`]);
+        continue;
+      }
+      parseable.push(rel);
+    }
+  }
+
+  const { cmd, args } = resolveBiome();
+  let stdout = "";
+  try {
+    stdout = execFileSync(
+      cmd,
+      [...args, "check", `--config-path=${BIOME_CONFIG}`, "--reporter=json", ...SKILL_SCRIPT_DIRS],
+      { cwd: REPO_ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+    );
+  } catch (err) {
+    // biome exits non-zero when it reports diagnostics; its JSON is still on
+    // stdout. Only a run that produced no output at all is a failure to run.
+    stdout = err.stdout ?? "";
+    if (!stdout) {
+      fail(`skill scripts: biome failed to run — ${err.message}`);
+      return { checked: parseable.length, skipped };
+    }
+  }
+
+  let report;
+  try {
+    report = JSON.parse(stdout);
+  } catch {
+    fail("skill scripts: could not parse biome's JSON output");
+    return { checked: parseable.length, skipped };
+  }
+
+  for (const d of report.diagnostics ?? []) {
+    if (d.severity !== "error") continue;
+    const rel = d.location?.path ?? "(unknown)";
+    if (d.category === "format") {
+      fail(`${rel}: not formatted — run \`biome check --write\``);
+      continue;
+    }
+    fail(`${rel}: biome reported ${d.category}: ${d.message}`);
+  }
+
+  for (const [rel, why] of skipped) process.stdout.write(`skip ${rel} — ${why}\n`);
+  return { checked: parseable.length, skipped };
+}
+
 // --- run --------------------------------------------------------------------
 
 checkIndex();
 const recipeCount = checkRecipes();
 const { checked, skipped } = checkTemplates();
 const lint = checkTemplateLint();
+const scripts = checkSkillScripts();
 
 if (errors.length > 0) {
   process.stderr.write(`check-library: FAILED (${errors.length})\n`);
@@ -355,5 +469,5 @@ if (errors.length > 0) {
 }
 
 process.stdout.write(
-  `check-library: ok — index fresh, ${recipeCount} recipes valid, ${checked} templates formatted (${skipped.length} skipped), ${lint.checked} templates linted\n`,
+  `check-library: ok — index fresh, ${recipeCount} recipes valid, ${checked} templates formatted (${skipped.length} skipped), ${lint.checked} templates linted, ${scripts.checked} skill scripts formatted (${scripts.skipped.length} skipped)\n`,
 );

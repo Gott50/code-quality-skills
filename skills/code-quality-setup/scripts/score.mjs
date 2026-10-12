@@ -107,12 +107,16 @@ export function readMutation(doc) {
 // and the worst per-file CRAP are reported alongside.
 export function readFallowHealth(doc) {
   const hs = doc?.health_score ?? {};
-  const craps = (doc?.file_scores ?? []).map((f) => f?.crap_max).filter((n) => typeof n === "number");
+  const craps = (doc?.file_scores ?? [])
+    .map((f) => f?.crap_max)
+    .filter((n) => typeof n === "number");
   return {
     score: typeof hs.score === "number" ? hs.score : null,
     grade: typeof hs.grade === "string" ? hs.grade : null,
     maintainability:
-      typeof doc?.summary?.average_maintainability === "number" ? doc.summary.average_maintainability : null,
+      typeof doc?.summary?.average_maintainability === "number"
+        ? doc.summary.average_maintainability
+        : null,
     crapMax: craps.length ? Math.max(...craps) : null,
   };
 }
@@ -261,7 +265,8 @@ function isFrac(v) {
 // metrics are kept.
 function maxCoverageFrac(cur, rec) {
   const out = {};
-  for (const [metric, frac] of Object.entries(cur ?? {})) out[metric] = maxFrac(frac, rec?.[metric]);
+  for (const [metric, frac] of Object.entries(cur ?? {}))
+    out[metric] = maxFrac(frac, rec?.[metric]);
   if (Object.keys(out).length > 0) return out;
   for (const [metric, frac] of Object.entries(rec ?? {})) if (isFrac(frac)) out[metric] = frac;
   return out;
@@ -295,7 +300,10 @@ function baselineFrom(gates, versions, recorded) {
         files: mergeCoverageFiles(g.files, r?.files),
       };
     } else if (gate === "mutation") {
-      out.gates[gate] = { global: maxFrac(g.global, r?.global), files: mergeFracFiles(g.files, r?.files) };
+      out.gates[gate] = {
+        global: maxFrac(g.global, r?.global),
+        files: mergeFracFiles(g.files, r?.files),
+      };
     } else {
       out.gates[gate] = { global: minCount(g.global, r?.global) };
     }
@@ -326,7 +334,8 @@ export function atLeast(cur, floor) {
 // A floor is either one exact fraction (mutation) or a map of metric → fraction (coverage). This
 // returns its metrics as [name, fraction] pairs, the empty name for a single fraction.
 function metricsOf(floor) {
-  if (floor && (typeof floor.hit === "number" || typeof floor.killed === "number")) return [["", floor]];
+  if (floor && (typeof floor.hit === "number" || typeof floor.killed === "number"))
+    return [["", floor]];
   return Object.entries(floor ?? {});
 }
 
@@ -355,7 +364,8 @@ export function compare(gates, baseline) {
     const floor = bg[gate];
     const cur = gates[gate];
     if (!floor || !cur) continue;
-    for (const r of fracRegressions(cur.global, floor.global)) regressions.push({ gate, file: null, ...r });
+    for (const r of fracRegressions(cur.global, floor.global))
+      regressions.push({ gate, file: null, ...r });
     for (const [file, f] of Object.entries(floor.files ?? {})) {
       const c = cur.files[file];
       if (!c) continue;
@@ -371,7 +381,11 @@ export function compare(gates, baseline) {
     const floor = bg[gate];
     const cur = gates[gate];
     if (!floor || !cur) continue;
-    if (typeof floor.global === "number" && typeof cur.global === "number" && cur.global > floor.global) {
+    if (
+      typeof floor.global === "number" &&
+      typeof cur.global === "number" &&
+      cur.global > floor.global
+    ) {
       regressions.push({ gate, file: null, floor: floor.global, current: cur.global });
     }
   }
@@ -516,9 +530,13 @@ function renderText(score) {
   lines.push(`  ${"dead code".padEnd(16)}${fmtCount(g.fallowDeadCode)}`);
   lines.push("");
   if (score.baseline.present) {
-    lines.push(`  ${"baseline".padEnd(16)}${score.baseline.path} (schemaVersion ${score.baseline.schemaVersion})`);
+    lines.push(
+      `  ${"baseline".padEnd(16)}${score.baseline.path} (schemaVersion ${score.baseline.schemaVersion})`,
+    );
   } else if (score.baseline.error) {
-    lines.push(`  ${"baseline".padEnd(16)}${score.baseline.path} — unreadable: ${score.baseline.error}`);
+    lines.push(
+      `  ${"baseline".padEnd(16)}${score.baseline.path} — unreadable: ${score.baseline.error}`,
+    );
   } else {
     lines.push(`  ${"baseline".padEnd(16)}none`);
   }
@@ -636,7 +654,13 @@ function main() {
   const baseline = readBaseline(baselinePath);
   let versionMismatch = baseline.doc ? versionMismatches(baseline.doc.versions, versions) : [];
   let regressions = baseline.doc ? compare(gates, baseline.doc) : [];
-  let state = !baseline.doc ? "no-baseline" : versionMismatch.length ? "stale" : regressions.length ? "regression" : "ok";
+  let state = !baseline.doc
+    ? "no-baseline"
+    : versionMismatch.length
+      ? "stale"
+      : regressions.length
+        ? "regression"
+        : "ok";
   let raised = false;
 
   if (raise) {
@@ -679,7 +703,10 @@ function main() {
 // flow's measure step, and an import must not run the score view. Both sides are realpathed: on
 // macOS `/tmp` is a symlink to `/private/tmp`, so a bare `pathToFileURL(process.argv[1])` would not
 // match `import.meta.url` for a script invoked through the symlink.
-if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
+if (
+  process.argv[1] &&
+  realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
+) {
   try {
     main();
   } catch (err) {
