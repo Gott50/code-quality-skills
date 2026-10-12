@@ -233,7 +233,7 @@ Without a manifest, from the filesystem alone:
 
 | Action | Verdicts |
 |---|---|
-| `create` | `new` (absent) · `no-op` (byte-identical) · `drift` (present, different, the repo is a subset of the template) · `update` (present, different, the repo carries content the template does not, **no manifest** — see below) · `loss` (present, different, the repo carries content the template does not, **manifest present** — see below) |
+| `create` | `new` (absent) · `no-op` (byte-identical, or a formatter-only rewrite — see below) · `drift` (present, different, the repo is a subset of the template) · `update` (present, different, the repo carries content the template does not, **no manifest** — see below) · `loss` (present, different, the repo carries content the template does not, **manifest present** — see below) |
 | `merge` (markers) | `new` (no block) · `no-op` (identical block) · `replace` (different block) · `duplicate` (no block, but the file already carries the block's content — see below) |
 | `merge` (JSON) | `new` (absent) · `add` (missing keys) · `no-op` · `collision` (an existing value would change) |
 | `patch` | `new` (absent) · `no-op` (the after-state already holds — see below) · `patch` (always shown; the detector cannot verify it) |
@@ -255,6 +255,19 @@ drops nothing. The apply MUST NOT overwrite a `loss` without an explicit overrid
 plan shows the diff and the lost items (SKILL.md → Apply). A `create` file the manifest records as
 `update` is the skill's own recorded content — the difference is the library's, not the repo's — so
 it is not a loss.
+
+A `create` target a repo-wide formatter sweep rewrote (#153) is `intact` (with a manifest) or
+`no-op` (without one), not `loss`: the sweep (`dprint fmt`, `biome format --write`) reformats the
+template the apply wrote — it reflows lines, re-aligns whitespace, and moves a line boundary —
+without changing the content, so the file still carries the recipe's content. The comparison is the
+same `formattingEquivalent` the marker block uses (#143): it normalizes each line's whitespace,
+drops blank lines, canonicalizes a Markdown table separator row, and joins the normalized lines, so
+alignment and reflow churn are invisible while any token change is not. A hand-edit that changes the
+content is not formatting-equivalent, so it still reads `loss`/`drift`/`update` as before. The rule
+covers whitespace, alignment and reflow only: a formatter option that changes tokens — dprint's
+`useBraces` inserting a brace, or a quote style rewriting `'…'` to `"…"` — is not
+formatting-equivalent, so a template that is not clean under that option still reads `loss` (the
+library's templates must be formatter-agnostic; see #153).
 
 `duplicate` is the hand-set-up repo (#35): the recipe's marker is absent, so the block reads `new`,
 but the target file already carries what the block contributes. Three signals — the first two require
@@ -308,15 +321,18 @@ hash does not match the merged file and this branch never fires for it.
 A marker block a repo-wide formatter sweep rewrote (#143) is `intact`, not `drifted`: the sweep
 (`dprint fmt`, `biome format --write`) re-aligns the block's table columns, pads the separator row's
 dashes, and adds or drops blank lines without changing the content, so the block still carries the
-owned content. The comparison normalizes each line's whitespace, drops blank lines, and
-canonicalizes a Markdown table separator row (its dashes are alignment, not content); a hand-edit
-that changes the content still reads `drifted`. Without this, a clean apply followed by the sweep's
-own `commands` entry can never converge — the plan reports `drifted`, the re-apply replaces the
-block, and the sweep rewrites it again. The rule is also consulted in the `update` branch: a
-manifest recorded from the file on disk (the swept block) rather than from the rendered template
-would otherwise read `update` forever, so a formatting-equivalent block is `intact` even when the
-recorded hash matches the file. A genuine library move — the render's content changed — is not
-formatting-equivalent, so it still reads `update`.
+owned content. The comparison normalizes each line's whitespace, drops blank lines, canonicalizes a
+Markdown table separator row (its dashes are alignment, not content), and joins the normalized lines
+(so a reflow — a wrapped or joined line — is invisible too); a hand-edit that changes the content
+still reads `drifted`. The same rule applies to a `create` file the recipe wrote (#153): a
+formatter-only rewrite of the template the apply wrote is `intact`, not `loss`. Without this, a
+clean apply followed by the sweep's own `commands` entry can never converge — the plan reports
+`drifted`/`loss`, the re-apply replaces the block/file, and the sweep rewrites it again. The rule is
+also consulted in the `update` branch: a manifest recorded from the file on disk (the swept
+block/file) rather than from the rendered template would otherwise read `update` forever, so a
+formatting-equivalent block/file is `intact` even when the recorded hash matches the file. A genuine
+library move — the render's content changed — is not formatting-equivalent, so it still reads
+`update`.
 Per recipe the worst file verdict wins (`missing` > `loss` > `drifted` > `update` > `intact`); a
 recipe the manifest does not know is `new`, one the library no longer selects is `stale`, one the
 user declined is `declined`. A manifest that is absent, corrupt, or from another `schemaVersion`
