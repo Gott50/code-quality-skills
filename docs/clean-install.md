@@ -1,14 +1,15 @@
 # Clean-install proof
 
 The `skills` CLI install contract, exercised end to end from a fresh directory: install, list,
-update, remove. Three runs, all with `skills` v1.7.2 on Node v26.8.1:
+update, remove. Three runs on Node v26.8.1:
 
-- **2026-10-12**, against the local repo with all three skills present — the three-skill run
-  (reproduced below): the CLI reports **Found 3 skills**, so `-s <name>` is load-bearing.
-- **2026-10-10**, against the local repo with two skills present — the two-skill run: the CLI
-  reported **Found 2 skills**. Superseded by the run below; same shape.
-- **2026-10-09**, against `Gott50/code-quality-skills` at `ec4845b` (one skill) — the GitHub-source
-  run, which proves the clone path and the update step.
+- **2026-10-12**, against the local repo with all three skills present, `skills` v1.7.2 — the
+  three-skill run (reproduced below): the CLI reports **Found 3 skills**, so `-s <name>` is
+  load-bearing.
+- **2026-10-10**, against the local repo with two skills present, `skills` v1.7.1 — the two-skill
+  run: the CLI reported **Found 2 skills**. Superseded by the run below; same shape.
+- **2026-10-09**, against `Gott50/code-quality-skills` at `ec4845b` (one skill), `skills` v1.7.1 —
+  the GitHub-source run, which proves the clone path and the update step.
 
 ## Three skills: `-s <name>` selects one
 
