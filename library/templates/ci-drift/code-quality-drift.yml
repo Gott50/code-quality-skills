@@ -26,6 +26,23 @@ jobs:
         with:
           node-version: 22
 
+      # The library is fetched, not committed: pull it at the pin recorded in
+      # `.code-quality.json` (`library.ref`) so the report describes the repo
+      # against the library it was set up with. `--no-record` keeps the job
+      # read-only, and the step is non-fatal so a network failure leaves the
+      # job green with no report instead of failing the PR.
+      - name: Fetch the library at the recorded pin
+        id: library
+        continue-on-error: true
+        run: |
+          node .agents/skills/code-quality-setup/scripts/fetch.mjs --no-record --json > fetch.json || true
+          node -e '
+            const fs = require("node:fs");
+            let dir = "";
+            try { dir = JSON.parse(fs.readFileSync("fetch.json", "utf8")).libraryDir ?? ""; } catch {}
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, "dir=" + dir + "\n");
+          '
+
       # `--check` prints one JSON document and exits 1 whenever the report is
       # not clean (drift, or a degraded report with no manifest). The job is
       # non-blocking, so the exit code is ignored; the JSON on stdout is the
@@ -34,7 +51,11 @@ jobs:
       - name: Render the drift report
         id: report
         run: |
-          node .agents/skills/code-quality-setup/scripts/plan.mjs --check > drift.json || true
+          args=()
+          if [ -n "${{ steps.library.outputs.dir }}" ]; then
+            args+=(--library "${{ steps.library.outputs.dir }}")
+          fi
+          node .agents/skills/code-quality-setup/scripts/plan.mjs --check "${args[@]}" > drift.json || true
           node -e '
             const fs = require("node:fs");
             let report = null;
