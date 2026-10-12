@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 // plan.mjs — the code-quality-setup plan renderer.
 //
 // Zero dependencies, node builtins only. Runs the detector (detect.mjs) and prints the plan the
@@ -13,12 +14,12 @@
 // substitution keys it renders are specified in the library's RECIPE-CONTRACT.md
 // (library/RECIPE-CONTRACT.md); the JSON it consumes is specified in DETECT-SCHEMA.md.
 
-import { readFileSync, existsSync, statSync, readdirSync } from "node:fs";
-import { join, resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { measure, safeRealpath, ARTIFACTS, readBaseline, compare } from "./score.mjs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { ARTIFACTS, compare, measure, readBaseline, safeRealpath } from "./score.mjs";
 
 const SKILL_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // The library lives at the repo root, two levels up from the skill dir (skills/code-quality-setup/).
@@ -41,7 +42,15 @@ const MANIFEST_SCHEMA_VERSION = 1;
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const opts = { projectDir: ".", library: null, recipe: null, force: false, diff: false, diffPath: null, check: false };
+  const opts = {
+    projectDir: ".",
+    library: null,
+    recipe: null,
+    force: false,
+    diff: false,
+    diffPath: null,
+    check: false,
+  };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -260,10 +269,14 @@ function mergeKind(entry, recipeId) {
 // Returns a human-readable evidence string, or null when the block contributes something new.
 function blockAlreadyPresent(existing, content, recipeId) {
   const norm = (s) => s.trim().replace(/\s+/g, " ");
-  const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const payload = content
     .split("\n")
-    .filter((line) => !line.includes(`code-quality:${recipeId}:start`) && !line.includes(`code-quality:${recipeId}:end`));
+    .filter(
+      (line) =>
+        !line.includes(`code-quality:${recipeId}:start`) &&
+        !line.includes(`code-quality:${recipeId}:end`),
+    );
   const fileLines = new Set(existing.split("\n").map(norm));
   const significant = payload.map(norm).filter((l) => l !== "");
   if (significant.length > 0 && significant.every((l) => fileLines.has(l))) {
@@ -271,28 +284,38 @@ function blockAlreadyPresent(existing, content, recipeId) {
   }
   if (payload.some((l) => /^#{1,6}\s/.test(l.trim()))) {
     const commands = [
-      ...new Set([...content.matchAll(/\b(?:bunx?|npm|pnpm|npx)\s+(?:run\s+)?([A-Za-z0-9:_@./-]+)/g)].map((m) => m[1])),
+      ...new Set(
+        [...content.matchAll(/\b(?:bunx?|npm|pnpm|npx)\s+(?:run\s+)?([A-Za-z0-9:_@./-]+)/g)].map(
+          (m) => m[1],
+        ),
+      ),
     ];
-    if (commands.length > 0 && commands.every((c) => new RegExp(`\\b${escape(c)}\\b`).test(existing))) {
+    if (
+      commands.length > 0 &&
+      commands.every((c) => new RegExp(`\\b${escapeRe(c)}\\b`).test(existing))
+    ) {
       return `already documents: ${commands.join(", ")}`;
     }
   }
   const gate = payload.find(
-    (l) => !l.trim().startsWith("#") && /\b(?:bunx?|npx|npm|pnpm)\s+(?:run\s+)?[A-Za-z0-9:_@./-]/.test(l),
+    (l) =>
+      !l.trim().startsWith("#") &&
+      /\b(?:bunx?|npx|npm|pnpm)\s+(?:run\s+)?[A-Za-z0-9:_@./-]/.test(l),
   );
   if (gate) {
-    const tool = /\b(?:bunx?|npx|npm|pnpm)\s+(?:run\s+)?([A-Za-z0-9:_@./-]+)/.exec(gate)[1].split("/").pop();
+    const tool = /\b(?:bunx?|npx|npm|pnpm)\s+(?:run\s+)?([A-Za-z0-9:_@./-]+)/
+      .exec(gate)[1]
+      .split("/")
+      .pop();
     const mode = /--([a-z][a-z-]*)/.exec(gate)?.[1];
     if (tool && mode) {
       // The file's own command tokens, each split into its `:`-separated segments and its last path
       // segment, so the mode word is matched against a command — not any comment that happens to
       // contain it (a hook with `bun run biome:lint` and a comment mentioning "staged" is not a
       // duplicate).
-      const names = [...existing.matchAll(/\b(?:bunx?|npx|npm|pnpm)\s+(?:run\s+)?([A-Za-z0-9:_@./-]+)/g)].flatMap((m) => [
-        m[1],
-        ...m[1].split(":"),
-        m[1].split("/").pop(),
-      ]);
+      const names = [
+        ...existing.matchAll(/\b(?:bunx?|npx|npm|pnpm)\s+(?:run\s+)?([A-Za-z0-9:_@./-]+)/g),
+      ].flatMap((m) => [m[1], ...m[1].split(":"), m[1].split("/").pop()]);
       if (names.includes(tool) && names.includes(mode)) {
         return `already runs ${tool} ${mode}`;
       }
@@ -464,7 +487,8 @@ function jsonMergeDelta(doc, frag) {
 // The subset of `frag` whose leaves already exist in `doc` — the recipe's owned content as it
 // stands, for the inline diff. `undefined` when none of it is present.
 function presentFragment(doc, frag) {
-  if (frag === null || typeof frag !== "object" || Array.isArray(frag)) return doc === undefined ? undefined : doc;
+  if (frag === null || typeof frag !== "object" || Array.isArray(frag))
+    return doc === undefined ? undefined : doc;
   if (doc === null || typeof doc !== "object" || Array.isArray(doc)) return undefined;
   const out = {};
   for (const [key, value] of Object.entries(frag)) {
@@ -493,7 +517,8 @@ function diffLines(a, b) {
   const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
   for (let i = n - 1; i >= 0; i--) {
     for (let j = m - 1; j >= 0; j--) {
-      dp[i][j] = aLines[i] === bLines[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+      dp[i][j] =
+        aLines[i] === bLines[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
     }
   }
   const out = [];
@@ -578,7 +603,9 @@ function isPlainObject(value) {
 // covers is not lost, whether it is equal (no-op) or behind (drift).
 function covers(template, repo) {
   if (isPlainObject(template) && isPlainObject(repo)) {
-    return Object.entries(repo).every(([key, value]) => Object.hasOwn(template, key) && covers(template[key], value));
+    return Object.entries(repo).every(
+      ([key, value]) => Object.hasOwn(template, key) && covers(template[key], value),
+    );
   }
   if (Array.isArray(template) && Array.isArray(repo)) {
     return repo.every((element) => template.some((candidate) => covers(candidate, element)));
@@ -594,7 +621,9 @@ function covers(template, repo) {
 // not the file": `tsconfig.json`'s `lib` is the case, where the repo adds `DOM`/`DOM.Iterable` and
 // the merge must not propose dropping them.
 function seededLeaf(templateValue, repoValue) {
-  return Array.isArray(templateValue) && Array.isArray(repoValue) && covers(repoValue, templateValue);
+  return (
+    Array.isArray(templateValue) && Array.isArray(repoValue) && covers(repoValue, templateValue)
+  );
 }
 
 // The paths where `repo` carries content `template` does not (#44). Objects recurse by key: a key
@@ -691,7 +720,12 @@ function carriesTemplate(repoFile, template, target) {
   const norm = (s) => s.trim().replace(/\s+/g, " ");
   const repoLines = repoFile.split("\n").map(norm);
   const repoSet = new Set(repoLines);
-  const fileTokens = new Set(repoLines.join(" ").split(/\s+/).filter((t) => t !== ""));
+  const fileTokens = new Set(
+    repoLines
+      .join(" ")
+      .split(/\s+/)
+      .filter((t) => t !== ""),
+  );
   const keys = new Set(repoLines.map(lineKey));
   for (const raw of template.split("\n")) {
     const line = norm(raw);
@@ -710,7 +744,11 @@ function carriesTemplate(repoFile, template, target) {
 // not: the file is the repo's, the library has not moved, and the Files section already shows
 // `loss`. The content comparison is what tells the two apart, so the drift report uses it too.
 function isCreateLoss(f, files) {
-  return f.action === "create" && files[f.path] != null && lostContent(files[f.path], f.content, f.path).items.length > 0;
+  return (
+    f.action === "create" &&
+    files[f.path] != null &&
+    lostContent(files[f.path], f.content, f.path).items.length > 0
+  );
 }
 
 // Whether two marker blocks differ only by formatting (#143): a repo-wide formatter sweep
@@ -786,12 +824,25 @@ function filesystemVerdict(write, content, projectRoot, recipeId, manifestPresen
   if (write.action === "merge") {
     if (mergeKind(entry, recipeId) === "json") {
       const frag = JSON.parse(content);
-      if (existing === null) return { verdict: "new", diff: unifiedDiff("", JSON.stringify(frag, null, 2), write.target) };
+      if (existing === null)
+        return {
+          verdict: "new",
+          diff: unifiedDiff("", JSON.stringify(frag, null, 2), write.target),
+        };
       const doc = tryParseJson(existing);
-      if (doc === null) return { verdict: "collision", note: "target is not valid JSON", diff: unifiedDiff(existing, content, write.target) };
+      if (doc === null)
+        return {
+          verdict: "collision",
+          note: "target is not valid JSON",
+          diff: unifiedDiff(existing, content, write.target),
+        };
       const { changed, added } = jsonMergeDelta(doc, frag);
       const present = presentFragment(doc, frag);
-      const diff = unifiedDiff(present ? JSON.stringify(present, null, 2) : "", JSON.stringify(frag, null, 2), write.target);
+      const diff = unifiedDiff(
+        present ? JSON.stringify(present, null, 2) : "",
+        JSON.stringify(frag, null, 2),
+        write.target,
+      );
       if (changed.length > 0) {
         return { verdict: "collision", note: `would change: ${changed.join(", ")}`, diff };
       }
@@ -805,7 +856,11 @@ function filesystemVerdict(write, content, projectRoot, recipeId, manifestPresen
     if (block === null) {
       const evidence = existing === null ? null : blockAlreadyPresent(existing, content, recipeId);
       if (evidence !== null) {
-        return { verdict: "duplicate", note: `already present — ${evidence}; skip this block`, diff: unifiedDiff("", target, write.target) };
+        return {
+          verdict: "duplicate",
+          note: `already present — ${evidence}; skip this block`,
+          diff: unifiedDiff("", target, write.target),
+        };
       }
       return { verdict: "new", diff: unifiedDiff("", target, write.target) };
     }
@@ -846,9 +901,14 @@ function readManifest(projectRoot) {
   const abs = join(projectRoot, MANIFEST_NAME);
   if (!existsSync(abs)) return { manifest: null, degraded: true, reason: "no manifest" };
   const parsed = tryParseJson(readFileSync(abs, "utf8"));
-  if (parsed === null) return { manifest: null, degraded: true, reason: "manifest is not valid JSON" };
+  if (parsed === null)
+    return { manifest: null, degraded: true, reason: "manifest is not valid JSON" };
   if (parsed.schemaVersion !== MANIFEST_SCHEMA_VERSION) {
-    return { manifest: null, degraded: true, reason: `manifest schemaVersion ${parsed.schemaVersion} ≠ ${MANIFEST_SCHEMA_VERSION}` };
+    return {
+      manifest: null,
+      degraded: true,
+      reason: `manifest schemaVersion ${parsed.schemaVersion} ≠ ${MANIFEST_SCHEMA_VERSION}`,
+    };
   }
   return { manifest: parsed, degraded: false, reason: null };
 }
@@ -1004,7 +1064,10 @@ function buildPlan(report, opts) {
     for (const w of resolveWrites(r, stack.workspace)) {
       let content;
       try {
-        content = substitute(readTemplate(r.libraryDir ?? libraryDir, w.template), { ...subst, root: w.rootPrefix });
+        content = substitute(readTemplate(r.libraryDir ?? libraryDir, w.template), {
+          ...subst,
+          root: w.rootPrefix,
+        });
       } catch (err) {
         templateErrors.push({ id: r.id, error: `${w.template}: ${err.message}` });
         continue;
@@ -1027,9 +1090,14 @@ function buildPlan(report, opts) {
     id: r.id,
     hash: hash(
       readFileSync(join(r.libraryDir ?? libraryDir, "recipes", `${r.id}.md`), "utf8") +
-        writesByRecipe.get(r.id).map((w) => w.content).join("\n"),
+        writesByRecipe
+          .get(r.id)
+          .map((w) => w.content)
+          .join("\n"),
     ),
-    files: writesByRecipe.get(r.id).map((w) => ({ path: w.target, action: w.action, content: w.content })),
+    files: writesByRecipe
+      .get(r.id)
+      .map((w) => ({ path: w.target, action: w.action, content: w.content })),
   }));
   const drift = manifest ? classify(manifest, { library, files }) : null;
   const driftById = new Map((drift?.recipes ?? []).map((r) => [r.id, r]));
@@ -1076,7 +1144,10 @@ function buildPlan(report, opts) {
       .filter((r) => !selectedIds.includes(r.id))
       .map((r) => ({
         ...r,
-        narrow: opts.recipe !== null && r.applicable ? "applicable — not selected (narrowed by --recipe)" : null,
+        narrow:
+          opts.recipe !== null && r.applicable
+            ? "applicable — not selected (narrowed by --recipe)"
+            : null,
       })),
     heldBack,
     collisions: collisions.filter((c) => selectedIds.includes(c.recipe)),
@@ -1113,7 +1184,14 @@ const FLOOR_ARTIFACT = {
 // The greenfield wall: the floor a gate installs when nothing has been measured. 100% on both
 // coverage metrics and on mutation, 0 for lint and typecheck, fallow's report-only mode. This is
 // the SAME code path as a measured level — the wall is just the level a greenfield repo measures at.
-const WALL = { coverage: "100% (both metrics)", mutation: "100%", lint: "0", typecheck: "0", "fallow-health": "report-only", "fallow-dead-code": "report-only" };
+const WALL = {
+  coverage: "100% (both metrics)",
+  mutation: "100%",
+  lint: "0",
+  typecheck: "0",
+  "fallow-health": "report-only",
+  "fallow-dead-code": "report-only",
+};
 
 // The newest mtime under `root`, skipping `node_modules`, dot-directories (the installed skill
 // lives in one) and the artifact directories themselves — an artifact is not a source file, so
@@ -1132,7 +1210,8 @@ function newestSourceMtime(root) {
       return;
     }
     for (const e of entries) {
-      if (e.name === "node_modules" || e.name.startsWith(".") || ARTIFACT_DIRS.has(e.name)) continue;
+      if (e.name === "node_modules" || e.name.startsWith(".") || ARTIFACT_DIRS.has(e.name))
+        continue;
       const p = join(dir, e.name);
       if (e.isDirectory()) {
         walk(p);
@@ -1275,7 +1354,8 @@ function buildMeasurement(root, selected) {
         floor: recorded ?? level ?? WALL[g.floor],
         raise: recorded === null,
         regression: regressed.has(g.floor),
-        source: g.floor === "fallow-health" || g.floor === "fallow-dead-code" ? "fallow" : "unified",
+        source:
+          g.floor === "fallow-health" || g.floor === "fallow-dead-code" ? "fallow" : "unified",
       });
     }
   }
@@ -1295,9 +1375,12 @@ function renderMeasurement(measurement) {
   lines.push("| Gate | Measured now | Floor the apply installs | Apply | Source |");
   lines.push("|---|---|---|---|---|");
   for (const row of measurement.rows) {
-    const measured = row.level === null ? "_unmeasured_" : row.stale ? `${row.level} ⚠ stale` : row.level;
+    const measured =
+      row.level === null ? "_unmeasured_" : row.stale ? `${row.level} ⚠ stale` : row.level;
     const floor = row.regression ? `${row.floor} ⚠ regression` : row.floor;
-    lines.push(`| \`${row.gate}\` | ${measured} | ${floor} | ${row.raise ? "raise" : "keep"} | ${row.source} |`);
+    lines.push(
+      `| \`${row.gate}\` | ${measured} | ${floor} | ${row.raise ? "raise" : "keep"} | ${row.source} |`,
+    );
   }
   const unmeasured = measurement.rows.filter((r) => r.level === null && r.raise);
   const stale = measurement.rows.filter((r) => r.stale && r.raise);
@@ -1329,7 +1412,9 @@ function renderMeasurement(measurement) {
   }
   if (measurement.baselineError) {
     lines.push("");
-    lines.push(`_The baseline is unreadable (${measurement.baselineError}) — the plan treats every gate as unrecorded._`);
+    lines.push(
+      `_The baseline is unreadable (${measurement.baselineError}) — the plan treats every gate as unrecorded._`,
+    );
   }
   if (measurement.errors.length > 0) {
     lines.push("");
@@ -1370,7 +1455,10 @@ function renderStack(stack) {
 }
 
 function renderSelection(selected) {
-  const lines = [`## Selection (${selected.length} recipe${selected.length === 1 ? "" : "s"}, priority order)`, ""];
+  const lines = [
+    `## Selection (${selected.length} recipe${selected.length === 1 ? "" : "s"}, priority order)`,
+    "",
+  ];
   if (selected.length === 0) {
     lines.push("_None._");
     return lines.join("\n");
@@ -1461,12 +1549,18 @@ function renderFiles(plan, opts) {
     // A `create` the apply already merged reads `intact` (#90) while the filesystem verdict is
     // `loss`; its note ("overwriting drops them") describes the overwrite the apply must not do,
     // not the state, so it is suppressed. A `patch`/`merge` `intact` keeps its note.
-    const note = row.fs.note && !(row.fs.verdict === "loss" && label === "intact") ? ` — ${row.fs.note}` : "";
+    const note =
+      row.fs.note && !(row.fs.verdict === "loss" && label === "intact") ? ` — ${row.fs.note}` : "";
     lines.push(`- \`${w.target}\` (${w.action}, ${scope}) — **${label}**${note}`);
     const showDiff =
       opts.diffPath !== null ||
       opts.diff ||
-      (row.fs.diff && (w.action === "merge" || w.action === "patch" || row.fs.verdict === "collision" || row.fs.verdict === "loss" || row.fs.verdict === "update"));
+      (row.fs.diff &&
+        (w.action === "merge" ||
+          w.action === "patch" ||
+          row.fs.verdict === "collision" ||
+          row.fs.verdict === "loss" ||
+          row.fs.verdict === "update"));
     if (showDiff && row.fs.diff) {
       lines.push("");
       for (const dl of row.fs.diff.split("\n")) lines.push(`    ${dl}`);
@@ -1486,7 +1580,10 @@ function renderPreExisting(plan) {
     lines.push("_None._");
     return lines.join("\n");
   }
-  lines.push("_The file already carries these blocks' content (no marker). Do not append them: the gate is already wired. A recipe whose verify greps for a skipped block's marker fails as-is and stays unrecorded._", "");
+  lines.push(
+    "_The file already carries these blocks' content (no marker). Do not append them: the gate is already wired. A recipe whose verify greps for a skipped block's marker fails as-is and stays unrecorded._",
+    "",
+  );
   for (const row of rows) {
     lines.push(`- \`${row.write.target}\` (${row.recipeId}) — ${row.fs.note}`);
   }
@@ -1506,12 +1603,20 @@ function renderLosses(plan, force) {
     return lines.join("\n");
   }
   if (force) {
-    lines.push("_Overridden by `--force` — the files below are overwritten and their extra content dropped._", "");
+    lines.push(
+      "_Overridden by `--force` — the files below are overwritten and their extra content dropped._",
+      "",
+    );
   } else {
-    lines.push("_Do not overwrite these files: the repo's file carries content the template does not. Overwrite only on an explicit override (`--force`)._", "");
+    lines.push(
+      "_Do not overwrite these files: the repo's file carries content the template does not. Overwrite only on an explicit override (`--force`)._",
+      "",
+    );
   }
   for (const row of rows) {
-    lines.push(`- \`${row.write.target}\` (${row.recipeId}) — ${row.fs.lost.length} ${row.fs.unit}(s) the template lacks:`);
+    lines.push(
+      `- \`${row.write.target}\` (${row.recipeId}) — ${row.fs.lost.length} ${row.fs.unit}(s) the template lacks:`,
+    );
     for (const l of row.fs.lost) lines.push(`  - \`${l}\``);
   }
   return lines.join("\n");
@@ -1527,13 +1632,18 @@ function renderLosses(plan, force) {
 function renderUpdates(plan) {
   const rows = plan.fileRows.filter((r) => r.fs.verdict === "update");
   if (rows.length === 0) return null;
-  const lines = ["## Updates (create drift — the library's content is merged in, the repo's additions kept)", ""];
+  const lines = [
+    "## Updates (create drift — the library's content is merged in, the repo's additions kept)",
+    "",
+  ];
   lines.push(
     "_The repo's file carries content the template does not. Write the library's content and re-apply the repo's additions below — do not overwrite the file verbatim (that drops them) and do not skip it (that leaves the gate uninstalled). The diff shows the library's content against the repo's file; the additions are the lines/keys the template lacks._",
     "",
   );
   for (const row of rows) {
-    lines.push(`- \`${row.write.target}\` (${row.recipeId}) — ${row.fs.lost.length} ${row.fs.unit}(s) the template lacks:`);
+    lines.push(
+      `- \`${row.write.target}\` (${row.recipeId}) — ${row.fs.lost.length} ${row.fs.unit}(s) the template lacks:`,
+    );
     for (const l of row.fs.lost) lines.push(`  - \`${l}\``);
   }
   return lines.join("\n");
@@ -1554,12 +1664,16 @@ function renderCommands(selected, workspace) {
   }
   rows.forEach((c, i) => {
     const scope = c.scope ?? "root";
-    lines.push(`${i + 1}. [${c.recipe}] \`${c.run}\` (${scope} → ${resolveScopes(scope, workspace).join(", ")})`);
+    lines.push(
+      `${i + 1}. [${c.recipe}] \`${c.run}\` (${scope} → ${resolveScopes(scope, workspace).join(", ")})`,
+    );
     // A formatter sweep rewrites files the recipe does not own — the repo's own source included
     // (biome-assist.md: "The plan must show this step as *reformats existing files*"). The plan
     // cannot know which files until the sweep runs, so it says so instead of staying silent.
     if (/\bcheck --write\b/.test(c.run)) {
-      lines.push(`   *reformats existing files* — the sweep rewrites every file it can format, including files this recipe does not own; the plan cannot name them before it runs.`);
+      lines.push(
+        `   *reformats existing files* — the sweep rewrites every file it can format, including files this recipe does not own; the plan cannot name them before it runs.`,
+      );
     }
   });
   return lines.join("\n");
@@ -1590,7 +1704,8 @@ function renderGatesAndVerify(selected, workspace, duplicatePathsByRecipe) {
     lines.push(`### ${r.id}`);
     if ((r.gates ?? []).length > 0) {
       lines.push("Gates:");
-      for (const g of r.gates) lines.push(`- \`${g.id}\` — \`${g.run}\`${g.description ? `: ${g.description}` : ""}`);
+      for (const g of r.gates)
+        lines.push(`- \`${g.id}\` — \`${g.run}\`${g.description ? `: ${g.description}` : ""}`);
     } else {
       lines.push("Gates: _none_");
     }
@@ -1599,7 +1714,9 @@ function renderGatesAndVerify(selected, workspace, duplicatePathsByRecipe) {
       for (const v of r.verify) {
         const scope = v.scope ?? "root";
         const dirs = resolveScopes(scope, workspace).join(", ");
-        const run = v.gate ? null : adjustVerifyRun(v.run, r.id, duplicatePathsByRecipe.get(r.id) ?? []);
+        const run = v.gate
+          ? null
+          : adjustVerifyRun(v.run, r.id, duplicatePathsByRecipe.get(r.id) ?? []);
         lines.push(`- ${v.gate ? `gate \`${v.gate}\`` : `\`${run}\``} (${scope} → ${dirs})`);
       }
     } else {
@@ -1617,7 +1734,8 @@ function renderWarnings(errored, templateErrors, gitWarnings) {
     return lines.join("\n");
   }
   for (const r of errored) lines.push(`- \`{ id: "${r.id}", error: ${JSON.stringify(r.error)} }\``);
-  for (const t of templateErrors) lines.push(`- \`{ id: "${t.id}", error: ${JSON.stringify(t.error)} }\``);
+  for (const t of templateErrors)
+    lines.push(`- \`{ id: "${t.id}", error: ${JSON.stringify(t.error)} }\``);
   for (const id of gitWarnings) {
     lines.push(
       [
@@ -1681,16 +1799,27 @@ function renderPlan(plan, opts) {
     out.push("**Nothing applies.**", "");
     const hint = nothingAppliesHint(plan.notSelected, plan.stack.packageManager);
     if (hint) out.push(hint, "");
-  } else if (plan.manifestPresent && plan.drift && plan.drift.recipes.every((r) => r.state === "intact")) {
-    out.push(`**Already set up** — ${plan.selected.length} recipe(s) applied, every file intact.`, "");
+  } else if (
+    plan.manifestPresent &&
+    plan.drift &&
+    plan.drift.recipes.every((r) => r.state === "intact")
+  ) {
+    out.push(
+      `**Already set up** — ${plan.selected.length} recipe(s) applied, every file intact.`,
+      "",
+    );
   } else {
     const dupes = plan.fileRows.filter((r) => r.fs.verdict === "duplicate").length;
     const losses = plan.fileRows.filter((r) => isLossRow(r)).length;
     const updates = plan.fileRows.filter((r) => r.fs.verdict === "update").length;
-    const dupNote = dupes > 0 ? ` ${dupes} block(s) already present — see Pre-existing content.` : "";
+    const dupNote =
+      dupes > 0 ? ` ${dupes} block(s) already present — see Pre-existing content.` : "";
     const lossNote = losses > 0 ? ` ${losses} file(s) would lose repo content — see Losses.` : "";
     const updateNote = updates > 0 ? ` ${updates} file(s) carry repo additions — see Updates.` : "";
-    out.push(`**Plan ready** — ${plan.selected.length} recipe(s) selected.${dupNote}${lossNote}${updateNote}`, "");
+    out.push(
+      `**Plan ready** — ${plan.selected.length} recipe(s) selected.${dupNote}${lossNote}${updateNote}`,
+      "",
+    );
   }
 
   out.push(renderStack(plan.stack), "");
@@ -1705,13 +1834,17 @@ function renderPlan(plan, opts) {
   if (updatesSection !== null) out.push(updatesSection, "");
   out.push(renderPreExisting(plan), "");
   out.push(renderCommands(plan.selected, plan.stack.workspace), "");
-  out.push(renderGatesAndVerify(plan.selected, plan.stack.workspace, plan.duplicatePathsByRecipe), "");
+  out.push(
+    renderGatesAndVerify(plan.selected, plan.stack.workspace, plan.duplicatePathsByRecipe),
+    "",
+  );
   out.push(renderWarnings(plan.errored, plan.templateErrors, plan.gitWarnings), "");
 
   // The drift section is suppressed when nothing is selected and there is no manifest: the plan
   // already says "Nothing applies" and there is no library to compare against.
   const driftSection = renderDriftSection(plan);
-  if (driftSection !== null && (plan.manifestPresent || plan.selected.length > 0)) out.push(driftSection, "");
+  if (driftSection !== null && (plan.manifestPresent || plan.selected.length > 0))
+    out.push(driftSection, "");
 
   if (plan.selected.length > 0) {
     const losses = plan.fileRows.filter((r) => isLossRow(r)).length;
@@ -1785,7 +1918,8 @@ function main() {
   const usable = report.recipes.filter((r) => r.error === null);
   if (usable.length === 0) {
     process.stderr.write("plan.mjs: no usable recipe remains — every recipe file is malformed\n");
-    for (const r of report.recipes) process.stderr.write(`  { id: "${r.id}", error: ${JSON.stringify(r.error)} }\n`);
+    for (const r of report.recipes)
+      process.stderr.write(`  { id: "${r.id}", error: ${JSON.stringify(r.error)} }\n`);
     process.exit(1);
   }
 

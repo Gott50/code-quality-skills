@@ -11,8 +11,8 @@
 // The output shape is specified in DETECT-SCHEMA.md next to this file; the recipe frontmatter it
 // reads is specified in the library's RECIPE-CONTRACT.md (library/RECIPE-CONTRACT.md).
 
-import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
-import { join, resolve, relative, dirname, basename } from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseFrontmatter } from "./frontmatter.mjs";
 
@@ -86,13 +86,16 @@ function loadRecipes(dir, { optional = false, source = "library" } = {}) {
       const text = readFileSync(join(recipesDir, file), "utf8");
       const fm = parseFrontmatter(text, label);
       if (fm.id !== stem) throw new Error(`${label}: id "${fm.id}" must equal the filename stem`);
-      if (!/^[a-z][a-z0-9-]*$/.test(fm.id)) throw new Error(`${label}: id "${fm.id}" is not kebab-case`);
+      if (!/^[a-z][a-z0-9-]*$/.test(fm.id))
+        throw new Error(`${label}: id "${fm.id}" is not kebab-case`);
       // A gate's `floor` names the baseline gate its level is floored by;
       // anything else is a frontmatter rule violation, not a typo to run
       // with.
       for (const gate of fm.gates ?? []) {
         if (gate.floor != null && !Object.hasOwn(FLOOR_GATES, gate.floor)) {
-          throw new Error(`${label}: gate "${gate.id}" floor "${gate.floor}" is not a known floor gate`);
+          throw new Error(
+            `${label}: gate "${gate.id}" floor "${gate.floor}" is not a known floor gate`,
+          );
         }
       }
       const body = text.slice(text.indexOf("\n---", 3) + 4);
@@ -124,8 +127,20 @@ function loadRecipes(dir, { optional = false, source = "library" } = {}) {
 // ---------------------------------------------------------------------------
 
 const SKIP_DIRS = new Set([
-  "node_modules", ".git", "dist", "build", "out", "coverage", ".next", ".turbo", ".cache",
-  ".stryker-tmp", "reports", "vendor", ".venv", "__pycache__",
+  "node_modules",
+  ".git",
+  "dist",
+  "build",
+  "out",
+  "coverage",
+  ".next",
+  ".turbo",
+  ".cache",
+  ".stryker-tmp",
+  "reports",
+  "vendor",
+  ".venv",
+  "__pycache__",
 ]);
 const SOURCE_EXT = new Set([".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"]);
 
@@ -272,7 +287,11 @@ function detectPackageManager(root, rootManifest) {
   }
   const declared = rootManifest?.packageManager;
   if (typeof declared === "string" && declared !== "") {
-    return { name: declared.split("@")[0], source: "packageManager-field", evidence: `package.json#packageManager = ${declared}` };
+    return {
+      name: declared.split("@")[0],
+      source: "packageManager-field",
+      evidence: `package.json#packageManager = ${declared}`,
+    };
   }
   return { name: null, source: null, evidence: null };
 }
@@ -293,13 +312,23 @@ function detectWorkspace(root, rootManifest, manager) {
   if (isFile(pnpmFile)) {
     const patterns = readPnpmWorkspace(pnpmFile) ?? [];
     const members = expandMemberGlobs(root, patterns).map((path) => memberEntry(root, path));
-    return { kind: members.length > 0 ? "workspace" : "single", declaration: "pnpm-workspace.yaml", patterns, members };
+    return {
+      kind: members.length > 0 ? "workspace" : "single",
+      declaration: "pnpm-workspace.yaml",
+      patterns,
+      members,
+    };
   }
   const ws = rootManifest?.workspaces;
   const patterns = Array.isArray(ws) ? ws : Array.isArray(ws?.packages) ? ws.packages : null;
   if (patterns && patterns.length > 0) {
     const members = expandMemberGlobs(root, patterns).map((path) => memberEntry(root, path));
-    return { kind: members.length > 0 ? "workspace" : "single", declaration: "package.json#workspaces", patterns, members };
+    return {
+      kind: members.length > 0 ? "workspace" : "single",
+      declaration: "package.json#workspaces",
+      patterns,
+      members,
+    };
   }
   return { kind: "single", declaration: null, patterns: [], members: [] };
 }
@@ -314,7 +343,13 @@ function resolveTsconfigFile(file, base, seen) {
   const rel = relative(base, file) || basename(file);
   const cfg = readJson(file);
   if (!cfg) {
-    return { configFile: rel, strict: null, strictSource: null, solutionStyle: false, unresolvedExtends: [`${rel} is not valid JSON`] };
+    return {
+      configFile: rel,
+      strict: null,
+      strictSource: null,
+      solutionStyle: false,
+      unresolvedExtends: [`${rel} is not valid JSON`],
+    };
   }
 
   let inherited = null;
@@ -332,7 +367,8 @@ function resolveTsconfigFile(file, base, seen) {
   }
 
   const own = cfg.compilerOptions ?? {};
-  const solutionStyle = Object.keys(own).length === 0 && Array.isArray(cfg.references) && cfg.references.length > 0;
+  const solutionStyle =
+    Object.keys(own).length === 0 && Array.isArray(cfg.references) && cfg.references.length > 0;
   return {
     configFile: rel,
     strict: typeof own.strict === "boolean" ? own.strict : (inherited?.strict ?? null),
@@ -390,24 +426,101 @@ function aggregateStrictness(rootTsconfig, packages) {
 const TOOLING = {
   formatter: [
     ["biome", ["biome.json", "biome.jsonc"]],
-    ["prettier", [".prettierrc", ".prettierrc.json", ".prettierrc.yml", ".prettierrc.yaml", ".prettierrc.json5", ".prettierrc.js", ".prettierrc.cjs", ".prettierrc.mjs", ".prettierrc.toml", "prettier.config.js", "prettier.config.cjs", "prettier.config.mjs", "prettier.config.ts"]],
+    [
+      "prettier",
+      [
+        ".prettierrc",
+        ".prettierrc.json",
+        ".prettierrc.yml",
+        ".prettierrc.yaml",
+        ".prettierrc.json5",
+        ".prettierrc.js",
+        ".prettierrc.cjs",
+        ".prettierrc.mjs",
+        ".prettierrc.toml",
+        "prettier.config.js",
+        "prettier.config.cjs",
+        "prettier.config.mjs",
+        "prettier.config.ts",
+      ],
+    ],
     ["dprint", ["dprint.json", ".dprint.json", "dprint.jsonc"]],
   ],
   linter: [
     ["biome", ["biome.json", "biome.jsonc"]],
-    ["eslint", [".eslintrc", ".eslintrc.js", ".eslintrc.cjs", ".eslintrc.json", ".eslintrc.yml", ".eslintrc.yaml", "eslint.config.js", "eslint.config.mjs", "eslint.config.cjs", "eslint.config.ts"]],
-    ["oxlint", [".oxlintrc", ".oxlintrc.json", ".oxlintrc.jsonc", "oxlint.config.ts", "oxlint.config.js", "oxlint.config.mjs"]],
+    [
+      "eslint",
+      [
+        ".eslintrc",
+        ".eslintrc.js",
+        ".eslintrc.cjs",
+        ".eslintrc.json",
+        ".eslintrc.yml",
+        ".eslintrc.yaml",
+        "eslint.config.js",
+        "eslint.config.mjs",
+        "eslint.config.cjs",
+        "eslint.config.ts",
+      ],
+    ],
+    [
+      "oxlint",
+      [
+        ".oxlintrc",
+        ".oxlintrc.json",
+        ".oxlintrc.jsonc",
+        "oxlint.config.ts",
+        "oxlint.config.js",
+        "oxlint.config.mjs",
+      ],
+    ],
   ],
   typechecker: [
-    ["typescript", ["tsconfig.json", "tsconfig.base.json", "tsconfig.settings.json", "jsconfig.json"]],
+    [
+      "typescript",
+      ["tsconfig.json", "tsconfig.base.json", "tsconfig.settings.json", "jsconfig.json"],
+    ],
   ],
   testRunner: [
-    ["vitest", ["vitest.config.ts", "vitest.config.js", "vitest.config.mts", "vitest.config.mjs", "vitest.workspace.ts", "vitest.workspace.js", "vitest.projects.ts"]],
-    ["jest", ["jest.config.js", "jest.config.ts", "jest.config.cjs", "jest.config.mjs", "jest.config.json"]],
+    [
+      "vitest",
+      [
+        "vitest.config.ts",
+        "vitest.config.js",
+        "vitest.config.mts",
+        "vitest.config.mjs",
+        "vitest.workspace.ts",
+        "vitest.workspace.js",
+        "vitest.projects.ts",
+      ],
+    ],
+    [
+      "jest",
+      [
+        "jest.config.js",
+        "jest.config.ts",
+        "jest.config.cjs",
+        "jest.config.mjs",
+        "jest.config.json",
+      ],
+    ],
     ["bun-test", ["bunfig.toml"]],
   ],
   mutation: [
-    ["stryker", ["stryker.conf.json", "stryker.conf.js", "stryker.conf.mjs", "stryker.conf.cjs", "stryker.config.json", "stryker.config.js", "stryker.config.mjs", ".strykerrc", ".strykerrc.json"]],
+    [
+      "stryker",
+      [
+        "stryker.conf.json",
+        "stryker.conf.js",
+        "stryker.conf.mjs",
+        "stryker.conf.cjs",
+        "stryker.config.json",
+        "stryker.config.js",
+        "stryker.config.mjs",
+        ".strykerrc",
+        ".strykerrc.json",
+      ],
+    ],
   ],
   gitHooks: [
     ["husky", [".husky"]],
@@ -426,8 +539,15 @@ const TOOLING = {
 // runner's config, or a dedicated rc file.
 const COVERAGE_RC = [".nycrc", ".nycrc.json", ".nycrc.yml", ".nycrc.yaml", ".c8rc", ".c8rc.json"];
 const COVERAGE_HOSTS = [
-  "vitest.config.ts", "vitest.config.js", "vitest.config.mts", "vitest.config.mjs",
-  "jest.config.js", "jest.config.ts", "jest.config.cjs", "jest.config.mjs", "jest.config.json",
+  "vitest.config.ts",
+  "vitest.config.js",
+  "vitest.config.mts",
+  "vitest.config.mjs",
+  "jest.config.js",
+  "jest.config.ts",
+  "jest.config.cjs",
+  "jest.config.mjs",
+  "jest.config.json",
   "bunfig.toml",
 ];
 
@@ -440,7 +560,9 @@ function detectTooling(dir) {
       for (const c of candidates) {
         const abs = join(dir, c);
         if (isDir(abs)) {
-          const inner = readdirSync(abs).filter((n) => !n.startsWith(".")).sort();
+          const inner = readdirSync(abs)
+            .filter((n) => !n.startsWith("."))
+            .sort();
           files.push(...(inner.length > 0 ? inner.map((n) => `${c}/${n}`) : [`${c}/`]));
         } else if (isFile(abs)) {
           files.push(c);
@@ -452,17 +574,23 @@ function detectTooling(dir) {
   }
 
   const coverage = [];
-  for (const c of COVERAGE_RC) if (isFile(join(dir, c))) coverage.push({ tool: c.replace(/^\./, "").replace(/rc.*$/, ""), files: [c] });
+  for (const c of COVERAGE_RC)
+    if (isFile(join(dir, c)))
+      coverage.push({ tool: c.replace(/^\./, "").replace(/rc.*$/, ""), files: [c] });
   for (const c of COVERAGE_HOSTS) {
     const text = readText(join(dir, c));
-    if (text !== null && /\bcoverage\b/.test(text)) coverage.push({ tool: c.split(".")[0], files: [c] });
+    if (text !== null && /\bcoverage\b/.test(text))
+      coverage.push({ tool: c.split(".")[0], files: [c] });
   }
   found.coverage = coverage;
 
   const gitHooksDir = join(dir, ".git", "hooks");
   if (isDir(gitHooksDir)) {
-    const live = readdirSync(gitHooksDir).filter((n) => !n.endsWith(".sample")).sort();
-    if (live.length > 0) found.gitHooks.push({ tool: "git-hooks-path", files: live.map((n) => `.git/hooks/${n}`) });
+    const live = readdirSync(gitHooksDir)
+      .filter((n) => !n.endsWith(".sample"))
+      .sort();
+    if (live.length > 0)
+      found.gitHooks.push({ tool: "git-hooks-path", files: live.map((n) => `.git/hooks/${n}`) });
   }
   return found;
 }
@@ -487,23 +615,42 @@ function readPackage(dir, relPath, role) {
 // ---------------------------------------------------------------------------
 
 function predicateHolds(pred, ctx) {
-  if (pred === null || typeof pred !== "object") return { pass: false, detail: `unreadable predicate ${JSON.stringify(pred)}` };
+  if (pred === null || typeof pred !== "object")
+    return { pass: false, detail: `unreadable predicate ${JSON.stringify(pred)}` };
   if ("file" in pred) {
     const ok = existsSync(join(ctx.root, pred.file));
-    return { pass: ok, detail: `${pred.file} ${ok ? "exists" : "is absent"} at the workspace root` };
+    return {
+      pass: ok,
+      detail: `${pred.file} ${ok ? "exists" : "is absent"} at the workspace root`,
+    };
   }
   if ("dep" in pred) {
     const owners = ctx.packages.filter((p) => p.dependencies.includes(pred.dep)).map((p) => p.path);
-    return { pass: owners.length > 0, detail: owners.length > 0 ? `${pred.dep} declared in ${owners.join(", ")}` : `${pred.dep} is not declared in any manifest` };
+    return {
+      pass: owners.length > 0,
+      detail:
+        owners.length > 0
+          ? `${pred.dep} declared in ${owners.join(", ")}`
+          : `${pred.dep} is not declared in any manifest`,
+    };
   }
   if ("script" in pred) {
     const ok = ctx.rootPackage.scripts.includes(pred.script);
-    return { pass: ok, detail: `root package.json ${ok ? "has" : "has no"} script "${pred.script}"` };
+    return {
+      pass: ok,
+      detail: `root package.json ${ok ? "has" : "has no"} script "${pred.script}"`,
+    };
   }
   if ("recipe" in pred) {
     if (pred.recipe === "*") {
       const others = [...ctx.selection].filter((id) => id !== ctx.recipeId);
-      return { pass: others.length > 0, detail: others.length > 0 ? `other recipes selected: ${others.join(", ")}` : "no other recipe is selected" };
+      return {
+        pass: others.length > 0,
+        detail:
+          others.length > 0
+            ? `other recipes selected: ${others.join(", ")}`
+            : "no other recipe is selected",
+      };
     }
     const ok = ctx.selection.has(pred.recipe);
     return { pass: ok, detail: `recipe "${pred.recipe}" ${ok ? "is" : "is not"} selected` };
@@ -518,11 +665,19 @@ function evaluateWhen(recipe, ctx) {
 
   if (when.language) {
     const hit = when.language.filter((l) => ctx.languages[l]);
-    push("language", hit.length > 0, `needs one of [${when.language.join(", ")}]; detected ${hit.length > 0 ? hit.join(", ") : "none"}`);
+    push(
+      "language",
+      hit.length > 0,
+      `needs one of [${when.language.join(", ")}]; detected ${hit.length > 0 ? hit.join(", ") : "none"}`,
+    );
   }
   if (when.packageManager) {
     const hit = when.packageManager.includes(ctx.packageManager.name);
-    push("packageManager", hit, `needs one of [${when.packageManager.join(", ")}]; detected ${ctx.packageManager.name ?? "none"}`);
+    push(
+      "packageManager",
+      hit,
+      `needs one of [${when.packageManager.join(", ")}]; detected ${ctx.packageManager.name ?? "none"}`,
+    );
   }
   if (when.workspace && when.workspace !== "any") {
     const hit = when.workspace === ctx.workspace.kind;
@@ -534,7 +689,11 @@ function evaluateWhen(recipe, ctx) {
   }
   for (const pred of when.excludes ?? []) {
     const { pass, detail } = predicateHolds(pred, ctx);
-    push(`excludes ${JSON.stringify(pred)}`, !pass, pass ? `excluded by ${detail}` : `not excluded (${detail})`);
+    push(
+      `excludes ${JSON.stringify(pred)}`,
+      !pass,
+      pass ? `excluded by ${detail}` : `not excluded (${detail})`,
+    );
   }
   return { applicable: reasons.every((r) => r.pass), reasons };
 }
@@ -578,7 +737,10 @@ function selectRecipes(recipes, ctx) {
         const loser = (o.priority ?? 0) > (r.priority ?? 0) ? r : o;
         const winner = loser === r ? o : r;
         selection.delete(loser.id);
-        heldBack.push({ id: loser.id, reason: `conflicts with "${winner.id}" (priority ${winner.priority ?? 0} > ${loser.priority ?? 0})` });
+        heldBack.push({
+          id: loser.id,
+          reason: `conflicts with "${winner.id}" (priority ${winner.priority ?? 0} > ${loser.priority ?? 0})`,
+        });
         changed = true;
       }
     }
@@ -608,7 +770,8 @@ function detectToolCollisions(recipes, selection, ctx) {
         const where = p.path === "." ? "root" : p.path;
         if (p.dependencies.includes(tool)) evidence.push(`${where}/package.json declares ${tool}`);
         for (const [category, hits] of Object.entries(p.tooling)) {
-          for (const h of hits) if (h.tool === tool) evidence.push(`${where} ${category}: ${h.files.join(", ")}`);
+          for (const h of hits)
+            if (h.tool === tool) evidence.push(`${where} ${category}: ${h.files.join(", ")}`);
         }
       }
       if (evidence.length > 0) collisions.push({ recipe: r.id, tool, evidence });
@@ -631,7 +794,8 @@ function detect(projectDir, libraryDir) {
 
   const rootPackage = readPackage(root, ".", "root");
   const packages = [rootPackage];
-  for (const m of workspace.members) packages.push(readPackage(join(root, m.path), m.path, "member"));
+  for (const m of workspace.members)
+    packages.push(readPackage(join(root, m.path), m.path, "member"));
 
   const languages = detectLanguages(root, rootManifest, rootTsconfig);
   const strictness = aggregateStrictness(rootTsconfig, packages);
@@ -693,7 +857,11 @@ function detect(projectDir, libraryDir) {
     stack: { languages, packageManager, workspace },
     packages,
     recipes: matrix,
-    selection: [...selection].sort((a, b) => (recipes.find((r) => r.id === b).priority ?? 0) - (recipes.find((r) => r.id === a).priority ?? 0)),
+    selection: [...selection].sort(
+      (a, b) =>
+        (recipes.find((r) => r.id === b).priority ?? 0) -
+        (recipes.find((r) => r.id === a).priority ?? 0),
+    ),
     heldBack,
     collisions,
   };

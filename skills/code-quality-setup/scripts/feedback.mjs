@@ -52,7 +52,8 @@ const PROPOSAL_LABELS = ["recipe-proposal", "needs-triage"];
 // `--library` or $CODE_QUALITY_LIBRARY instead. The same resolution plan.mjs uses.
 const SKILL_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_LIBRARY_DIR = resolve(SKILL_DIR, "..", "..", "library");
-const DEFAULT_RATIONALE = "No rationale given. Proposed via the code-quality-setup feedback channel.";
+const DEFAULT_RATIONALE =
+  "No rationale given. Proposed via the code-quality-setup feedback channel.";
 // GitHub's unpublished URL length limit: the request line is capped at 8 KB and an over-long
 // `issues/new` URL is answered with 414. 8000 leaves room for the scheme and host.
 const MAX_URL_LENGTH = 8000;
@@ -100,7 +101,7 @@ The payload, the redaction rules and the flag are specified in FEEDBACK-SCHEMA.m
 // from matching a path already rewritten to `<project>` (preceded by `>`) or a fragment inside a
 // word (`s/foo/bar`). The character class stops at whitespace, quotes, brackets and the
 // punctuation that ends a path in prose; `:` is excluded so a trailing `:line:col` survives.
-const ABS_PATH = /(?<![\w>])(?:[A-Za-z]:[\\/]|\/)[^\s"'`()\[\]{}<>|,;:]+/g;
+const ABS_PATH = /(?<![\w>])(?:[A-Za-z]:[\\/]|\/)[^\s"'`()[\]{}<>|,;:]+/g;
 
 // The plan renders a file's unified diff as 4-space-indented lines under the file's row, and the
 // Losses section lists the repo's own extra lines as 2-space `  - \`…\`` bullets. Both are the
@@ -188,7 +189,9 @@ function renderReport(payload) {
   out.push("");
   out.push(`- **skill**: \`${payload.skill.name}\` ${payload.skill.version}`);
   out.push(`- **generated**: ${payload.generatedAt}`);
-  out.push(`- **recipe**: ${payload.failure.recipe ? `\`${payload.failure.recipe}\`` : "_(none)_"}`);
+  out.push(
+    `- **recipe**: ${payload.failure.recipe ? `\`${payload.failure.recipe}\`` : "_(none)_"}`,
+  );
   out.push("");
   out.push("### Error");
   out.push("");
@@ -406,13 +409,15 @@ function writeReportFile(body, filename) {
 // pointing at the attached file. Sliced by code point so a surrogate pair is never split (which
 // would make `encodeURIComponent` throw).
 function truncateBody(title, body, labels) {
-  const marker = "\n\n_Truncated to fit GitHub's URL length limit — the full report is attached as a file._";
+  const marker =
+    "\n\n_Truncated to fit GitHub's URL length limit — the full report is attached as a file._";
   const chars = Array.from(body);
   let lo = 0;
   let hi = chars.length;
   while (lo < hi) {
     const mid = Math.ceil((lo + hi) / 2);
-    if (buildUrl(title, chars.slice(0, mid).join("") + marker, labels).length <= MAX_URL_LENGTH) lo = mid;
+    if (buildUrl(title, chars.slice(0, mid).join("") + marker, labels).length <= MAX_URL_LENGTH)
+      lo = mid;
     else hi = mid - 1;
   }
   return chars.slice(0, lo).join("") + marker;
@@ -456,7 +461,9 @@ function renderOutput(report, filing) {
     `- **destination**: \`${filing.destination}\` (labels: ${filing.labels.map((l) => `\`${l}\``).join(", ")})`,
   );
   if (filing.truncated) {
-    out.push(`- **url** (truncated to fit GitHub's ${MAX_URL_LENGTH}-character limit): ${filing.url}`);
+    out.push(
+      `- **url** (truncated to fit GitHub's ${MAX_URL_LENGTH}-character limit): ${filing.url}`,
+    );
   } else if (filing.urlTooLong) {
     out.push(
       `- **url**: too long (${filing.urlLength} chars > ${MAX_URL_LENGTH}) — use the \`gh\` command below`,
@@ -466,7 +473,9 @@ function renderOutput(report, filing) {
   }
   if (filing.ghCommand) out.push(`- **gh**: \`${filing.ghCommand}\``);
   if (filing.reportFile) {
-    out.push(`- **report file**: \`${filing.reportFile}\`${filing.truncated ? " (attach it to the issue)" : ""}`);
+    out.push(
+      `- **report file**: \`${filing.reportFile}\`${filing.truncated ? " (attach it to the issue)" : ""}`,
+    );
   }
   return out.join("\n");
 }
@@ -546,7 +555,8 @@ function runDetector(projectDir, library) {
   if (library !== null && library !== undefined) args.push("--library", library);
   const res = spawnSync(process.execPath, args, { encoding: "utf8" });
   if (res.error || res.status !== 0) {
-    const detail = (res.stderr || res.error?.message || "").trim() || `detect.mjs exited ${res.status}`;
+    const detail =
+      (res.stderr || res.error?.message || "").trim() || `detect.mjs exited ${res.status}`;
     return { stack: null, packages: null, error: detail };
   }
   try {

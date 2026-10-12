@@ -167,8 +167,10 @@ export function readFallowTargets(doc) {
 function deadCodePath(f) {
   if (typeof f?.path === "string") return f.path;
   if (typeof f?.from_path === "string") return f.from_path;
-  if (Array.isArray(f?.locations) && typeof f.locations[0]?.path === "string") return f.locations[0].path;
-  if (Array.isArray(f?.imported_from) && typeof f.imported_from[0]?.path === "string") return f.imported_from[0].path;
+  if (Array.isArray(f?.locations) && typeof f.locations[0]?.path === "string")
+    return f.locations[0].path;
+  if (Array.isArray(f?.imported_from) && typeof f.imported_from[0]?.path === "string")
+    return f.imported_from[0].path;
   return "(unknown)";
 }
 
@@ -391,7 +393,12 @@ export function collect(root, bases) {
   if (existsSync(fallowPath)) {
     try {
       const list = readFallowTargets(readJson(fallowPath));
-      sources.fallow = { path: ARTIFACTS.fallowTargets, present: true, count: list.length, error: null };
+      sources.fallow = {
+        path: ARTIFACTS.fallowTargets,
+        present: true,
+        count: list.length,
+        error: null,
+      };
       list.forEach((t, i) => {
         targets.push({
           source: "fallow",
@@ -411,12 +418,25 @@ export function collect(root, bases) {
         });
       });
     } catch (err) {
-      sources.fallow = { path: ARTIFACTS.fallowTargets, present: true, count: 0, error: String(err?.message ?? err) };
-      gaps.push({ source: "fallow", path: ARTIFACTS.fallowTargets, reason: `unreadable: ${err?.message ?? err}` });
+      sources.fallow = {
+        path: ARTIFACTS.fallowTargets,
+        present: true,
+        count: 0,
+        error: String(err?.message ?? err),
+      };
+      gaps.push({
+        source: "fallow",
+        path: ARTIFACTS.fallowTargets,
+        reason: `unreadable: ${err?.message ?? err}`,
+      });
     }
   } else {
     sources.fallow = { path: ARTIFACTS.fallowTargets, present: false, count: 0, error: null };
-    gaps.push({ source: "fallow", path: ARTIFACTS.fallowTargets, reason: `absent — capture it with \`${CAPTURE.fallowTargets}\`` });
+    gaps.push({
+      source: "fallow",
+      path: ARTIFACTS.fallowTargets,
+      reason: `absent — capture it with \`${CAPTURE.fallowTargets}\``,
+    });
   }
 
   // coverage — bun's lcov first, then vitest's Istanbul JSON
@@ -431,7 +451,11 @@ export function collect(root, bases) {
     try {
       covFiles = readLcov(readFileSync(lcovPath, "utf8"));
     } catch (err) {
-      gaps.push({ source: "coverage", path: ARTIFACTS.lcov, reason: `unreadable: ${err?.message ?? err}` });
+      gaps.push({
+        source: "coverage",
+        path: ARTIFACTS.lcov,
+        reason: `unreadable: ${err?.message ?? err}`,
+      });
     }
   } else if (existsSync(istanbulPath)) {
     covPath = ARTIFACTS.istanbul;
@@ -439,7 +463,11 @@ export function collect(root, bases) {
     try {
       covFiles = readIstanbul(readJson(istanbulPath), bases);
     } catch (err) {
-      gaps.push({ source: "coverage", path: ARTIFACTS.istanbul, reason: `unreadable: ${err?.message ?? err}` });
+      gaps.push({
+        source: "coverage",
+        path: ARTIFACTS.istanbul,
+        reason: `unreadable: ${err?.message ?? err}`,
+      });
     }
   }
   if (covFiles) {
@@ -447,7 +475,13 @@ export function collect(root, bases) {
       .map(([file, metrics]) => ({ file, metrics, uncovered: uncoveredOf(metrics) }))
       .filter((r) => r.uncovered > 0)
       .sort((a, b) => b.uncovered - a.uncovered || a.file.localeCompare(b.file));
-    sources.coverage = { path: covPath, present: true, source: covSource, files: rows.length, error: null };
+    sources.coverage = {
+      path: covPath,
+      present: true,
+      source: covSource,
+      files: rows.length,
+      error: null,
+    };
     for (const r of rows) {
       targets.push({
         source: "coverage",
@@ -504,12 +538,26 @@ export function collect(root, bases) {
         }
       }
     } catch (err) {
-      sources.mutation = { path: ARTIFACTS.mutation, present: true, gaps: 0, files: 0, error: String(err?.message ?? err) };
-      gaps.push({ source: "mutation", path: ARTIFACTS.mutation, reason: `unreadable: ${err?.message ?? err}` });
+      sources.mutation = {
+        path: ARTIFACTS.mutation,
+        present: true,
+        gaps: 0,
+        files: 0,
+        error: String(err?.message ?? err),
+      };
+      gaps.push({
+        source: "mutation",
+        path: ARTIFACTS.mutation,
+        reason: `unreadable: ${err?.message ?? err}`,
+      });
     }
   } else {
     sources.mutation = { path: ARTIFACTS.mutation, present: false, gaps: 0, files: 0, error: null };
-    gaps.push({ source: "mutation", path: ARTIFACTS.mutation, reason: `absent — capture it with \`${CAPTURE.mutation}\`` });
+    gaps.push({
+      source: "mutation",
+      path: ARTIFACTS.mutation,
+      reason: `absent — capture it with \`${CAPTURE.mutation}\``,
+    });
   }
 
   // lint — oxlint's captured JSON
@@ -529,15 +577,45 @@ export function collect(root, bases) {
         error: null,
       };
       for (const [file, c] of rows) {
-        targets.push({ source: "lint", path: file, gate: "lint", detail: `${c} diagnostic(s)`, count: c, effort: null, confidence: null });
+        targets.push({
+          source: "lint",
+          path: file,
+          gate: "lint",
+          detail: `${c} diagnostic(s)`,
+          count: c,
+          effort: null,
+          confidence: null,
+        });
       }
     } catch (err) {
-      sources.lint = { path: ARTIFACTS.oxlint, present: true, count: 0, files: 0, floor: null, error: String(err?.message ?? err) };
-      gaps.push({ source: "lint", path: ARTIFACTS.oxlint, reason: `unreadable: ${err?.message ?? err}` });
+      sources.lint = {
+        path: ARTIFACTS.oxlint,
+        present: true,
+        count: 0,
+        files: 0,
+        floor: null,
+        error: String(err?.message ?? err),
+      };
+      gaps.push({
+        source: "lint",
+        path: ARTIFACTS.oxlint,
+        reason: `unreadable: ${err?.message ?? err}`,
+      });
     }
   } else {
-    sources.lint = { path: ARTIFACTS.oxlint, present: false, count: 0, files: 0, floor: null, error: null };
-    gaps.push({ source: "lint", path: ARTIFACTS.oxlint, reason: `absent — capture it with \`${CAPTURE.oxlint}\`` });
+    sources.lint = {
+      path: ARTIFACTS.oxlint,
+      present: false,
+      count: 0,
+      files: 0,
+      floor: null,
+      error: null,
+    };
+    gaps.push({
+      source: "lint",
+      path: ARTIFACTS.oxlint,
+      reason: `absent — capture it with \`${CAPTURE.oxlint}\``,
+    });
   }
 
   // typecheck — tsc's captured log
@@ -557,15 +635,45 @@ export function collect(root, bases) {
         error: null,
       };
       for (const [file, c] of rows) {
-        targets.push({ source: "typecheck", path: file, gate: "typecheck", detail: `${c} error(s)`, count: c, effort: null, confidence: null });
+        targets.push({
+          source: "typecheck",
+          path: file,
+          gate: "typecheck",
+          detail: `${c} error(s)`,
+          count: c,
+          effort: null,
+          confidence: null,
+        });
       }
     } catch (err) {
-      sources.typecheck = { path: ARTIFACTS.tsc, present: true, count: 0, files: 0, floor: null, error: String(err?.message ?? err) };
-      gaps.push({ source: "typecheck", path: ARTIFACTS.tsc, reason: `unreadable: ${err?.message ?? err}` });
+      sources.typecheck = {
+        path: ARTIFACTS.tsc,
+        present: true,
+        count: 0,
+        files: 0,
+        floor: null,
+        error: String(err?.message ?? err),
+      };
+      gaps.push({
+        source: "typecheck",
+        path: ARTIFACTS.tsc,
+        reason: `unreadable: ${err?.message ?? err}`,
+      });
     }
   } else {
-    sources.typecheck = { path: ARTIFACTS.tsc, present: false, count: 0, files: 0, floor: null, error: null };
-    gaps.push({ source: "typecheck", path: ARTIFACTS.tsc, reason: `absent — capture it with \`${CAPTURE.tsc}\`` });
+    sources.typecheck = {
+      path: ARTIFACTS.tsc,
+      present: false,
+      count: 0,
+      files: 0,
+      floor: null,
+      error: null,
+    };
+    gaps.push({
+      source: "typecheck",
+      path: ARTIFACTS.tsc,
+      reason: `absent — capture it with \`${CAPTURE.tsc}\``,
+    });
   }
 
   // dead-code — fallow's per-category finding lists, floored by fallow's own baseline
@@ -608,12 +716,34 @@ export function collect(root, bases) {
         error: null,
       };
     } catch (err) {
-      sources["dead-code"] = { path: ARTIFACTS.deadCode, present: true, count: 0, files: 0, floor: null, error: String(err?.message ?? err) };
-      gaps.push({ source: "dead-code", path: ARTIFACTS.deadCode, reason: `unreadable: ${err?.message ?? err}` });
+      sources["dead-code"] = {
+        path: ARTIFACTS.deadCode,
+        present: true,
+        count: 0,
+        files: 0,
+        floor: null,
+        error: String(err?.message ?? err),
+      };
+      gaps.push({
+        source: "dead-code",
+        path: ARTIFACTS.deadCode,
+        reason: `unreadable: ${err?.message ?? err}`,
+      });
     }
   } else {
-    sources["dead-code"] = { path: ARTIFACTS.deadCode, present: false, count: 0, files: 0, floor: null, error: null };
-    gaps.push({ source: "dead-code", path: ARTIFACTS.deadCode, reason: `absent — capture it with \`${CAPTURE.deadCode}\`` });
+    sources["dead-code"] = {
+      path: ARTIFACTS.deadCode,
+      present: false,
+      count: 0,
+      files: 0,
+      floor: null,
+      error: null,
+    };
+    gaps.push({
+      source: "dead-code",
+      path: ARTIFACTS.deadCode,
+      reason: `absent — capture it with \`${CAPTURE.deadCode}\``,
+    });
   }
 
   // The rank: effort tier first (cheap first), then the source's own order — see compareTargets.
@@ -689,15 +819,18 @@ function sourceLine(name, s) {
     case "mutation":
       return `  ${label}${s.path} — ${s.gaps} gap(s) in ${s.files} file(s)`;
     case "lint": {
-      const floor = s.floor == null ? "" : `   floor ${s.floor}${s.count > s.floor ? "   ⚠ above floor" : ""}`;
+      const floor =
+        s.floor == null ? "" : `   floor ${s.floor}${s.count > s.floor ? "   ⚠ above floor" : ""}`;
       return `  ${label}${s.path} — ${s.count} diagnostic(s) in ${s.files} file(s)${floor}`;
     }
     case "typecheck": {
-      const floor = s.floor == null ? "" : `   floor ${s.floor}${s.count > s.floor ? "   ⚠ above floor" : ""}`;
+      const floor =
+        s.floor == null ? "" : `   floor ${s.floor}${s.count > s.floor ? "   ⚠ above floor" : ""}`;
       return `  ${label}${s.path} — ${s.count} error(s) in ${s.files} file(s)${floor}`;
     }
     case "dead-code": {
-      const floor = s.floor == null ? "" : `   floor ${s.floor}${s.count > s.floor ? "   ⚠ above floor" : ""}`;
+      const floor =
+        s.floor == null ? "" : `   floor ${s.floor}${s.count > s.floor ? "   ⚠ above floor" : ""}`;
       return `  ${label}${s.path} — ${s.count} issue(s) in ${s.files} file(s)${floor}`;
     }
     default:
@@ -712,11 +845,16 @@ function factorText(f) {
 function evidenceText(ev) {
   if (!ev) return null;
   const parts = [];
-  if (Array.isArray(ev.unused_exports) && ev.unused_exports.length) parts.push(`unused_exports ${ev.unused_exports.length}`);
-  if (Array.isArray(ev.complex_functions) && ev.complex_functions.length) parts.push(`complex_functions ${ev.complex_functions.length}`);
-  if (Array.isArray(ev.cycle_path) && ev.cycle_path.length) parts.push(`cycle_path ${ev.cycle_path.length}`);
-  if (Array.isArray(ev.direct_callers) && ev.direct_callers.length) parts.push(`direct_callers ${ev.direct_callers.length}`);
-  if (Array.isArray(ev.clone_siblings) && ev.clone_siblings.length) parts.push(`clone_siblings ${ev.clone_siblings.length}`);
+  if (Array.isArray(ev.unused_exports) && ev.unused_exports.length)
+    parts.push(`unused_exports ${ev.unused_exports.length}`);
+  if (Array.isArray(ev.complex_functions) && ev.complex_functions.length)
+    parts.push(`complex_functions ${ev.complex_functions.length}`);
+  if (Array.isArray(ev.cycle_path) && ev.cycle_path.length)
+    parts.push(`cycle_path ${ev.cycle_path.length}`);
+  if (Array.isArray(ev.direct_callers) && ev.direct_callers.length)
+    parts.push(`direct_callers ${ev.direct_callers.length}`);
+  if (Array.isArray(ev.clone_siblings) && ev.clone_siblings.length)
+    parts.push(`clone_siblings ${ev.clone_siblings.length}`);
   return parts.length ? parts.join("; ") : null;
 }
 
@@ -737,7 +875,13 @@ function targetLines(t) {
     if (t.factors.length) lines.push(`     factors: ${t.factors.map(factorText).join("; ")}`);
     const ev = evidenceText(t.evidence);
     if (ev) lines.push(`     evidence: ${ev}`);
-    if (t.actions.length) lines.push(`     actions: ${t.actions.map((a) => a?.type).filter(Boolean).join("; ")}`);
+    if (t.actions.length)
+      lines.push(
+        `     actions: ${t.actions
+          .map((a) => a?.type)
+          .filter(Boolean)
+          .join("; ")}`,
+      );
   } else if (t.source === "coverage") {
     const mark = t.belowFloor ? "   ⚠ below floor" : "";
     lines.push(
@@ -751,7 +895,9 @@ function targetLines(t) {
   } else if (t.source === "dead-code") {
     const mark = t.aboveFloor ? "   ⚠ above floor" : "";
     const detail = t.detail ? ` — ${t.detail}` : "";
-    lines.push(`  ${t.rank}. [dead-code] ${t.path}   ${t.category}${detail}   ${effortConfidence(t)}${mark}`);
+    lines.push(
+      `  ${t.rank}. [dead-code] ${t.path}   ${t.category}${detail}   ${effortConfidence(t)}${mark}`,
+    );
   } else {
     lines.push(`  ${t.rank}. [${t.source}] ${t.path}   ${t.detail}   ${effortConfidence(t)}`);
   }
@@ -763,7 +909,15 @@ function renderText(report) {
   const lines = [];
   lines.push(`Improvement targets — ${report.root}`);
   lines.push("");
-  for (const name of ["baseline", "fallow", "coverage", "mutation", "lint", "typecheck", "dead-code"]) {
+  for (const name of [
+    "baseline",
+    "fallow",
+    "coverage",
+    "mutation",
+    "lint",
+    "typecheck",
+    "dead-code",
+  ]) {
     lines.push(sourceLine(name, report.sources[name]));
   }
   lines.push("");
@@ -858,7 +1012,10 @@ function main() {
 }
 
 // Run only when executed directly, so an import does not run the view.
-if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
+if (
+  process.argv[1] &&
+  realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
+) {
   try {
     main();
   } catch (err) {
