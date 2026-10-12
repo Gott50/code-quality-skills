@@ -59,3 +59,19 @@ _Avoid_: test, validation, smoke
 **Entry state**:
 The condition a run starts from: already set up, nothing applies, unsupported project, or a detector failure.
 _Avoid_: precondition, guard
+
+**Local recipe**:
+A recipe that lives in the project at `.code-quality/recipes/<id>.md`, read alongside the library's and winning on an `id` collision.
+_Avoid_: project recipe, custom recipe, override
+
+**Local library**:
+The project-local, library-shaped directory `.code-quality/` — `recipes/` plus `templates/` — that the detector scans alongside the shared library.
+_Avoid_: project library, overlay, patch dir
+
+**Authoring skill**:
+`code-quality-author`, the skill that ranks the gaps the shared library leaves, authors a local recipe for the one the user picks, and installs it.
+_Avoid_: recipe writer, generator
+
+**Gap**:
+A place the shared library does not cover the project: a tooling category the project uses that no selected recipe covers, or a recipe one `when` predicate away from applying.
+_Avoid_: hole, missing recipe, TODO

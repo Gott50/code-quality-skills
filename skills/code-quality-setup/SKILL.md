@@ -56,6 +56,10 @@ node scripts/plan.mjs [projectDir] [--library <path>] [--recipe <id>] [--force] 
 
 `--library <path>` (or `CODE_QUALITY_LIBRARY`) is the fetch step's `libraryDir`; without it the plan reads the repo-layout `library/`. `plan.mjs` runs `scripts/detect.mjs` and writes nothing. Both are dependency-free, node builtins only. `--check` prints the machine-readable drift report (one JSON document) instead of the plan and exits 0 only when it is clean — the `ci-drift` workflow's input ([PLAN-SCHEMA.md](scripts/PLAN-SCHEMA.md) → `--check`).
 
+### Local recipes
+
+The detector also reads the project's own recipes from `<projectDir>/.code-quality/recipes/*.md` (the same frontmatter contract as the library's). The layer is optional — a project without it behaves exactly as before. A local recipe **wins on id collision** with a library recipe: the local one replaces it, and the plan marks it with a `(local)` suffix in the selection list and the applicability matrix. A local recipe's templates live in `.code-quality/templates/<id>/`, and the plan resolves them from there.
+
 ### The measurement — the floor the apply will install
 
 The plan's **Measurement** section is the adoption flow: for every gate the selection will install (a selected recipe's gate that declares `floor`), it shows the level the gate measures **now** and the floor the apply will install. The floor is the measured level, so the gates are green on day one and can only improve. Greenfield is the same code path: a clean repo measures 100% (or 0), so the floor is the wall — one path, not two.

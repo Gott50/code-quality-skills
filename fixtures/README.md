@@ -1,6 +1,6 @@
 # Fixtures
 
-Six throwaway projects the detector is run against, and the projects a recipe is verified by
+Seven throwaway projects the detector is run against, and the projects a recipe is verified by
 applying to. No `node_modules`, no `SKILL.md` (a nested `SKILL.md` would be discovered as a skill of
 its own by the `skills` CLI).
 
@@ -19,6 +19,7 @@ node skills/code-quality-setup/scripts/detect.mjs fixtures/<name>
 | `bun-workspace` | Bun, `workspaces` in the root `package.json`, two members at different depths (`packages/a`, `packages/nested/b`), no tooling | the **workspace form** — the apply target for the workspace-scoped recipes: `{{root}}` substitution at two depths (`../..`, `../../..`) and per-member config placement |
 | `pnpm-workspace` | pnpm, `pnpm-workspace.yaml`, two members at different depths (`packages/a`, `packages/nested/b`), CI workflow at the root | **workspace enumeration** and per-package tooling: eslint + prettier in `packages/nested/b`, a root `tsconfig.json` extending a strict `tsconfig.base.json`; plus the **`conflicts.tools` collision** and the **`conflicts.recipes` hold-back** (member-level evidence); the apply target for the npm/pnpm workspace variants |
 | `npm-eslint-prettier` | npm, single package, eslint + prettier at the root | the **`conflicts.tools` collision** and the **`conflicts.recipes` hold-back** at root level: `biome-assist-npm` collides with the project's prettier + eslint, and `eslint-prettier` is held back |
+| `local-recipe` | npm, single package, strict `tsconfig.json`, a `.code-quality/` local library (two recipes + their templates), and a `dprint.json` no library recipe covers | the **local library layer** — the detector reads `.code-quality/recipes/` alongside the library, a local recipe wins on id collision (`repo-hygiene-npm` is shadowed), and `gaps.mjs` reports both gap kinds (`uncovered-category: formatter — dprint` and `one-predicate-away: ci-drift`) |
 | `debt-ts` | Bun, single package, strict `tsconfig.json`, one covered function plus deliberate debt under `src/` | the **debt-carrying apply target** — the five shapes the quality ratchet measures: **coverage** (`src/index.ts` at 56.67% lines; `src/unused.ts` never imported), **mutation** (`formatDuration`'s `< 60` boundary and its uncovered minutes branch leave survivors), **lint** (`anti-slop/no-runtime-typeof` at `src/index.ts:14`), **dead code** (`src/unused.ts` and the `legacyFormat` export), and **complexity** (`describeHttpStatus`, cyclomatic complexity 14) |
 
 **A fresh copy of an apply-target fixture must be a git repository with at least one commit.** The

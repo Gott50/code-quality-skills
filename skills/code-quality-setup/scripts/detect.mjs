@@ -64,15 +64,24 @@ function extractUndo(body, label) {
 
 // A malformed recipe is reported, never fatal: one broken file must not cost the user the whole
 // matrix. Its entry carries `id` and `error` and nothing else, and it is never selected.
-function loadRecipes(libraryDir) {
-  const recipesDir = join(libraryDir, "recipes");
-  if (!existsSync(recipesDir)) throw new Error(`no recipe directory at ${recipesDir}`);
+//
+// `dir` is a library-shaped directory: `<dir>/recipes/*.md`. The remote library is required; the
+// project-local `.code-quality/` layer is optional (`optional: true` returns `[]` when it is
+// absent). `source` labels the layer ("library" or "local") and is carried on every entry, along
+// with `libraryDir` — the absolute directory the recipe was loaded from, which the plan and the
+// proposal reader use to resolve the recipe's own templates.
+function loadRecipes(dir, { optional = false, source = "library" } = {}) {
+  const recipesDir = join(dir, "recipes");
+  if (!existsSync(recipesDir)) {
+    if (optional) return [];
+    throw new Error(`no recipe directory at ${recipesDir}`);
+  }
   const files = readdirSync(recipesDir)
     .filter((f) => f.endsWith(".md"))
     .sort();
   return files.map((file) => {
     const stem = basename(file, ".md");
-    const label = `library/recipes/${file}`;
+    const label = `${source === "local" ? ".code-quality" : "library"}/recipes/${file}`;
     try {
       const text = readFileSync(join(recipesDir, file), "utf8");
       const fm = parseFrontmatter(text, label);
@@ -90,6 +99,8 @@ function loadRecipes(libraryDir) {
       return {
         id: fm.id,
         error: null,
+        source,
+        libraryDir: dir,
         title: fm.title ?? fm.id,
         purpose: fm.purpose ?? "",
         when: fm.when ?? {},
@@ -103,7 +114,7 @@ function loadRecipes(libraryDir) {
         undo: extractUndo(body, label),
       };
     } catch (err) {
-      return { id: stem, error: err.message };
+      return { id: stem, error: err.message, source, libraryDir: dir };
     }
   });
 }
@@ -628,7 +639,16 @@ function detect(projectDir, libraryDir) {
   languages.typescriptStrictSource = languages.typescript ? strictness.source : null;
   languages.tsconfig = rootTsconfig?.configFile ?? null;
 
-  const recipes = loadRecipes(libraryDir);
+  const remote = loadRecipes(libraryDir, { source: "library" });
+  const local = loadRecipes(join(root, ".code-quality"), { optional: true, source: "local" });
+  // Local wins on id collision. The merged list is sorted by the recipe's filename (`<id>.md`) —
+  // the order the loader produced before the local layer existed — so the no-local case is
+  // byte-identical to today. (Sorting by bare `id` would not be: `-` sorts before `.`, so
+  // `biome-assist-npm.md` precedes `biome-assist.md`.)
+  const localIds = new Set(local.map((r) => r.id));
+  const recipes = [...local, ...remote.filter((r) => !localIds.has(r.id))].sort((a, b) =>
+    `${a.id}.md` < `${b.id}.md` ? -1 : `${a.id}.md` > `${b.id}.md` ? 1 : 0,
+  );
   const ctx = {
     root,
     languages,
@@ -644,11 +664,13 @@ function detect(projectDir, libraryDir) {
   const collisions = detectToolCollisions(recipes, selection, ctx);
 
   const matrix = recipes.map((r) => {
-    if (r.error !== null) return { id: r.id, error: r.error };
+    if (r.error !== null) return { id: r.id, error: r.error, source: r.source };
     const { applicable, reasons } = evaluateWhen(r, { ...ctx, selection, recipeId: r.id });
     return {
       id: r.id,
       error: null,
+      source: r.source,
+      libraryDir: r.libraryDir,
       title: r.title,
       purpose: r.purpose,
       cost: r.cost,
