@@ -26,9 +26,11 @@
 //      biome-assist recipe installs (library/templates/biome-assist/biome.json),
 //      not the repo's own biome.json. A consumer's `biome check .` runs over the
 //      files the skill just copied in, so a script that is not formatted to that
-//      config fails there; the repo's own format:check covers only
-//      library/templates, so this is the only place that holds them. Files biome
-//      cannot parse (by extension) are skipped and printed.
+//      config fails there; the repo has no in-place formatter over the
+//      templates (the biome-assist recipe ships a root biome.json, which biome
+//      refuses to read as a nested config), so this is the only place that
+//      holds them. Files biome cannot parse (by extension) are skipped and
+//      printed.
 //
 // Zero dependencies beyond the shared frontmatter reader and the repo's own
 // biome devDependency; the lint check installs the oxlint devDependencies the

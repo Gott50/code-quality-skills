@@ -3,9 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "library:check": "node scripts/check-library.mjs",
-    "format": "biome format --config-path=./biome.json --write library/templates",
-    "format:check": "biome format --config-path=./biome.json library/templates"
+    "library:check": "node scripts/check-library.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15"
