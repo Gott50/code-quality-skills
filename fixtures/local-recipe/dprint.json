@@ -2,5 +2,6 @@
   "typescript": {
     "lineWidth": 100
   },
-  "includes": ["**/*.ts"]
+  "includes": ["**/*.ts"],
+  "plugins": ["npm:@dprint/typescript@0.96.1"]
 }
