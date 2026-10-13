@@ -109,8 +109,9 @@ function functionName(sourceCode: SourceCode, owner: FunctionExpression | null):
   if (owner === null) return "anonymous function";
   if (owner.id !== null) return owner.id.name;
   const parent = owner.parent;
-  if (parent.type === "VariableDeclarator" && parent.id.type === "Identifier")
+  if (parent.type === "VariableDeclarator" && parent.id.type === "Identifier") {
     return parent.id.name;
+  }
   if (parent.type === "MethodDefinition") return sourceKeyName(sourceCode, parent.key);
   return "anonymous function";
 }

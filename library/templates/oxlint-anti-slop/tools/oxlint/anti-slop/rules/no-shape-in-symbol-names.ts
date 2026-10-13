@@ -28,11 +28,11 @@ export const noForbiddenTermInSymbolNamesRule = defineRule({
   meta: {
     docs: {
       description:
-        'Disallow the case-insensitive substring "shape" in JavaScript, TypeScript, private, and JSX symbol names.',
+        "Disallow the case-insensitive substring 'shape' in JavaScript, TypeScript, private, and JSX symbol names.",
     },
     messages: {
       forbiddenSymbolName:
-        'Rename symbol "{{name}}" for its domain role; "shape" describes structure rather than ownership.',
+        "Rename symbol '{{name}}' for its domain role; 'shape' describes structure rather than ownership.",
     },
     type: "problem",
   },

@@ -75,8 +75,9 @@ function shouldReportType(node: ESTree.TSType, environment: TypeEnvironment): bo
   if (classifyUnsafeDictionary(node, environment) === null) return false;
   let current: ESTree.Node | null = node.parent;
   while (current !== null && current.type !== "Program") {
-    if (isTypeNode(current) && classifyUnsafeDictionary(current, environment) !== null)
+    if (isTypeNode(current) && classifyUnsafeDictionary(current, environment) !== null) {
       return false;
+    }
     current = current.parent;
   }
   return true;
@@ -105,8 +106,9 @@ export const noUnsafeDictionaryTypeRule = defineRule({
           environment === null ||
           node.typeAnnotation === null ||
           node.parent.type === "TSTypeLiteral"
-        )
+        ) {
           return;
+        }
         const unsafe = classifyUnsafeDictionaryValue(
           node.typeAnnotation.typeAnnotation,
           environment,

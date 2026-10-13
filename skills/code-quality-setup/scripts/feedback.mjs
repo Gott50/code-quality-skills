@@ -167,18 +167,18 @@ function redactValue(value, ctx) {
 
 function buildPayload(ctx) {
   return {
+    failure: {
+      error: redactText(ctx.error, ctx),
+      planExcerpt: redactSource(redactText(ctx.planExcerpt, ctx)),
+      recipe: ctx.recipe,
+    },
+    generatedAt: ctx.generatedAt,
+    packages: ctx.packages === null ? null : redactValue(ctx.packages, ctx),
+    redactions: ["absolute paths", "package names", "source"],
     schemaVersion: SCHEMA_VERSION,
     skill: { name: SKILL_NAME, version: ctx.skillVersion },
     stack: ctx.stack === null ? null : redactValue(ctx.stack, ctx),
-    packages: ctx.packages === null ? null : redactValue(ctx.packages, ctx),
     stackError: ctx.stackError === null ? null : redactText(ctx.stackError, ctx),
-    failure: {
-      recipe: ctx.recipe,
-      error: redactText(ctx.error, ctx),
-      planExcerpt: redactSource(redactText(ctx.planExcerpt, ctx)),
-    },
-    redactions: ["absolute paths", "package names", "source"],
-    generatedAt: ctx.generatedAt,
   };
 }
 
@@ -206,7 +206,7 @@ function renderReport(payload) {
     out.push("");
   }
   out.push("```json");
-  out.push(JSON.stringify({ stack: payload.stack, packages: payload.packages }, null, 2));
+  out.push(JSON.stringify({ packages: payload.packages, stack: payload.stack }, null, 2));
   out.push("```");
   out.push("");
   out.push("### Plan excerpt");
@@ -260,9 +260,9 @@ function readProposal(recipePath, libraryDir) {
         `--proposal recipe "${id}" names a template that does not exist: ${rel} (looked in ${templateRoot})`,
       );
     }
-    templates.push({ path: rel, content: readFileSync(tplPath, "utf8") });
+    templates.push({ content: readFileSync(tplPath, "utf8"), path: rel });
   }
-  return { id, path: recipePath, content, templates };
+  return { content, id, path: recipePath, templates };
 }
 
 // The proposal payload mirrors the failure payload's top-level keys and replaces `failure` with
@@ -273,23 +273,23 @@ function readProposal(recipePath, libraryDir) {
 // machine-specific part — is redacted, exactly as in a failure report.
 function buildProposalPayload(ctx) {
   return {
-    schemaVersion: SCHEMA_VERSION,
-    type: "proposal",
-    skill: { name: SKILL_NAME, version: ctx.skillVersion },
+    generatedAt: ctx.generatedAt,
+    packages: ctx.packages === null ? null : redactValue(ctx.packages, ctx),
     proposal: {
+      rationale: ctx.rationale,
       recipe: {
+        content: ctx.proposal.content,
         id: ctx.proposal.id,
         path: ctx.proposal.path,
-        content: ctx.proposal.content,
       },
-      templates: ctx.proposal.templates.map((t) => ({ path: t.path, content: t.content })),
-      rationale: ctx.rationale,
+      templates: ctx.proposal.templates.map((t) => ({ content: t.content, path: t.path })),
     },
-    stack: ctx.stack === null ? null : redactValue(ctx.stack, ctx),
-    packages: ctx.packages === null ? null : redactValue(ctx.packages, ctx),
-    stackError: ctx.stackError === null ? null : redactText(ctx.stackError, ctx),
     redactions: ["absolute paths", "package names"],
-    generatedAt: ctx.generatedAt,
+    schemaVersion: SCHEMA_VERSION,
+    skill: { name: SKILL_NAME, version: ctx.skillVersion },
+    stack: ctx.stack === null ? null : redactValue(ctx.stack, ctx),
+    stackError: ctx.stackError === null ? null : redactText(ctx.stackError, ctx),
+    type: "proposal",
   };
 }
 
@@ -347,7 +347,7 @@ function renderProposalReport(payload) {
     out.push("");
   }
   out.push("```json");
-  out.push(JSON.stringify({ stack: payload.stack, packages: payload.packages }, null, 2));
+  out.push(JSON.stringify({ packages: payload.packages, stack: payload.stack }, null, 2));
   out.push("```");
   out.push("");
   out.push(`_Redacted: ${payload.redactions.join(", ")}._`);
@@ -429,17 +429,17 @@ function buildFiling({ title, body, labels, reportFile, ghAvailable }) {
   const url = buildUrl(title, body, labels);
   const urlTooLong = url.length > MAX_URL_LENGTH;
   const filing = {
-    destination: DESTINATION,
-    labels,
-    title,
     body,
+    destination: DESTINATION,
+    ghAvailable,
+    ghCommand: null,
+    labels,
+    reportFile: null,
+    title,
+    truncated: false,
     url,
     urlLength: url.length,
     urlTooLong,
-    truncated: false,
-    ghAvailable,
-    ghCommand: null,
-    reportFile: null,
   };
   if (urlTooLong && !ghAvailable) {
     // The URL is the only path and it does not fit: truncate it and attach the full report.
@@ -486,21 +486,21 @@ function renderOutput(report, filing) {
 
 function parseArgs(argv) {
   const opts = {
-    projectDir: ".",
-    recipe: null,
     error: null,
     errorFile: null,
+    gh: null,
+    help: false,
+    json: false,
+    library: null,
     planExcerpt: null,
     planExcerptFile: null,
+    projectDir: ".",
     proposal: null,
     rationale: null,
     rationaleFile: null,
-    stack: null,
-    library: null,
+    recipe: null,
     skillVersion: null,
-    json: false,
-    gh: null,
-    help: false,
+    stack: null,
   };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
@@ -557,13 +557,13 @@ function runDetector(projectDir, library) {
   if (res.error || res.status !== 0) {
     const detail =
       (res.stderr || res.error?.message || "").trim() || `detect.mjs exited ${res.status}`;
-    return { stack: null, packages: null, error: detail };
+    return { error: detail, packages: null, stack: null };
   }
   try {
     const report = JSON.parse(res.stdout);
-    return { stack: report.stack ?? null, packages: report.packages ?? null, error: null };
+    return { error: null, packages: report.packages ?? null, stack: report.stack ?? null };
   } catch (err) {
-    return { stack: null, packages: null, error: `detect.mjs output is not JSON: ${err.message}` };
+    return { error: `detect.mjs output is not JSON: ${err.message}`, packages: null, stack: null };
   }
 }
 
@@ -660,14 +660,14 @@ function main() {
   }
 
   const ctx = {
-    roots: projectRoots(opts.projectDir),
-    packageNames: packageNames(packages),
-    stack,
-    packages,
-    stackError,
-    skillVersion: opts.skillVersion ?? doc.skill?.version ?? SKILL_VERSION,
     generatedAt: new Date().toISOString(),
     ghAvailable: opts.gh ?? ghAvailable(),
+    packageNames: packageNames(packages),
+    packages,
+    roots: projectRoots(opts.projectDir),
+    skillVersion: opts.skillVersion ?? doc.skill?.version ?? SKILL_VERSION,
+    stack,
+    stackError,
   };
 
   if (isProposal) {
@@ -679,14 +679,14 @@ function main() {
     const payload = buildProposalPayload(ctx);
     const body = renderProposalReport(payload);
     const filing = buildFiling({
-      title: buildProposalTitle(payload),
       body,
+      ghAvailable: ctx.ghAvailable,
       labels: PROPOSAL_LABELS,
       reportFile: PROPOSAL_REPORT_FILE,
-      ghAvailable: ctx.ghAvailable,
+      title: buildProposalTitle(payload),
     });
     if (opts.json) {
-      process.stdout.write(`${JSON.stringify({ payload, filing }, null, 2)}\n`);
+      process.stdout.write(`${JSON.stringify({ filing, payload }, null, 2)}\n`);
       return;
     }
     process.stdout.write(`${renderOutput(body, filing)}\n`);
@@ -703,15 +703,15 @@ function main() {
   const payload = buildPayload(ctx);
   const body = renderReport(payload);
   const filing = buildFiling({
-    title: buildTitle(payload),
     body,
+    ghAvailable: ctx.ghAvailable,
     labels: LABELS,
     reportFile: REPORT_FILE,
-    ghAvailable: ctx.ghAvailable,
+    title: buildTitle(payload),
   });
 
   if (opts.json) {
-    process.stdout.write(`${JSON.stringify({ payload, filing }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ filing, payload }, null, 2)}\n`);
     return;
   }
   process.stdout.write(`${renderOutput(body, filing)}\n`);

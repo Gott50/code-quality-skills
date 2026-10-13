@@ -33,9 +33,9 @@ function resolveLibraryDir(flag) {
 // "`floor` — the gate's ratchet"): the four unified-baseline gates, or
 // fallow's own two. A static string-keyed membership table.
 const FLOOR_GATES = {
+  coverage: true,
   "fallow-dead-code": true,
   "fallow-health": true,
-  coverage: true,
   lint: true,
   mutation: true,
   typecheck: true,
@@ -100,24 +100,24 @@ function loadRecipes(dir, { optional = false, source = "library" } = {}) {
       }
       const body = text.slice(text.indexOf("\n---", 3) + 4);
       return {
-        id: fm.id,
-        error: null,
-        source,
-        libraryDir: dir,
-        title: fm.title ?? fm.id,
-        purpose: fm.purpose ?? "",
-        when: fm.when ?? {},
+        commands: fm.commands ?? [],
         conflicts: fm.conflicts ?? {},
         cost: fm.cost ?? "fast",
-        priority: fm.priority ?? 0,
+        error: null,
         files: fm.files ?? [],
-        commands: fm.commands ?? [],
         gates: fm.gates ?? [],
-        verify: fm.verify ?? [],
+        id: fm.id,
+        libraryDir: dir,
+        priority: fm.priority ?? 0,
+        purpose: fm.purpose ?? "",
+        source,
+        title: fm.title ?? fm.id,
         undo: extractUndo(body, label),
+        verify: fm.verify ?? [],
+        when: fm.when ?? {},
       };
     } catch (err) {
-      return { id: stem, error: err.message, source, libraryDir: dir };
+      return { error: err.message, id: stem, libraryDir: dir, source };
     }
   });
 }
@@ -182,7 +182,7 @@ function isFile(path) {
 // `javascript: true` for a repo whose only `.mjs` is this script.
 function walk(dir, { maxDepth = 6, maxEntries = 20000 } = {}) {
   const out = [];
-  const queue = [{ abs: dir, rel: "", depth: 0 }];
+  const queue = [{ abs: dir, depth: 0, rel: "" }];
   while (queue.length > 0 && out.length < maxEntries) {
     const { abs, rel, depth } = queue.shift();
     let entries;
@@ -195,7 +195,7 @@ function walk(dir, { maxDepth = 6, maxEntries = 20000 } = {}) {
       const childRel = rel === "" ? e.name : `${rel}/${e.name}`;
       if (e.isDirectory()) {
         if (SKIP_DIRS.has(e.name) || e.name.startsWith(".") || depth >= maxDepth) continue;
-        queue.push({ abs: join(abs, e.name), rel: childRel, depth: depth + 1 });
+        queue.push({ abs: join(abs, e.name), depth: depth + 1, rel: childRel });
       } else if (e.isFile()) {
         out.push(childRel);
       }
@@ -229,7 +229,7 @@ function expandMemberGlobs(root, patterns) {
   const includes = patterns.filter((p) => !p.startsWith("!")).map((p) => globToRegExp(p));
   const excludes = patterns.filter((p) => p.startsWith("!")).map((p) => globToRegExp(p.slice(1)));
   const dirs = [];
-  const queue = [{ abs: root, rel: "", depth: 0 }];
+  const queue = [{ abs: root, depth: 0, rel: "" }];
   while (queue.length > 0) {
     const { abs, rel, depth } = queue.shift();
     let entries;
@@ -242,7 +242,7 @@ function expandMemberGlobs(root, patterns) {
       if (!e.isDirectory()) continue;
       if (SKIP_DIRS.has(e.name) || e.name.startsWith(".") || depth >= 4) continue;
       const childRel = rel === "" ? e.name : `${rel}/${e.name}`;
-      queue.push({ abs: join(abs, e.name), rel: childRel, depth: depth + 1 });
+      queue.push({ abs: join(abs, e.name), depth: depth + 1, rel: childRel });
       if (!includes.some((r) => r.test(childRel))) continue;
       if (excludes.some((r) => r.test(childRel))) continue;
       if (isFile(join(abs, e.name, "package.json"))) dirs.push(childRel);
@@ -283,17 +283,17 @@ const LOCKFILES = [
 
 function detectPackageManager(root, rootManifest) {
   for (const [file, name] of LOCKFILES) {
-    if (isFile(join(root, file))) return { name, source: "lockfile", evidence: file };
+    if (isFile(join(root, file))) return { evidence: file, name, source: "lockfile" };
   }
   const declared = rootManifest?.packageManager;
   if (typeof declared === "string" && declared !== "") {
     return {
+      evidence: `package.json#packageManager = ${declared}`,
       name: declared.split("@")[0],
       source: "packageManager-field",
-      evidence: `package.json#packageManager = ${declared}`,
     };
   }
-  return { name: null, source: null, evidence: null };
+  return { evidence: null, name: null, source: null };
 }
 
 // `rootPrefix` is the relative path from the member back to the workspace root (`../..` for
@@ -304,7 +304,7 @@ function memberEntry(root, path) {
     .split("/")
     .map(() => "..")
     .join("/");
-  return { path, name: readJson(join(root, path, "package.json"))?.name ?? null, rootPrefix };
+  return { name: readJson(join(root, path, "package.json"))?.name ?? null, path, rootPrefix };
 }
 
 function detectWorkspace(root, rootManifest, manager) {
@@ -313,10 +313,10 @@ function detectWorkspace(root, rootManifest, manager) {
     const patterns = readPnpmWorkspace(pnpmFile) ?? [];
     const members = expandMemberGlobs(root, patterns).map((path) => memberEntry(root, path));
     return {
-      kind: members.length > 0 ? "workspace" : "single",
       declaration: "pnpm-workspace.yaml",
-      patterns,
+      kind: members.length > 0 ? "workspace" : "single",
       members,
+      patterns,
     };
   }
   const ws = rootManifest?.workspaces;
@@ -324,13 +324,13 @@ function detectWorkspace(root, rootManifest, manager) {
   if (patterns && patterns.length > 0) {
     const members = expandMemberGlobs(root, patterns).map((path) => memberEntry(root, path));
     return {
-      kind: members.length > 0 ? "workspace" : "single",
       declaration: "package.json#workspaces",
-      patterns,
+      kind: members.length > 0 ? "workspace" : "single",
       members,
+      patterns,
     };
   }
-  return { kind: "single", declaration: null, patterns: [], members: [] };
+  return { declaration: null, kind: "single", members: [], patterns: [] };
 }
 
 // `extends` chains are followed for relative specifiers only; a package specifier needs
@@ -345,9 +345,9 @@ function resolveTsconfigFile(file, base, seen) {
   if (!cfg) {
     return {
       configFile: rel,
+      solutionStyle: false,
       strict: null,
       strictSource: null,
-      solutionStyle: false,
       unresolvedExtends: [`${rel} is not valid JSON`],
     };
   }
@@ -371,9 +371,9 @@ function resolveTsconfigFile(file, base, seen) {
     Object.keys(own).length === 0 && Array.isArray(cfg.references) && cfg.references.length > 0;
   return {
     configFile: rel,
+    solutionStyle,
     strict: typeof own.strict === "boolean" ? own.strict : (inherited?.strict ?? null),
     strictSource: typeof own.strict === "boolean" ? rel : (inherited?.strictSource ?? null),
-    solutionStyle,
     unresolvedExtends: [...unresolvedExtends, ...(inherited?.unresolvedExtends ?? [])],
   };
 }
@@ -400,9 +400,9 @@ function detectLanguages(root, rootManifest, tsconfig) {
   const hasJs = [...exts].some((e) => [".js", ".jsx", ".mjs", ".cjs"].includes(e));
   const deps = { ...(rootManifest?.dependencies ?? {}), ...(rootManifest?.devDependencies ?? {}) };
   return {
-    typescript: hasTs || "typescript" in deps || tsconfig !== null,
     javascript: hasJs,
     sourceExtensions: [...exts].filter((e) => SOURCE_EXT.has(e)).sort(),
+    typescript: hasTs || "typescript" in deps || tsconfig !== null,
   };
 }
 
@@ -410,13 +410,13 @@ function detectLanguages(root, rootManifest, tsconfig) {
 // packages that do state one.
 function aggregateStrictness(rootTsconfig, packages) {
   if (rootTsconfig && typeof rootTsconfig.strict === "boolean") {
-    return { value: rootTsconfig.strict, source: rootTsconfig.configFile };
+    return { source: rootTsconfig.configFile, value: rootTsconfig.strict };
   }
   const stated = packages.map((p) => p.typescript?.strict).filter((s) => typeof s === "boolean");
-  if (stated.length === 0) return { value: "unknown", source: null };
-  if (stated.every(Boolean)) return { value: true, source: "members" };
-  if (stated.every((s) => !s)) return { value: false, source: "members" };
-  return { value: "mixed", source: "members" };
+  if (stated.length === 0) return { source: null, value: "unknown" };
+  if (stated.every(Boolean)) return { source: "members", value: true };
+  if (stated.every((s) => !s)) return { source: "members", value: false };
+  return { source: "members", value: "mixed" };
 }
 
 // ---------------------------------------------------------------------------
@@ -424,6 +424,11 @@ function aggregateStrictness(rootTsconfig, packages) {
 // ---------------------------------------------------------------------------
 
 const TOOLING = {
+  ci: [
+    ["github-actions", [".github/workflows"]],
+    ["gitlab-ci", [".gitlab-ci.yml"]],
+    ["circleci", [".circleci/config.yml"]],
+  ],
   formatter: [
     ["biome", ["biome.json", "biome.jsonc"]],
     [
@@ -445,6 +450,12 @@ const TOOLING = {
       ],
     ],
     ["dprint", ["dprint.json", ".dprint.json", "dprint.jsonc"]],
+  ],
+  gitHooks: [
+    ["husky", [".husky"]],
+    ["lefthook", ["lefthook.yml", "lefthook.yaml", ".lefthook.yml", ".lefthook.yaml"]],
+    ["pre-commit", [".pre-commit-config.yaml", ".pre-commit-config.yml"]],
+    ["simple-git-hooks", ["simple-git-hooks.json"]],
   ],
   linter: [
     ["biome", ["biome.json", "biome.jsonc"]],
@@ -475,10 +486,20 @@ const TOOLING = {
       ],
     ],
   ],
-  typechecker: [
+  mutation: [
     [
-      "typescript",
-      ["tsconfig.json", "tsconfig.base.json", "tsconfig.settings.json", "jsconfig.json"],
+      "stryker",
+      [
+        "stryker.conf.json",
+        "stryker.conf.js",
+        "stryker.conf.mjs",
+        "stryker.conf.cjs",
+        "stryker.config.json",
+        "stryker.config.js",
+        "stryker.config.mjs",
+        ".strykerrc",
+        ".strykerrc.json",
+      ],
     ],
   ],
   testRunner: [
@@ -506,32 +527,11 @@ const TOOLING = {
     ],
     ["bun-test", ["bunfig.toml"]],
   ],
-  mutation: [
+  typechecker: [
     [
-      "stryker",
-      [
-        "stryker.conf.json",
-        "stryker.conf.js",
-        "stryker.conf.mjs",
-        "stryker.conf.cjs",
-        "stryker.config.json",
-        "stryker.config.js",
-        "stryker.config.mjs",
-        ".strykerrc",
-        ".strykerrc.json",
-      ],
+      "typescript",
+      ["tsconfig.json", "tsconfig.base.json", "tsconfig.settings.json", "jsconfig.json"],
     ],
-  ],
-  gitHooks: [
-    ["husky", [".husky"]],
-    ["lefthook", ["lefthook.yml", "lefthook.yaml", ".lefthook.yml", ".lefthook.yaml"]],
-    ["pre-commit", [".pre-commit-config.yaml", ".pre-commit-config.yml"]],
-    ["simple-git-hooks", ["simple-git-hooks.json"]],
-  ],
-  ci: [
-    ["github-actions", [".github/workflows"]],
-    ["gitlab-ci", [".gitlab-ci.yml"]],
-    ["circleci", [".circleci/config.yml"]],
   ],
 };
 
@@ -568,7 +568,7 @@ function detectTooling(dir) {
           files.push(c);
         }
       }
-      if (files.length > 0) hits.push({ tool, files });
+      if (files.length > 0) hits.push({ files, tool });
     }
     found[category] = hits;
   }
@@ -576,11 +576,11 @@ function detectTooling(dir) {
   const coverage = [];
   for (const c of COVERAGE_RC)
     if (isFile(join(dir, c)))
-      coverage.push({ tool: c.replace(/^\./, "").replace(/rc.*$/, ""), files: [c] });
+      coverage.push({ files: [c], tool: c.replace(/^\./, "").replace(/rc.*$/, "") });
   for (const c of COVERAGE_HOSTS) {
     const text = readText(join(dir, c));
     if (text !== null && /\bcoverage\b/.test(text))
-      coverage.push({ tool: c.split(".")[0], files: [c] });
+      coverage.push({ files: [c], tool: c.split(".")[0] });
   }
   found.coverage = coverage;
 
@@ -590,7 +590,7 @@ function detectTooling(dir) {
       .filter((n) => !n.endsWith(".sample"))
       .sort();
     if (live.length > 0)
-      found.gitHooks.push({ tool: "git-hooks-path", files: live.map((n) => `.git/hooks/${n}`) });
+      found.gitHooks.push({ files: live.map((n) => `.git/hooks/${n}`), tool: "git-hooks-path" });
   }
   return found;
 }
@@ -599,14 +599,14 @@ function readPackage(dir, relPath, role) {
   const manifest = readJson(join(dir, "package.json"));
   const deps = { ...(manifest?.dependencies ?? {}), ...(manifest?.devDependencies ?? {}) };
   return {
-    path: relPath,
-    name: manifest?.name ?? null,
-    role,
-    hasManifest: manifest !== null,
-    scripts: Object.keys(manifest?.scripts ?? {}).sort(),
     dependencies: Object.keys(deps).sort(),
-    typescript: resolveTsconfig(dir),
+    hasManifest: manifest !== null,
+    name: manifest?.name ?? null,
+    path: relPath,
+    role,
+    scripts: Object.keys(manifest?.scripts ?? {}).sort(),
     tooling: detectTooling(dir),
+    typescript: resolveTsconfig(dir),
   };
 }
 
@@ -616,52 +616,52 @@ function readPackage(dir, relPath, role) {
 
 function predicateHolds(pred, ctx) {
   if (pred === null || typeof pred !== "object")
-    return { pass: false, detail: `unreadable predicate ${JSON.stringify(pred)}` };
+    return { detail: `unreadable predicate ${JSON.stringify(pred)}`, pass: false };
   if ("file" in pred) {
     const ok = existsSync(join(ctx.root, pred.file));
     return {
-      pass: ok,
       detail: `${pred.file} ${ok ? "exists" : "is absent"} at the workspace root`,
+      pass: ok,
     };
   }
   if ("dep" in pred) {
     const owners = ctx.packages.filter((p) => p.dependencies.includes(pred.dep)).map((p) => p.path);
     return {
-      pass: owners.length > 0,
       detail:
         owners.length > 0
           ? `${pred.dep} declared in ${owners.join(", ")}`
           : `${pred.dep} is not declared in any manifest`,
+      pass: owners.length > 0,
     };
   }
   if ("script" in pred) {
     const ok = ctx.rootPackage.scripts.includes(pred.script);
     return {
-      pass: ok,
       detail: `root package.json ${ok ? "has" : "has no"} script "${pred.script}"`,
+      pass: ok,
     };
   }
   if ("recipe" in pred) {
     if (pred.recipe === "*") {
       const others = [...ctx.selection].filter((id) => id !== ctx.recipeId);
       return {
-        pass: others.length > 0,
         detail:
           others.length > 0
             ? `other recipes selected: ${others.join(", ")}`
             : "no other recipe is selected",
+        pass: others.length > 0,
       };
     }
     const ok = ctx.selection.has(pred.recipe);
-    return { pass: ok, detail: `recipe "${pred.recipe}" ${ok ? "is" : "is not"} selected` };
+    return { detail: `recipe "${pred.recipe}" ${ok ? "is" : "is not"} selected`, pass: ok };
   }
-  return { pass: false, detail: `unknown predicate ${JSON.stringify(pred)}` };
+  return { detail: `unknown predicate ${JSON.stringify(pred)}`, pass: false };
 }
 
 function evaluateWhen(recipe, ctx) {
   const when = recipe.when ?? {};
   const reasons = [];
-  const push = (predicate, pass, detail) => reasons.push({ predicate, pass, detail });
+  const push = (predicate, pass, detail) => reasons.push({ detail, pass, predicate });
 
   if (when.language) {
     const hit = when.language.filter((l) => ctx.languages[l]);
@@ -705,7 +705,7 @@ function selectRecipes(recipes, ctx) {
   const byId = new Map(usable.map((r) => [r.id, r]));
   const base = new Set();
   for (const r of usable) {
-    const { applicable } = evaluateWhen(r, { ...ctx, selection: new Set(), recipeId: r.id });
+    const { applicable } = evaluateWhen(r, { ...ctx, recipeId: r.id, selection: new Set() });
     if (applicable) base.add(r.id);
   }
 
@@ -714,7 +714,7 @@ function selectRecipes(recipes, ctx) {
     let changed = false;
     for (const r of usable) {
       if (selection.has(r.id)) continue;
-      const { applicable } = evaluateWhen(r, { ...ctx, selection, recipeId: r.id });
+      const { applicable } = evaluateWhen(r, { ...ctx, recipeId: r.id, selection });
       if (applicable) {
         selection.add(r.id);
         changed = true;
@@ -746,7 +746,7 @@ function selectRecipes(recipes, ctx) {
     }
     for (const id of [...selection]) {
       const r = byId.get(id);
-      const { applicable } = evaluateWhen(r, { ...ctx, selection, recipeId: r.id });
+      const { applicable } = evaluateWhen(r, { ...ctx, recipeId: r.id, selection });
       if (!applicable) {
         selection.delete(id);
         heldBack.push({ id, reason: "a recipe it requires is no longer selected" });
@@ -755,7 +755,7 @@ function selectRecipes(recipes, ctx) {
     }
     if (!changed) break;
   }
-  return { selection, heldBack };
+  return { heldBack, selection };
 }
 
 // Project-local evidence only: a dependency or a config file in the repo. A binary on PATH is not a
@@ -774,7 +774,7 @@ function detectToolCollisions(recipes, selection, ctx) {
             if (h.tool === tool) evidence.push(`${where} ${category}: ${h.files.join(", ")}`);
         }
       }
-      if (evidence.length > 0) collisions.push({ recipe: r.id, tool, evidence });
+      if (evidence.length > 0) collisions.push({ evidence, recipe: r.id, tool });
     }
   }
   return collisions;
@@ -814,56 +814,56 @@ function detect(projectDir, libraryDir) {
     `${a.id}.md` < `${b.id}.md` ? -1 : `${a.id}.md` > `${b.id}.md` ? 1 : 0,
   );
   const ctx = {
-    root,
     languages,
     packageManager,
-    workspace,
     packages,
+    recipeId: null,
+    root,
     rootPackage,
     selection: new Set(),
-    recipeId: null,
+    workspace,
   };
 
   const { selection, heldBack } = selectRecipes(recipes, ctx);
   const collisions = detectToolCollisions(recipes, selection, ctx);
 
   const matrix = recipes.map((r) => {
-    if (r.error !== null) return { id: r.id, error: r.error, source: r.source };
-    const { applicable, reasons } = evaluateWhen(r, { ...ctx, selection, recipeId: r.id });
+    if (r.error !== null) return { error: r.error, id: r.id, source: r.source };
+    const { applicable, reasons } = evaluateWhen(r, { ...ctx, recipeId: r.id, selection });
     return {
-      id: r.id,
-      error: null,
-      source: r.source,
-      libraryDir: r.libraryDir,
-      title: r.title,
-      purpose: r.purpose,
-      cost: r.cost,
-      priority: r.priority,
       applicable,
-      selected: selection.has(r.id),
-      reasons,
-      files: r.files,
       commands: r.commands,
-      gates: r.gates,
-      verify: r.verify,
-      undo: r.undo,
       conflicts: r.conflicts,
+      cost: r.cost,
+      error: null,
+      files: r.files,
+      gates: r.gates,
+      id: r.id,
+      libraryDir: r.libraryDir,
+      priority: r.priority,
+      purpose: r.purpose,
+      reasons,
+      selected: selection.has(r.id),
+      source: r.source,
+      title: r.title,
+      undo: r.undo,
+      verify: r.verify,
     };
   });
 
   return {
-    schemaVersion: SCHEMA_VERSION,
-    root,
-    stack: { languages, packageManager, workspace },
+    collisions,
+    heldBack,
     packages,
     recipes: matrix,
+    root,
+    schemaVersion: SCHEMA_VERSION,
     selection: [...selection].sort(
       (a, b) =>
         (recipes.find((r) => r.id === b).priority ?? 0) -
         (recipes.find((r) => r.id === a).priority ?? 0),
     ),
-    heldBack,
-    collisions,
+    stack: { languages, packageManager, workspace },
   };
 }
 

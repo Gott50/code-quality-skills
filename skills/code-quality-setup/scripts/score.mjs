@@ -24,13 +24,13 @@ const BASELINE_NAME = ".code-quality-baseline.json";
 // The artifact each gate writes, relative to the project root. The first three are the paths the
 // recipes already fix; the last four are captured stdout (those tools write no file of their own).
 export const ARTIFACTS = {
-  lcov: "coverage/lcov.info",
+  fallowDeadCode: "reports/fallow-dead-code.json",
+  fallowHealth: "reports/fallow-health.json",
   istanbul: "coverage/coverage-final.json",
+  lcov: "coverage/lcov.info",
   mutation: "reports/mutation/report.json",
   oxlint: "reports/oxlint.json",
   tsc: "reports/tsc.log",
-  fallowHealth: "reports/fallow-health.json",
-  fallowDeadCode: "reports/fallow-dead-code.json",
 };
 
 // The gates the unified baseline holds. fallow's floors stay in fallow's own baseline files
@@ -111,13 +111,13 @@ export function readFallowHealth(doc) {
     .map((f) => f?.crap_max)
     .filter((n) => typeof n === "number");
   return {
-    score: typeof hs.score === "number" ? hs.score : null,
+    crapMax: craps.length ? Math.max(...craps) : null,
     grade: typeof hs.grade === "string" ? hs.grade : null,
     maintainability:
       typeof doc?.summary?.average_maintainability === "number"
         ? doc.summary.average_maintainability
         : null,
-    crapMax: craps.length ? Math.max(...craps) : null,
+    score: typeof hs.score === "number" ? hs.score : null,
   };
 }
 
@@ -164,7 +164,7 @@ export function measure(root, bases) {
     try {
       return fn();
     } catch (err) {
-      errors.push({ gate, error: String(err?.message ?? err) });
+      errors.push({ error: String(err?.message ?? err), gate });
       return null;
     }
   };
@@ -175,16 +175,16 @@ export function measure(root, bases) {
   const istanbulPath = join(root, ARTIFACTS.istanbul);
   if (existsSync(lcovPath)) {
     const files = read("coverage", () => readLcov(readFileSync(lcovPath, "utf8")));
-    if (files) gates.coverage = { source: "lcov", global: sumCoverage(files), files };
+    if (files) gates.coverage = { files, global: sumCoverage(files), source: "lcov" };
   } else if (existsSync(istanbulPath)) {
     const files = read("coverage", () => readIstanbul(json(istanbulPath), bases));
-    if (files) gates.coverage = { source: "istanbul", global: sumCoverage(files), files };
+    if (files) gates.coverage = { files, global: sumCoverage(files), source: "istanbul" };
   }
 
   const mutationPath = join(root, ARTIFACTS.mutation);
   if (existsSync(mutationPath)) {
     const files = read("mutation", () => readMutation(json(mutationPath)));
-    if (files) gates.mutation = { global: sumMutation(files), files };
+    if (files) gates.mutation = { files, global: sumMutation(files) };
   }
 
   const oxlintPath = join(root, ARTIFACTS.oxlint);
@@ -211,7 +211,7 @@ export function measure(root, bases) {
     if (g) gates.fallowDeadCode = g;
   }
 
-  return { gates, errors };
+  return { errors, gates };
 }
 
 // ---------------------------------------------------------------------------
@@ -284,7 +284,7 @@ function minCount(cur, rec) {
 }
 
 function baselineFrom(gates, versions, recorded) {
-  const out = { schemaVersion: SCHEMA_VERSION, versions, gates: {} };
+  const out = { gates: {}, schemaVersion: SCHEMA_VERSION, versions };
   const rg = recorded?.gates ?? {};
   for (const gate of BASELINE_GATES) {
     const g = gates[gate];
@@ -296,13 +296,13 @@ function baselineFrom(gates, versions, recorded) {
     }
     if (gate === "coverage") {
       out.gates[gate] = {
-        global: maxCoverageFrac(g.global, r?.global),
         files: mergeCoverageFiles(g.files, r?.files),
+        global: maxCoverageFrac(g.global, r?.global),
       };
     } else if (gate === "mutation") {
       out.gates[gate] = {
-        global: maxFrac(g.global, r?.global),
         files: mergeFracFiles(g.files, r?.files),
+        global: maxFrac(g.global, r?.global),
       };
     } else {
       out.gates[gate] = { global: minCount(g.global, r?.global) };
@@ -347,7 +347,7 @@ function fracRegressions(cur, floor) {
   for (const [metric, f] of metricsOf(floor)) {
     const c = metric === "" ? cur : cur?.[metric];
     if (!c) continue;
-    if (!atLeast(c, f)) out.push({ metric: metric || null, floor: f, current: c });
+    if (!atLeast(c, f)) out.push({ current: c, floor: f, metric: metric || null });
   }
   return out;
 }
@@ -365,15 +365,15 @@ export function compare(gates, baseline) {
     const cur = gates[gate];
     if (!floor || !cur) continue;
     for (const r of fracRegressions(cur.global, floor.global))
-      regressions.push({ gate, file: null, ...r });
+      regressions.push({ file: null, gate, ...r });
     for (const [file, f] of Object.entries(floor.files ?? {})) {
       const c = cur.files[file];
       if (!c) continue;
-      for (const r of fracRegressions(c, f)) regressions.push({ gate, file, ...r });
+      for (const r of fracRegressions(c, f)) regressions.push({ file, gate, ...r });
     }
     for (const [file, c] of Object.entries(cur.files)) {
       if (floor.files?.[file]) continue;
-      for (const r of fracRegressions(c, floor.global)) regressions.push({ gate, file, ...r });
+      for (const r of fracRegressions(c, floor.global)) regressions.push({ file, gate, ...r });
     }
   }
 
@@ -386,7 +386,7 @@ export function compare(gates, baseline) {
       typeof cur.global === "number" &&
       cur.global > floor.global
     ) {
-      regressions.push({ gate, file: null, floor: floor.global, current: cur.global });
+      regressions.push({ current: cur.global, file: null, floor: floor.global, gate });
     }
   }
 
@@ -400,7 +400,7 @@ function versionMismatches(recorded, current) {
   for (const tool of Object.keys(recorded ?? {})) {
     const r = recorded[tool];
     const c = current[tool];
-    if (r != null && c != null && r !== c) out.push({ tool, recorded: r, current: c });
+    if (r != null && c != null && r !== c) out.push({ current: c, recorded: r, tool });
   }
   return out;
 }
@@ -437,14 +437,14 @@ function readPackageVersions(root) {
   const deps = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
   const pm = typeof pkg.packageManager === "string" ? pkg.packageManager : "";
   return {
-    skill: SKILL_VERSION,
     bun: pm.startsWith("bun@") ? pm.slice(4) : readVersionFile(root, ".bun-version"),
-    node: readVersionFile(root, ".node-version"),
-    vitest: deps.vitest ?? null,
-    stryker: deps["@stryker-mutator/core"] ?? null,
-    oxlint: deps.oxlint ?? null,
-    typescript: deps.typescript ?? null,
     fallow: deps.fallow ?? null,
+    node: readVersionFile(root, ".node-version"),
+    oxlint: deps.oxlint ?? null,
+    skill: SKILL_VERSION,
+    stryker: deps["@stryker-mutator/core"] ?? null,
+    typescript: deps.typescript ?? null,
+    vitest: deps.vitest ?? null,
   };
 }
 
@@ -677,22 +677,22 @@ function main() {
   }
 
   const score = {
-    schemaVersion: SCHEMA_VERSION,
-    root,
-    headline: gates.fallowHealth
-      ? { gate: "fallow-health", score: gates.fallowHealth.score, grade: gates.fallowHealth.grade }
-      : null,
-    gates,
     baseline: {
-      present: Boolean(baseline.doc) || raised,
-      path: BASELINE_NAME,
-      schemaVersion: baseline.doc?.schemaVersion ?? (raised ? SCHEMA_VERSION : null),
       error: baseline.error,
+      path: BASELINE_NAME,
+      present: Boolean(baseline.doc) || raised,
+      schemaVersion: baseline.doc?.schemaVersion ?? (raised ? SCHEMA_VERSION : null),
       versionMismatch,
     },
-    verdict: { state, regressions },
     errors,
+    gates,
+    headline: gates.fallowHealth
+      ? { gate: "fallow-health", grade: gates.fallowHealth.grade, score: gates.fallowHealth.score }
+      : null,
     raised,
+    root,
+    schemaVersion: SCHEMA_VERSION,
+    verdict: { regressions, state },
   };
 
   process.stdout.write(json ? canonicalJson(score) : `${renderText(score)}\n`);

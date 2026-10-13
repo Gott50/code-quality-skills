@@ -94,7 +94,7 @@ function uncoveredCategories(report, selectedRecipes) {
       if (unaddressed.length === 0) continue;
       let gap = byCategory.get(category);
       if (!gap) {
-        gap = { tools: new Set(), evidence: [], packages: new Set() };
+        gap = { evidence: [], packages: new Set(), tools: new Set() };
         byCategory.set(category, gap);
       }
       for (const h of unaddressed) {
@@ -105,11 +105,11 @@ function uncoveredCategories(report, selectedRecipes) {
     }
   }
   return [...byCategory].map(([category, gap]) => ({
-    kind: "uncovered-category",
     category,
-    tools: [...gap.tools].sort(),
     evidence: gap.evidence,
+    kind: "uncovered-category",
     packages: [...gap.packages].sort(),
+    tools: [...gap.tools].sort(),
   }));
 }
 
@@ -125,11 +125,11 @@ function onePredicateAway(report) {
     const f = failing[0];
     if (!String(f.predicate).startsWith("requires ")) continue;
     gaps.push({
+      failing: { detail: f.detail, predicate: f.predicate },
       kind: "one-predicate-away",
+      purpose: r.purpose,
       recipe: r.id,
       title: r.title,
-      purpose: r.purpose,
-      failing: { predicate: f.predicate, detail: f.detail },
     });
   }
   return gaps;
@@ -174,11 +174,11 @@ function analyze(projectDir, libraryDir) {
   const report = JSON.parse(stdout);
   const selectedRecipes = (report.recipes ?? []).filter((r) => r.error === null && r.selected);
   return {
-    schemaVersion: SCHEMA_VERSION,
-    root: report.root,
-    libraryDir,
-    selection: report.selection ?? [],
     gaps: rankGaps(report, selectedRecipes),
+    libraryDir,
+    root: report.root,
+    schemaVersion: SCHEMA_VERSION,
+    selection: report.selection ?? [],
   };
 }
 

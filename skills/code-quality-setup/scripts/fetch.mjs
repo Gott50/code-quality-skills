@@ -50,12 +50,12 @@ const NETWORK_TIMEOUT_MS = 30_000;
 
 function parseArgs(argv) {
   const opts = {
-    ref: null,
     cache: null,
-    manifest: null,
-    json: false,
-    noRecord: false,
     help: false,
+    json: false,
+    manifest: null,
+    noRecord: false,
+    ref: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -132,7 +132,7 @@ async function resolveMainSha() {
     // gh missing, unauthenticated, or offline — fall through to the public API
   }
   const res = await fetch(`https://api.github.com/repos/${REPO}/commits/main`, {
-    headers: { "User-Agent": "code-quality-setup", Accept: "application/vnd.github+json" },
+    headers: { Accept: "application/vnd.github+json", "User-Agent": "code-quality-setup" },
     signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`api.github.com returned ${res.status}`);
@@ -255,14 +255,14 @@ function extractLibrary(tar, libraryDir) {
 // Extract into a temp sibling, then rename into place, so a killed run never leaves a partial ref.
 function extractTo(tar, refDir) {
   const tmp = `${refDir}.tmp-${process.pid}`;
-  rmSync(tmp, { recursive: true, force: true });
+  rmSync(tmp, { force: true, recursive: true });
   mkdirSync(tmp, { recursive: true });
   try {
     extractLibrary(tar, join(tmp, LIBRARY_DIR));
-    rmSync(refDir, { recursive: true, force: true });
+    rmSync(refDir, { force: true, recursive: true });
     renameSync(tmp, refDir);
   } catch (err) {
-    rmSync(tmp, { recursive: true, force: true });
+    rmSync(tmp, { force: true, recursive: true });
     throw err;
   }
 }
@@ -377,7 +377,7 @@ function recordLibrary(manifestPath, ref, hash, schemaVersion) {
 function report(ref, cacheRoot, libraryDir, json, hash, schemaVersion) {
   if (json) {
     process.stdout.write(
-      `${JSON.stringify({ ref, cacheDir: cacheRoot, libraryDir, contentHash: hash, schemaVersion })}\n`,
+      `${JSON.stringify({ cacheDir: cacheRoot, contentHash: hash, libraryDir, ref, schemaVersion })}\n`,
     );
     return;
   }
