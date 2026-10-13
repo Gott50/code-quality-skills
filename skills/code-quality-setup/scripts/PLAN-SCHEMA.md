@@ -340,6 +340,17 @@ recipe the manifest does not know is `new`, one the library no longer selects is
 user declined is `declined`. A manifest that is absent, corrupt, or from another `schemaVersion`
 degrades the report to "compare against the current library only" and nothing breaks.
 
+A Files row's verdict may carry a `+update` suffix — `intact+update` (#161). It is an informational
+flag, not a verdict: `plan.mjs` appends it when a manifest is present and the manifest's recorded
+hash for the file no longer matches the current render (`updateAvailable`), so the recorded hash is
+stale — the manifest is behind the library — while the row's own verdict keeps its meaning (a
+hand-edited file reads `drifted+update`). The suffix is appended only when that verdict is not
+`update`: a plain `update` is the Updates section's row, which the apply re-renders. In the row the
+plan produces for an intact file (`intact+update`, e.g. `tsconfig.json`) the file already carries
+the current render, so nothing is written for it and no section names it — the apply only re-records
+the manifest hash. `isUpdateRow` reads the verdict, not the suffix, so the suffix never pulls a row
+into the Updates section.
+
 ## The manifest hash convention
 
 The manifest is written by the apply step (agent-driven; there is no `apply.mjs`), one recipe at a

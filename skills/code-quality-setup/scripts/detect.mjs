@@ -53,11 +53,15 @@ const FLOOR_GATES = {
 function extractUndo(body, label) {
   const m = /^## Undo\s*$([\s\S]*?)(?=^## |\s*$(?![\s\S]))/m.exec(body);
   if (!m) throw new Error(`${label}: no "## Undo" section`);
-  const bullets = m[1]
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter((l) => l.startsWith("- "))
-    .map((l) => l.slice(2).trim());
+  // A bullet may wrap onto continuation lines: any non-blank line that does not open a new `- `
+  // bullet belongs to the bullet above it, joined with a single space. Dropping those lines would
+  // silently truncate the rendered bullet.
+  const bullets = [];
+  for (const raw of m[1].split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.startsWith("- ")) bullets.push(line.slice(2).trim());
+    else if (line !== "" && bullets.length > 0) bullets[bullets.length - 1] += ` ${line}`;
+  }
   if (bullets.length === 0) throw new Error(`${label}: "## Undo" section is empty`);
   return bullets;
 }

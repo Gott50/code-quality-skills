@@ -1,3 +1,4 @@
 # code-quality:biome-assist-npm:start
 node_modules/
+skills-lock.json
 # code-quality:biome-assist-npm:end
