@@ -100,7 +100,7 @@ The first line after the title is the state:
 
 | State | Output |
 |---|---|
-| a plan exists | `**Plan ready** — N recipe(s) selected.` then the sections below; when any block is a duplicate, the line continues ` M block(s) already present — see Pre-existing content.`; when any `create` drift is a loss, it continues ` K file(s) would lose repo content — see Losses.`; when any `create` drift is an update, it continues ` U file(s) carry repo additions — see Updates.` |
+| a plan exists | `**Plan ready** — N recipe(s) selected.` then the sections below; when any block is a duplicate, the line continues ` M block(s) already present — see Pre-existing content.`; when any `create` drift is a loss, it continues ` K file(s) would lose repo content — see Losses.`; when any row is an update, it continues ` U file(s) need the new library render — see Updates.` |
 | already set up | `**Already set up** — N recipe(s) applied, every file intact.` (a manifest is present and every selected recipe is `intact`) |
 | nothing applies (`selection: []`) | `**Nothing applies.**` then each recipe's first failing `reason.detail`; when the blocking reason is the package-manager allowlist, the fix is named — `Run \`bun install\` (or add a \`packageManager\` field to package.json), then re-run.` when no manager is detected, or `package manager \`<name>\` is not covered by any recipe` when one is detected but off the allowlist |
 | unsupported (no TypeScript) | `Unsupported: no TypeScript detected. Nothing to plan.` and stop |
@@ -135,17 +135,19 @@ The first line after the title is the state:
    file carries content the template does not, so overwriting it drops that content (#36). The agent
    MUST NOT overwrite these files without an explicit override (`--force`); `--force` marks them
    overridden (SKILL.md → Apply).
-9. **Updates (create drift — the library's content is merged in, the repo's additions kept)** — every
-   `create` target the repo has extended with **no manifest** (verdict `update`), one
-   `- \`<path>\` (<recipe>) — N key(s)/line(s) the template lacks:` line each followed by the
-   additions as `  - \`<item>\`` bullets. The section is rendered **only when there is an update**, so
-   a repo with a manifest — where the same file reads `loss` — is unchanged. The repo's file carries
-   content the template does not, but with no manifest the plan cannot tell the repo's own additions
-   from the skill's own earlier install; the filesystem is the source of truth (ADR 0001), so the
-   verdict is `update`: the library's content is the target and the repo's additions are preserved by
-   a merge (#90). The agent writes the library's content and re-applies the additions — it MUST NOT
-   overwrite the file verbatim (that drops them) and MUST NOT skip it (that leaves the gate
-   uninstalled). No `--force` is needed (SKILL.md → Apply).
+9. **Updates (the library's content is written, the repo's content kept)** — every row whose verdict
+   is `update`, in either case: a `create` target the repo has extended with **no manifest** (the
+   filesystem verdict), or a file the manifest records as the skill's own content while the library's
+   render moved (the drift verdict). One `- \`<path>\` (<recipe>) — …` line each. The section is
+   rendered **only when there is an update**. In the no-manifest case the repo's file carries content
+   the template does not, and the plan cannot tell the repo's own additions from the skill's own
+   earlier install; the filesystem is the source of truth (ADR 0001), so the verdict is `update`: the
+   library's content is the target and the repo's additions are preserved by a merge (#90) — the line
+   lists the additions as `  - \`<item>\`` bullets. In the manifest-present case the library's render
+   moved and the repo's file is untouched; the line says so and the agent re-renders it from the
+   current library. In both cases the agent MUST NOT overwrite the file verbatim (that drops the
+   repo's content) and MUST NOT skip it (that leaves the gate uninstalled). No `--force` is needed
+   (SKILL.md → Apply).
 10. **Pre-existing content (duplicate blocks)** — every marker `merge` block the target file already
    carries without a marker (verdict `duplicate`), one `- \`<path>\` (<recipe>) — <evidence>` line
    each, or `_None._`. The hand-set-up repo (#35): the harness is there, the manifest is not, so the

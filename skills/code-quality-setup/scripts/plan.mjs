@@ -1556,6 +1556,16 @@ function isLossRow(row) {
   return row.fs.verdict === "loss" && (row.drift === null || row.drift.verdict === "loss");
 }
 
+// A row the Updates section names. Two cases, both "the library's content is written, the repo's
+// content kept": a `create` target the repo has extended with no manifest (fs.verdict `update`,
+// #90), and a file the manifest records as the skill's own content while the library's render moved
+// (drift.verdict `update`). The Files label comes from the drift verdict when a manifest is present
+// and from the filesystem verdict otherwise, so the section must name both — otherwise a row reads
+// `update` while no section names it (#155).
+function isUpdateRow(row) {
+  return row.fs.verdict === "update" || (row.drift !== null && row.drift.verdict === "update");
+}
+
 function verdictLabel(row) {
   if (row.fs.verdict === "duplicate") return "duplicate";
   if (isLossRow(row)) return "loss";
@@ -1584,11 +1594,15 @@ function renderFiles(plan, opts) {
     const w = row.write;
     const scope = w.member ? `${w.scope} (${w.member})` : w.scope;
     const label = verdictLabel(row);
-    // A `create` the apply already merged reads `intact` (#90) while the filesystem verdict is
-    // `loss`; its note ("overwriting drops them") describes the overwrite the apply must not do,
-    // not the state, so it is suppressed. A `patch`/`merge` `intact` keeps its note.
+    // A `create` the apply already merged reads `intact` (#90), or a file the manifest records as
+    // the skill's own content while the library moved reads `update` (drift), while the filesystem
+    // verdict is `loss`; the note ("overwriting drops them") describes the overwrite the apply must
+    // not do, not the state, so it is suppressed. A `patch`/`merge` `intact` keeps its note.
     const note =
-      row.fs.note && !(row.fs.verdict === "loss" && label === "intact") ? ` — ${row.fs.note}` : "";
+      row.fs.note &&
+      !(row.fs.verdict === "loss" && (label === "intact" || row.drift?.verdict === "update"))
+        ? ` — ${row.fs.note}`
+        : "";
     lines.push(`- \`${w.target}\` (${w.action}, ${scope}) — **${label}**${note}`);
     const showDiff =
       opts.diffPath !== null ||
@@ -1660,29 +1674,37 @@ function renderLosses(plan, force) {
   return lines.join("\n");
 }
 
-// A `create` target the repo has extended, with no manifest (#90): the repo's file carries content
-// the template does not, but the plan cannot tell the repo's own additions from the skill's own
-// earlier install — the filesystem is the source of truth (ADR 0001), so the verdict is `update`:
-// the library's content is the target and the repo's additions are preserved by a merge. This
-// section names the additions and the decision, so the agent merges instead of overwriting (which
-// would drop them) or skipping (which would leave the gate uninstalled). It is rendered only when
-// there is an update, so a repo with a manifest — where the same file reads `loss` — is unchanged.
+// The rows the Updates section names (`isUpdateRow`): a `create` target the repo has extended with
+// no manifest (#90), and a file the manifest records as the skill's own content while the library's
+// render moved (the drift `update` state). Both mean the library's content is written and the
+// repo's content is kept — the no-manifest case merges the repo's additions into the library's
+// content, the manifest case re-renders the file the skill wrote. This section names the additions
+// and the decision, so the agent merges instead of overwriting (which would drop them) or skipping
+// (which would leave the gate uninstalled). A `create` row carries the lost items (`fs.lost`); a
+// `merge`/`patch` row has none, so it names the library move instead.
 function renderUpdates(plan) {
-  const rows = plan.fileRows.filter((r) => r.fs.verdict === "update");
+  const rows = plan.fileRows.filter((r) => isUpdateRow(r));
   if (rows.length === 0) return null;
-  const lines = [
-    "## Updates (create drift — the library's content is merged in, the repo's additions kept)",
-    "",
-  ];
+  const lines = ["## Updates (the library's content is written, the repo's content kept)", ""];
   lines.push(
-    "_The repo's file carries content the template does not. Write the library's content and re-apply the repo's additions below — do not overwrite the file verbatim (that drops them) and do not skip it (that leaves the gate uninstalled). The diff shows the library's content against the repo's file; the additions are the lines/keys the template lacks._",
+    "_The library's content is written and the repo's content is kept. A `create` target the repo has extended with no manifest is merged — write the library's content and re-apply the repo's additions below; do not overwrite it verbatim (that drops them). A file the manifest records as the skill's own content is re-rendered because the library's render moved. Do not skip either — that leaves the gate uninstalled. The diff shows the library's content against the repo's file._",
     "",
   );
   for (const row of rows) {
-    lines.push(
-      `- \`${row.write.target}\` (${row.recipeId}) — ${row.fs.lost.length} ${row.fs.unit}(s) the template lacks:`,
-    );
-    for (const l of row.fs.lost) lines.push(`  - \`${l}\``);
+    // The lost items are the repo's additions only in the no-manifest case (fs.verdict `update`):
+    // there the file carries the template's content plus the repo's own lines. A manifest-present
+    // `update` (drift.verdict `update`) is the skill's own recorded content, so its "lost" items are
+    // the previous render's lines, not the repo's — the apply re-renders, it does not re-apply them.
+    if (row.fs.verdict === "update" && row.fs.lost) {
+      lines.push(
+        `- \`${row.write.target}\` (${row.recipeId}) — ${row.fs.lost.length} ${row.fs.unit}(s) the template lacks:`,
+      );
+      for (const l of row.fs.lost) lines.push(`  - \`${l}\``);
+    } else {
+      lines.push(
+        `- \`${row.write.target}\` (${row.recipeId}) — the library's render moved; re-render it from the current library`,
+      );
+    }
   }
   return lines.join("\n");
 }
@@ -1849,11 +1871,12 @@ function renderPlan(plan, opts) {
   } else {
     const dupes = plan.fileRows.filter((r) => r.fs.verdict === "duplicate").length;
     const losses = plan.fileRows.filter((r) => isLossRow(r)).length;
-    const updates = plan.fileRows.filter((r) => r.fs.verdict === "update").length;
+    const updates = plan.fileRows.filter((r) => isUpdateRow(r)).length;
     const dupNote =
       dupes > 0 ? ` ${dupes} block(s) already present — see Pre-existing content.` : "";
     const lossNote = losses > 0 ? ` ${losses} file(s) would lose repo content — see Losses.` : "";
-    const updateNote = updates > 0 ? ` ${updates} file(s) carry repo additions — see Updates.` : "";
+    const updateNote =
+      updates > 0 ? ` ${updates} file(s) need the new library render — see Updates.` : "";
     out.push(
       `**Plan ready** — ${plan.selected.length} recipe(s) selected.${dupNote}${lossNote}${updateNote}`,
       "",
@@ -1890,10 +1913,10 @@ function renderPlan(plan, opts) {
       losses > 0 && !opts.force
         ? ` ${losses} file(s) would lose repo content and are NOT overwritten without \`--force\` (see Losses).`
         : "";
-    const updates = plan.fileRows.filter((r) => r.fs.verdict === "update").length;
+    const updates = plan.fileRows.filter((r) => isUpdateRow(r)).length;
     const updateNote =
       updates > 0
-        ? ` ${updates} file(s) carry repo additions and are merged, not overwritten (see Updates).`
+        ? ` ${updates} file(s) need the new library render and are merged, not overwritten (see Updates).`
         : "";
     out.push(
       `Approve? Apply the ${plan.selected.length} recipe(s) above: phase 1 writes every file, phase 2 runs every command, phase 3 runs every verify.${lossNote}${updateNote}`,
