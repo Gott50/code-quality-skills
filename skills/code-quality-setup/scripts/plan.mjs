@@ -43,13 +43,13 @@ const MANIFEST_SCHEMA_VERSION = 1;
 
 function parseArgs(argv) {
   const opts = {
-    projectDir: ".",
-    library: null,
-    recipe: null,
-    force: false,
+    check: false,
     diff: false,
     diffPath: null,
-    check: false,
+    force: false,
+    library: null,
+    projectDir: ".",
+    recipe: null,
   };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
@@ -158,14 +158,14 @@ function resolveWrites(recipe, workspace) {
     if (seen.has(target)) return;
     seen.add(target);
     writes.push({
-      path: f.path,
       action: f.action,
-      scope: f.scope ?? "root",
-      memberMode: f.memberMode ?? "standalone",
-      template: f.template,
-      target,
       member,
+      memberMode: f.memberMode ?? "standalone",
+      path: f.path,
       rootPrefix,
+      scope: f.scope ?? "root",
+      target,
+      template: f.template,
     });
   };
   for (const f of recipe.files ?? []) {
@@ -394,8 +394,8 @@ function configPairs(text) {
     }
     const path = section ? `${section}.${key}` : key;
     pairs.set(path, {
-      value: value.replace(/\s+/g, " ").trim(),
       collection: value.startsWith("[") || value.startsWith("{"),
+      value: value.replace(/\s+/g, " ").trim(),
     });
   }
   return pairs;
@@ -481,7 +481,7 @@ function jsonMergeDelta(doc, frag) {
     }
   };
   walk(frag, doc, "");
-  return { changed, added };
+  return { added, changed };
 }
 
 // The subset of `frag` whose leaves already exist in `doc` — the recipe's owned content as it
@@ -510,8 +510,8 @@ function diffLines(a, b) {
   const m = bLines.length;
   if (n * m > 4_000_000) {
     return [
-      ...aLines.map((line) => ({ type: "-", line })),
-      ...bLines.map((line) => ({ type: "+", line })),
+      ...aLines.map((line) => ({ line, type: "-" })),
+      ...bLines.map((line) => ({ line, type: "+" })),
     ];
   }
   const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
@@ -526,19 +526,19 @@ function diffLines(a, b) {
   let j = 0;
   while (i < n && j < m) {
     if (aLines[i] === bLines[j]) {
-      out.push({ type: " ", line: aLines[i] });
+      out.push({ line: aLines[i], type: " " });
       i++;
       j++;
     } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-      out.push({ type: "-", line: aLines[i] });
+      out.push({ line: aLines[i], type: "-" });
       i++;
     } else {
-      out.push({ type: "+", line: bLines[j] });
+      out.push({ line: bLines[j], type: "+" });
       j++;
     }
   }
-  while (i < n) out.push({ type: "-", line: aLines[i++] });
-  while (j < m) out.push({ type: "+", line: bLines[j++] });
+  while (i < n) out.push({ line: aLines[i++], type: "-" });
+  while (j < m) out.push({ line: bLines[j++], type: "+" });
   return out;
 }
 
@@ -548,7 +548,7 @@ function unifiedDiff(aText, bText, path) {
   let oldNo = 1;
   let newNo = 1;
   const annotated = ops.map((o) => {
-    const rec = { ...o, oldNo, newNo };
+    const rec = { ...o, newNo, oldNo };
     if (o.type !== "+") oldNo++;
     if (o.type !== "-") newNo++;
     return rec;
@@ -678,17 +678,17 @@ function lostContent(existing, content, target) {
     const repo = tryParseJson(existing);
     const template = tryParseJson(content);
     if (repo !== null && template !== null) {
-      return { unit: "key", items: lostPaths(repo, template, "") };
+      return { items: lostPaths(repo, template, ""), unit: "key" };
     }
   }
   const norm = (s) => s.trim().replace(/\s+/g, " ");
   const templateLines = new Set(content.split("\n").map(norm));
   return {
-    unit: "line",
     items: existing
       .split("\n")
       .map(norm)
       .filter((line) => line !== "" && !templateLines.has(line)),
+    unit: "line",
   };
 }
 
@@ -789,10 +789,10 @@ function formattingEquivalent(a, b) {
 function filesystemVerdict(write, content, projectRoot, recipeId, manifestPresent) {
   const abs = join(projectRoot, write.target);
   const existing = existsSync(abs) ? readFileSync(abs, "utf8") : null;
-  const entry = { path: write.target, action: write.action, content };
+  const entry = { action: write.action, content, path: write.target };
 
   if (write.action === "create") {
-    if (existing === null) return { verdict: "new", diff: unifiedDiff("", content, write.target) };
+    if (existing === null) return { diff: unifiedDiff("", content, write.target), verdict: "new" };
     if (existing === content) return { verdict: "no-op" };
     // A formatter-only rewrite of a file the recipe created (#153): a repo-wide sweep (`dprint
     // fmt`) reformats the template the apply wrote — it reflows lines and re-aligns whitespace —
@@ -814,22 +814,22 @@ function filesystemVerdict(write, content, projectRoot, recipeId, manifestPresen
       // re-add the old template's lines and break the gate it installs.
       if (!manifestPresent && carriesTemplate(existing, content, write.target)) {
         return {
-          verdict: "update",
-          note: `the repo's file carries ${lost.length} ${unit}(s) the template does not — merge them in, do not drop them`,
-          lost,
-          unit,
           diff: unifiedDiff(existing, content, write.target),
+          lost,
+          note: `the repo's file carries ${lost.length} ${unit}(s) the template does not — merge them in, do not drop them`,
+          unit,
+          verdict: "update",
         };
       }
       return {
-        verdict: "loss",
-        note: `the repo's file carries ${lost.length} ${unit}(s) the template does not — overwriting drops them`,
-        lost,
-        unit,
         diff: unifiedDiff(existing, content, write.target),
+        lost,
+        note: `the repo's file carries ${lost.length} ${unit}(s) the template does not — overwriting drops them`,
+        unit,
+        verdict: "loss",
       };
     }
-    return { verdict: "drift", diff: unifiedDiff(existing, content, write.target) };
+    return { diff: unifiedDiff(existing, content, write.target), verdict: "drift" };
   }
 
   if (write.action === "merge") {
@@ -837,15 +837,15 @@ function filesystemVerdict(write, content, projectRoot, recipeId, manifestPresen
       const frag = JSON.parse(content);
       if (existing === null)
         return {
-          verdict: "new",
           diff: unifiedDiff("", JSON.stringify(frag, null, 2), write.target),
+          verdict: "new",
         };
       const doc = tryParseJson(existing);
       if (doc === null)
         return {
-          verdict: "collision",
-          note: "target is not valid JSON",
           diff: unifiedDiff(existing, content, write.target),
+          note: "target is not valid JSON",
+          verdict: "collision",
         };
       const { changed, added } = jsonMergeDelta(doc, frag);
       const present = presentFragment(doc, frag);
@@ -855,10 +855,10 @@ function filesystemVerdict(write, content, projectRoot, recipeId, manifestPresen
         write.target,
       );
       if (changed.length > 0) {
-        return { verdict: "collision", note: `would change: ${changed.join(", ")}`, diff };
+        return { diff, note: `would change: ${changed.join(", ")}`, verdict: "collision" };
       }
       if (added.length > 0) {
-        return { verdict: "add", note: `adds: ${added.join(", ")}`, diff };
+        return { diff, note: `adds: ${added.join(", ")}`, verdict: "add" };
       }
       return { verdict: "no-op" };
     }
@@ -868,29 +868,29 @@ function filesystemVerdict(write, content, projectRoot, recipeId, manifestPresen
       const evidence = existing === null ? null : blockAlreadyPresent(existing, content, recipeId);
       if (evidence !== null) {
         return {
-          verdict: "duplicate",
-          note: `already present — ${evidence}; skip this block`,
           diff: unifiedDiff("", target, write.target),
+          note: `already present — ${evidence}; skip this block`,
+          verdict: "duplicate",
         };
       }
-      return { verdict: "new", diff: unifiedDiff("", target, write.target) };
+      return { diff: unifiedDiff("", target, write.target), verdict: "new" };
     }
     if (block === target) return { verdict: "no-op" };
-    return { verdict: "replace", diff: unifiedDiff(block, target, write.target) };
+    return { diff: unifiedDiff(block, target, write.target), verdict: "replace" };
   }
 
   if (write.action === "patch") {
-    if (existing === null) return { verdict: "new", note: "created from the template" };
+    if (existing === null) return { note: "created from the template", verdict: "new" };
     // The after-state the recipe body states already holds (#37): the target declares every key the
     // template declares, with the template's scalar values. The patch is a no-op, so the plan says
     // so instead of showing the template as the target.
     if (patchOwned(content, existing) === patchOwned(content, content)) {
-      return { verdict: "no-op", note: "the after-state already holds" };
+      return { note: "the after-state already holds", verdict: "no-op" };
     }
     return {
-      verdict: "patch",
-      note: "unverifiable — the recipe body states the before/after",
       diff: unifiedDiff(existing, content, write.target),
+      note: "unverifiable — the recipe body states the before/after",
+      verdict: "patch",
     };
   }
 
@@ -910,21 +910,21 @@ function hash(text) {
 
 function readManifest(projectRoot) {
   const abs = join(projectRoot, MANIFEST_NAME);
-  if (!existsSync(abs)) return { manifest: null, degraded: true, reason: "no manifest" };
+  if (!existsSync(abs)) return { degraded: true, manifest: null, reason: "no manifest" };
   const parsed = tryParseJson(readFileSync(abs, "utf8"));
   if (parsed === null)
-    return { manifest: null, degraded: true, reason: "manifest is not valid JSON" };
+    return { degraded: true, manifest: null, reason: "manifest is not valid JSON" };
   if (parsed.schemaVersion !== MANIFEST_SCHEMA_VERSION) {
     return {
-      manifest: null,
       degraded: true,
+      manifest: null,
       reason: `manifest schemaVersion ${parsed.schemaVersion} ≠ ${MANIFEST_SCHEMA_VERSION}`,
     };
   }
-  return { manifest: parsed, degraded: false, reason: null };
+  return { degraded: false, manifest: parsed, reason: null };
 }
 
-const RANK = { missing: 5, loss: 4, drifted: 3, update: 2, intact: 1 };
+const RANK = { drifted: 3, intact: 1, loss: 4, missing: 5, update: 2 };
 
 function rollUp(fileVerdicts) {
   let worst = "intact";
@@ -944,7 +944,7 @@ function classify(manifest, { library, files }) {
   for (const lib of library) {
     const rec = recorded.get(lib.id);
     if (!rec) {
-      recipes.push({ id: lib.id, state: declined.has(lib.id) ? "declined" : "new", files: [] });
+      recipes.push({ files: [], id: lib.id, state: declined.has(lib.id) ? "declined" : "new" });
       continue;
     }
     const fileVerdicts = lib.files.map((f) => {
@@ -1020,31 +1020,31 @@ function classify(manifest, { library, files }) {
       else if (isCreateLoss(f, files)) verdict = "loss";
       else verdict = "drifted";
       return {
-        path: f.path,
         action: f.action,
+        currentHash,
         kind: f.action === "merge" ? mergeKind(f, lib.id) : null,
-        verdict,
+        path: f.path,
+        presentHash,
+        recordedHash,
         updateAvailable:
           recordedHash !== null &&
           recordedHash !== currentHash &&
           !mergedCreate &&
           !formatted &&
           !formattedCreate,
-        recordedHash,
-        currentHash,
-        presentHash,
+        verdict,
       };
     });
     recipes.push({
-      id: lib.id,
-      state: rollUp(fileVerdicts),
-      recipeChanged: rec.recipeHash !== lib.hash,
       files: fileVerdicts,
+      id: lib.id,
+      recipeChanged: rec.recipeHash !== lib.hash,
+      state: rollUp(fileVerdicts),
     });
   }
 
   for (const rec of manifest?.recipes ?? []) {
-    if (!known.has(rec.id)) recipes.push({ id: rec.id, state: "stale", files: [] });
+    if (!known.has(rec.id)) recipes.push({ files: [], id: rec.id, state: "stale" });
   }
   return { recipes };
 }
@@ -1088,9 +1088,9 @@ function buildPlan(report, opts) {
 
   // Substitution context, rendered from the whole selection.
   const subst = {
-    gates: renderGatesTable(selected),
-    details: renderDetails(selected),
     areas: renderAreas(stack.workspace),
+    details: renderDetails(selected),
+    gates: renderGatesTable(selected),
   };
 
   // Concrete writes per selected recipe, with rendered content. A template the recipe names but
@@ -1107,10 +1107,10 @@ function buildPlan(report, opts) {
           root: w.rootPrefix,
         });
       } catch (err) {
-        templateErrors.push({ id: r.id, error: `${w.template}: ${err.message}` });
+        templateErrors.push({ error: `${w.template}: ${err.message}`, id: r.id });
         continue;
       }
-      writes.push({ ...w, recipeId: r.id, content });
+      writes.push({ ...w, content, recipeId: r.id });
     }
     writesByRecipe.set(r.id, writes);
   }
@@ -1125,7 +1125,9 @@ function buildPlan(report, opts) {
     }
   }
   const library = selected.map((r) => ({
-    id: r.id,
+    files: writesByRecipe
+      .get(r.id)
+      .map((w) => ({ action: w.action, content: w.content, path: w.target })),
     hash: hash(
       readFileSync(join(r.libraryDir ?? libraryDir, "recipes", `${r.id}.md`), "utf8") +
         writesByRecipe
@@ -1133,11 +1135,9 @@ function buildPlan(report, opts) {
           .map((w) => w.content)
           .join("\n"),
     ),
-    files: writesByRecipe
-      .get(r.id)
-      .map((w) => ({ path: w.target, action: w.action, content: w.content })),
+    id: r.id,
   }));
-  const drift = manifest ? classify(manifest, { library, files }) : null;
+  const drift = manifest ? classify(manifest, { files, library }) : null;
   const driftById = new Map((drift?.recipes ?? []).map((r) => [r.id, r]));
 
   // Per-write verdicts: manifest-aware when a manifest is present, filesystem-only otherwise.
@@ -1148,11 +1148,11 @@ function buildPlan(report, opts) {
       const d = driftById.get(r.id);
       const dFile = d?.files.find((f) => f.path === w.target && f.action === w.action);
       fileRows.push({
-        recipeId: r.id,
-        write: w,
-        fs: fsVerdict,
         drift: dFile ?? null,
+        fs: fsVerdict,
+        recipeId: r.id,
         recipeState: d?.state ?? null,
+        write: w,
       });
     }
   }
@@ -1169,15 +1169,23 @@ function buildPlan(report, opts) {
   }
 
   return {
-    stack,
-    selected,
-    selectedIds,
-    narrowNote,
+    collisions: collisions.filter((c) => selectedIds.includes(c.recipe)),
+    degraded,
+    degradedReason: reason,
+    drift,
     duplicatePathsByRecipe,
+    errored,
+    fileRows,
     // A selected recipe whose verify needs a git base, on a repo with no commits: the verify would
     // fail with `could not detect base branch` (#141). The plan surfaces the requirement before the
     // apply, so the consumer commits first (or pins a base) instead of hitting a confusing failure.
     gitWarnings: hasCommits(report.root) ? [] : gitBaseRecipes(selected).map((r) => r.id),
+    heldBack,
+    manifestPresent: manifest !== null,
+    // `--check` prints the drift report, not the plan, so the measurement (which reads the gate
+    // artifacts) is skipped: a CI job must not pay for a section it never renders.
+    measurement: opts.check ? null : buildMeasurement(report.root, selected),
+    narrowNote,
     notSelected: usable
       .filter((r) => !selectedIds.includes(r.id))
       .map((r) => ({
@@ -1187,18 +1195,10 @@ function buildPlan(report, opts) {
             ? "applicable — not selected (narrowed by --recipe)"
             : null,
       })),
-    heldBack,
-    collisions: collisions.filter((c) => selectedIds.includes(c.recipe)),
-    errored,
+    selected,
+    selectedIds,
+    stack,
     templateErrors,
-    fileRows,
-    drift,
-    degraded,
-    degradedReason: reason,
-    manifestPresent: manifest !== null,
-    // `--check` prints the drift report, not the plan, so the measurement (which reads the gate
-    // artifacts) is skipped: a CI job must not pay for a section it never renders.
-    measurement: opts.check ? null : buildMeasurement(report.root, selected),
   };
 }
 
@@ -1212,11 +1212,11 @@ function buildPlan(report, opts) {
 // reader prefers lcov, so the plan reports whichever exists.
 const FLOOR_ARTIFACT = {
   coverage: ["lcov", "istanbul"],
-  mutation: ["mutation"],
-  lint: ["oxlint"],
-  typecheck: ["tsc"],
-  "fallow-health": ["fallowHealth"],
   "fallow-dead-code": ["fallowDeadCode"],
+  "fallow-health": ["fallowHealth"],
+  lint: ["oxlint"],
+  mutation: ["mutation"],
+  typecheck: ["tsc"],
 };
 
 // The greenfield wall: the floor a gate installs when nothing has been measured. 100% on both
@@ -1224,11 +1224,11 @@ const FLOOR_ARTIFACT = {
 // the SAME code path as a measured level — the wall is just the level a greenfield repo measures at.
 const WALL = {
   coverage: "100% (both metrics)",
-  mutation: "100%",
-  lint: "0",
-  typecheck: "0",
-  "fallow-health": "report-only",
   "fallow-dead-code": "report-only",
+  "fallow-health": "report-only",
+  lint: "0",
+  mutation: "100%",
+  typecheck: "0",
 };
 
 // The newest mtime under `root`, skipping `node_modules`, dot-directories (the installed skill
@@ -1333,8 +1333,8 @@ function levelText(gate, gates) {
 // count map for health, a per-category list for dead code), not a single level, so the plan reports
 // the floor as `recorded` when the file exists.
 const FALLOW_BASELINE = {
-  "fallow-health": ".fallow-health-baseline.json",
   "fallow-dead-code": ".fallow-dead-code-baseline.json",
+  "fallow-health": ".fallow-health-baseline.json",
 };
 
 // The floor a gate already has recorded, as the text the plan prints, or `null` when the gate has
@@ -1383,21 +1383,21 @@ function buildMeasurement(root, selected) {
       const stale = mtime !== null && newest > 0 && mtime < newest;
       const recorded = recordedFloor(g.floor, baseline.doc, root);
       rows.push({
-        gate: g.floor,
-        recipe: r.id,
         artifact: artifactPath(root, keys),
-        level,
-        stale,
-        recorded,
         floor: recorded ?? level ?? WALL[g.floor],
+        gate: g.floor,
+        level,
         raise: recorded === null,
+        recipe: r.id,
+        recorded,
         regression: regressed.has(g.floor),
         source:
           g.floor === "fallow-health" || g.floor === "fallow-dead-code" ? "fallow" : "unified",
+        stale,
       });
     }
   }
-  return { rows, errors, baselinePresent: baseline.doc !== null, baselineError: baseline.error };
+  return { baselineError: baseline.error, baselinePresent: baseline.doc !== null, errors, rows };
 }
 
 function renderMeasurement(measurement) {
@@ -1922,11 +1922,11 @@ function checkReport(plan) {
   const clean = plan.manifestPresent && !recipes.some((r) => DRIFT_STATES.has(r.state));
   return {
     clean,
-    manifestPresent: plan.manifestPresent,
     degraded: plan.degraded,
     degradedReason: plan.degradedReason,
-    recipes,
+    manifestPresent: plan.manifestPresent,
     markdown: renderDriftSection(plan),
+    recipes,
   };
 }
 

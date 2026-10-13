@@ -107,8 +107,8 @@ function commandExists(name) {
 
 function resolveBiome(projectDir) {
   const local = join(projectDir, "node_modules", ".bin", "biome");
-  if (existsSync(local)) return { cmd: local, args: [] };
-  if (commandExists("bunx")) return { cmd: "bunx", args: ["@biomejs/biome"] };
+  if (existsSync(local)) return { args: [], cmd: local };
+  if (commandExists("bunx")) return { args: ["@biomejs/biome"], cmd: "bunx" };
   return null;
 }
 
@@ -248,8 +248,8 @@ function checkTemplates(templatesDir, projectDir) {
       fail(`templates/${rel}: biome reported ${d.category}: ${d.message}`);
     }
   } finally {
-    rmSync(tmp, { recursive: true, force: true });
-    if (configTmp !== null) rmSync(configTmp, { recursive: true, force: true });
+    rmSync(tmp, { force: true, recursive: true });
+    if (configTmp !== null) rmSync(configTmp, { force: true, recursive: true });
   }
 
   printSkipped();
@@ -269,7 +269,7 @@ try {
   if (!existsSync(recipesDir)) {
     if (json) {
       process.stdout.write(
-        `${JSON.stringify({ schemaVersion: SCHEMA_VERSION, root, localDir, recipes: 0, templates: 0, errors: [] }, null, 2)}\n`,
+        `${JSON.stringify({ errors: [], localDir, recipes: 0, root, schemaVersion: SCHEMA_VERSION, templates: 0 }, null, 2)}\n`,
       );
     } else {
       process.stdout.write("no local recipes\n");
@@ -283,7 +283,7 @@ try {
   if (errors.length > 0) {
     if (json) {
       process.stdout.write(
-        `${JSON.stringify({ schemaVersion: SCHEMA_VERSION, root, localDir, recipes: recipeCount, templates: checked, errors }, null, 2)}\n`,
+        `${JSON.stringify({ errors, localDir, recipes: recipeCount, root, schemaVersion: SCHEMA_VERSION, templates: checked }, null, 2)}\n`,
       );
     } else {
       process.stderr.write(`check-local: FAILED (${errors.length})\n`);
@@ -294,7 +294,7 @@ try {
 
   if (json) {
     process.stdout.write(
-      `${JSON.stringify({ schemaVersion: SCHEMA_VERSION, root, localDir, recipes: recipeCount, templates: checked, errors: [] }, null, 2)}\n`,
+      `${JSON.stringify({ errors: [], localDir, recipes: recipeCount, root, schemaVersion: SCHEMA_VERSION, templates: checked }, null, 2)}\n`,
     );
   } else {
     process.stdout.write(

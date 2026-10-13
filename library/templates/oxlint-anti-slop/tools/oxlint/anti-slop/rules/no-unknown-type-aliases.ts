@@ -18,8 +18,9 @@ export const noUnknownTypeAliasesRule = defineRule({
 
     const resolvesToUnknown = (type: ESTree.TSType, visited = new Set<string>()): boolean => {
       if (type.type === "TSUnknownKeyword") return true;
-      if (type.type === "TSParenthesizedType")
+      if (type.type === "TSParenthesizedType") {
         return resolvesToUnknown(type.typeAnnotation, visited);
+      }
       const name = referencedAliasName(type);
       if (name === null || visited.has(name)) return false;
       const alias = aliases.get(name);

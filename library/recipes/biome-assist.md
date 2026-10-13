@@ -64,7 +64,7 @@ verify:
 
 `--unsafe` is a CLI-time flag only (there is no config toggle); the sole unsafe action in this set is the GraphQL `useSortedSelectionSet`.
 
-**The sweep's scope is the gate's scope.** `format:check` runs `biome check .`, so the sweep must cover every file the gate checks; narrowing it to this recipe's own files would leave every pre-existing unformatted file failing the gate. The sweep therefore also reformats files this recipe does not own — including a generated JSON lockfile such as `skills-lock.json`, which the repo's own `biome.json` (`useSortedKeys: "on"`) already tells Biome to sort. That is the repo's config being enforced, not a template this recipe wrote: `biome check .` reports the lockfile before the recipe runs. A repo that does not want a generated file reformatted must exclude it in its own `biome.json`; the recipe's template is repo-wide by design, and a repo's own `biome.json` is not the recipe's to change.
+**The sweep's scope is the gate's scope.** `format:check` runs `biome check .`, so the sweep must cover every file the gate checks; narrowing it to this recipe's own files would leave every pre-existing unformatted file failing the gate. The sweep therefore also reformats files this recipe does not own. Two generated files are exempt: the template's `overrides` turns `useSortedKeys` off for `**/package.json` and `**/skills-lock.json`, because both are written by tools (the package manager, the skills CLI) that do not sort keys — the sweep must not rewrite them and the gate must not fail on them. A repo that wants a different exemption adds it to its own `biome.json`; the recipe's template is repo-wide by design, and a repo's own `biome.json` is not the recipe's to change.
 
 ## Idempotency
 

@@ -45,7 +45,7 @@ const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const opts = { ref: null, manifest: null, library: null, json: false, apply: false, help: false };
+  const opts = { apply: false, help: false, json: false, library: null, manifest: null, ref: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--ref") {
@@ -133,7 +133,7 @@ async function resolveMainSha() {
     // gh missing, unauthenticated, or offline — fall through to the public API
   }
   const res = await fetch(`https://api.github.com/repos/${REPO}/commits/main`, {
-    headers: { "User-Agent": "code-quality-setup", Accept: "application/vnd.github+json" },
+    headers: { Accept: "application/vnd.github+json", "User-Agent": "code-quality-setup" },
     signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`api.github.com returned ${res.status}`);
@@ -184,10 +184,10 @@ async function resolveAvailable(opts) {
       throw new Error(`no library.json under ${dir}`);
     }
     const bytes = readFileSync(indexPath);
-    return { ref: opts.ref ?? "local", bytes };
+    return { bytes, ref: opts.ref ?? "local" };
   }
   const ref = opts.ref ?? (await resolveMainSha());
-  return { ref, bytes: await fetchIndex(ref) };
+  return { bytes: await fetchIndex(ref), ref };
 }
 
 function parseIndex(bytes) {
@@ -212,42 +212,42 @@ async function check(opts) {
   const available = await resolveAvailable(opts);
   const { schemaVersion } = parseIndex(available.bytes);
   const availableBlock = {
-    ref: available.ref,
-    schemaVersion,
     // The check has only the index file, so this is library.json's own hash — a different scope
     // from the manifest's whole-tree hash. The two are never compared; the ref is the decision.
     indexHash: contentIdentity("library.json", available.bytes),
+    ref: available.ref,
+    schemaVersion,
   };
 
   if (schemaVersion > LIBRARY_SCHEMA_VERSION) {
     return {
-      status: "incompatible",
-      recorded,
       available: availableBlock,
       message: `the available library is schemaVersion ${schemaVersion}; this skill implements ${LIBRARY_SCHEMA_VERSION} — update the skill first`,
+      recorded,
+      status: "incompatible",
     };
   }
   if (recorded === null || recorded.ref === null) {
     return {
-      status: "update-available",
-      recorded,
       available: availableBlock,
       message: "no recorded library pin — the library is available to fetch",
+      recorded,
+      status: "update-available",
     };
   }
   if (recorded.ref === available.ref) {
     return {
-      status: "up-to-date",
-      recorded,
       available: availableBlock,
       message: "the recorded ref is the available ref",
+      recorded,
+      status: "up-to-date",
     };
   }
   return {
-    status: "update-available",
-    recorded,
     available: availableBlock,
     message: "the library moved — the recorded ref is not the available ref",
+    recorded,
+    status: "update-available",
   };
 }
 
@@ -306,7 +306,7 @@ function apply(opts, availableRef, json) {
 
   if (json) {
     process.stdout.write(
-      `${JSON.stringify({ status: "apply", ref: availableRef, libraryDir, plan, note })}\n`,
+      `${JSON.stringify({ libraryDir, note, plan, ref: availableRef, status: "apply" })}\n`,
     );
     return;
   }

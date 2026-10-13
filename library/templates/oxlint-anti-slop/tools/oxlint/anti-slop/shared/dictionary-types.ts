@@ -196,8 +196,9 @@ function unsafeDirectValue(
   if (unwrapped.type === "TSUnknownKeyword") return "unknown";
   if (unwrapped.type === "TSAnyKeyword") return "any";
   if (unwrapped.type === "TSObjectKeyword") return "object";
-  if (unwrapped.type === "TSTypeLiteral" && isEffectivelyEmptyTypeLiteral(unwrapped))
+  if (unwrapped.type === "TSTypeLiteral" && isEffectivelyEmptyTypeLiteral(unwrapped)) {
     return "empty-object";
+  }
   if (unwrapped.type === "TSUnionType") {
     return unwrapped.types.some(
       (member) => unsafeDirectValue(member, environment, substitutions, resolvingAliases) !== null,
@@ -206,9 +207,9 @@ function unsafeDirectValue(
       : null;
   }
   if (unwrapped.type === "TSIntersectionType") {
-    const unsafeMembers = unwrapped.types.map((member) =>
-      unsafeDirectValue(member, environment, substitutions, resolvingAliases),
-    );
+    const unsafeMembers = unwrapped.types.map((member) => {
+      return unsafeDirectValue(member, environment, substitutions, resolvingAliases);
+    });
     if (unsafeMembers.includes("any")) return "any";
     return unsafeMembers.length > 0 && unsafeMembers.every((member) => member !== null)
       ? unsafeMembers[0]
@@ -251,11 +252,11 @@ function dictionaryValueTypes(
   const unwrapped = unwrapTransparentType(type);
 
   if (unwrapped.type === "TSTypeLiteral") {
-    return unwrapped.members.flatMap((member): readonly ResolvedType[] =>
-      member.type === "TSIndexSignature" && member.typeAnnotation !== null
+    return unwrapped.members.flatMap((member): readonly ResolvedType[] => {
+      return member.type === "TSIndexSignature" && member.typeAnnotation !== null
         ? [{ substitutions, type: member.typeAnnotation.typeAnnotation }]
-        : [],
-    );
+        : [];
+    });
   }
 
   if (unwrapped.type === "TSMappedType") {

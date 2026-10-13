@@ -22,12 +22,13 @@
 //      installs. Templates oxlint does not lint (by extension) are skipped and
 //      printed.
 //   5. skill script formatting — the skill's own shipped scripts under
-//      skills/*/scripts/ are `biome check`-clean under the repo's biome.json,
-//      the same config the skill installs. A consumer's `biome check .` runs
-//      over the files the skill just copied in, so a script that is not
-//      formatted to the convention fails there; the repo's own format:check
-//      covers only library/templates, so this is the only place that holds
-//      them. Files biome cannot parse (by extension) are skipped and printed.
+//      skills/*/scripts/ are `biome check`-clean under the config the
+//      biome-assist recipe installs (library/templates/biome-assist/biome.json),
+//      not the repo's own biome.json. A consumer's `biome check .` runs over the
+//      files the skill just copied in, so a script that is not formatted to that
+//      config fails there; the repo's own format:check covers only
+//      library/templates, so this is the only place that holds them. Files biome
+//      cannot parse (by extension) are skipped and printed.
 //
 // Zero dependencies beyond the shared frontmatter reader and the repo's own
 // biome devDependency; the lint check installs the oxlint devDependencies the
@@ -55,6 +56,10 @@ const RECIPES_DIR = join(LIBRARY_DIR, "recipes");
 const TEMPLATES_DIR = join(LIBRARY_DIR, "templates");
 const INDEX = join(LIBRARY_DIR, "library.json");
 const BIOME_CONFIG = join(REPO_ROOT, "biome.json");
+// The config the biome-assist recipe installs into a consumer. The skill's own
+// scripts land in that consumer and are covered by its `biome check .`, so they
+// must satisfy THIS config, not the repo's own biome.json.
+const SKILL_BIOME_CONFIG = join(TEMPLATES_DIR, "biome-assist", "biome.json");
 
 // The skill's own shipped scripts. The skills CLI copies each skill directory
 // into a consumer's .agents/skills/<name>/, so these files land in the consumer
@@ -393,8 +398,9 @@ function checkTemplateLint() {
 
 // --- 5. skill script formatting ---------------------------------------------
 
-// The skill's own scripts must satisfy the same biome config the skill installs
-// (2-space, lineWidth 100, double quotes, semicolons, assist on), or a
+// The skill's own scripts must satisfy the config the skill installs
+// (library/templates/biome-assist/biome.json: 2-space, lineWidth 100, double
+// quotes, semicolons, assist on), not the repo's own biome.json, or a
 // consumer's `biome check .` fails on the files the skill just copied in. Run
 // biome's `check` (format + assist + lint) over the scripts and fail on any
 // error-severity diagnostic; warnings and infos are not errors. Files biome
@@ -419,7 +425,13 @@ function checkSkillScripts() {
   try {
     stdout = execFileSync(
       cmd,
-      [...args, "check", `--config-path=${BIOME_CONFIG}`, "--reporter=json", ...SKILL_SCRIPT_DIRS],
+      [
+        ...args,
+        "check",
+        `--config-path=${SKILL_BIOME_CONFIG}`,
+        "--reporter=json",
+        ...SKILL_SCRIPT_DIRS,
+      ],
       { cwd: REPO_ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
     );
   } catch (err) {

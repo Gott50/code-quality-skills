@@ -123,18 +123,18 @@ function canonicalJson(doc) {
 
 function parseArgs(argv) {
   const opts = {
+    appliedAt: null,
     command: null,
+    contentHash: null,
+    environment: null,
+    feedback: null,
+    files: [],
     projectDir: ".",
     recipe: null,
     recipeHash: null,
-    files: [],
-    skillVersion: null,
-    environment: null,
-    appliedAt: null,
-    feedback: null,
     ref: null,
     schemaVersion: null,
-    contentHash: null,
+    skillVersion: null,
   };
   const positional = [];
   for (let i = 0; i < argv.length; i++) {
@@ -169,7 +169,7 @@ function parseFileSpec(spec) {
   if (!ACTIONS.includes(action)) {
     throw new Error(`--file action must be ${ACTIONS.join("|")}, got "${action}"`);
   }
-  return { path, action, hash };
+  return { action, hash, path };
 }
 
 function parseEnvironment(json) {
@@ -187,7 +187,7 @@ function parseEnvironment(json) {
 function loadManifest(projectDir) {
   const abs = join(projectDir, MANIFEST_NAME);
   if (!existsSync(abs)) {
-    return { doc: { schemaVersion: SCHEMA_VERSION, recipes: [], declined: [] }, existed: false };
+    return { doc: { declined: [], recipes: [], schemaVersion: SCHEMA_VERSION }, existed: false };
   }
   const parsed = JSON.parse(readFileSync(abs, "utf8"));
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -208,7 +208,7 @@ function sortFiles(files) {
 function record(doc, opts) {
   const files = sortFiles(opts.files.map(parseFileSpec));
   const existing = (doc.recipes ?? []).find((r) => r.id === opts.recipe);
-  const entry = { id: opts.recipe, recipeHash: opts.recipeHash, files };
+  const entry = { files, id: opts.recipe, recipeHash: opts.recipeHash };
   const skillVersion = opts.skillVersion ?? existing?.skillVersion;
   if (skillVersion !== undefined) entry.skillVersion = skillVersion;
   // Idempotent: an unchanged re-record keeps the recorded `appliedAt`, so the bytes do not move.
@@ -234,7 +234,7 @@ function decline(doc, opts) {
   const next = { ...doc };
   next.declined = [
     ...(doc.declined ?? []).filter((d) => d.id !== opts.recipe),
-    { id: opts.recipe, at },
+    { at, id: opts.recipe },
   ];
   next.declined.sort((a, b) => compareKeys(a.id, b.id));
   next.recipes = (doc.recipes ?? []).filter((r) => r.id !== opts.recipe);
@@ -260,9 +260,9 @@ function setFeedback(doc, enabled) {
 function setLibrary(doc, opts) {
   const next = { ...doc };
   next.library = {
+    contentHash: opts.contentHash,
     ref: opts.ref,
     schemaVersion: opts.schemaVersion,
-    contentHash: opts.contentHash,
   };
   return next;
 }
@@ -297,7 +297,7 @@ function main() {
     if (opts.schemaVersion.trim() === "" || !Number.isInteger(schemaVersion)) {
       throw new Error(`--schema-version must be an integer, got "${opts.schemaVersion}"`);
     }
-    next = setLibrary(doc, { ref: opts.ref, schemaVersion, contentHash: opts.contentHash });
+    next = setLibrary(doc, { contentHash: opts.contentHash, ref: opts.ref, schemaVersion });
   } else if (opts.command === "canonicalize") {
     next = doc;
   } else {

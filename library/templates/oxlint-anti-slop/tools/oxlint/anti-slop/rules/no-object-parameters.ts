@@ -43,8 +43,9 @@ export const noObjectParametersRule = defineRule({
       visited = new Set<string>(),
     ): boolean => {
       if (type.type === "TSObjectKeyword") return true;
-      if (type.type === "TSParenthesizedType")
+      if (type.type === "TSParenthesizedType") {
         return resolvesToObject(type.typeAnnotation, shadowedAliases, visited);
+      }
       if (type.type === "TSUnionType") {
         return type.types.some((member) => resolvesToObject(member, shadowedAliases, visited));
       }

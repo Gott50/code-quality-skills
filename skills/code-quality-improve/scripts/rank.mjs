@@ -35,32 +35,32 @@ const DEAD_CODE_BASELINE_NAME = ".fallow-dead-code-baseline.json";
 // The ranking's sort keys. The folded-in candidates are repo-owned — the artifact already exists and
 // the fix needs no new harness — so they lead (tier 0); fallow's targets follow by their own effort
 // estimate, and a capture that carried no effort sorts last. Confidence breaks an efficiency tie.
-const EFFORT_TIER = { low: 1, medium: 2, high: 3 };
-const CONFIDENCE_RANK = { high: 0, medium: 1, low: 2 };
-const GROUP_ORDER = { coverage: 0, mutation: 1, lint: 2, typecheck: 3, "dead-code": 4 };
+const EFFORT_TIER = { high: 3, low: 1, medium: 2 };
+const CONFIDENCE_RANK = { high: 0, low: 2, medium: 1 };
+const GROUP_ORDER = { coverage: 0, "dead-code": 4, lint: 2, mutation: 1, typecheck: 3 };
 
 // The artifact each source is read from, relative to the project root. The fallow targets are a
 // captured stdout (fallow writes no file of its own), like the score view's captures.
 const ARTIFACTS = {
+  deadCode: "reports/fallow-dead-code.json",
   fallowTargets: "reports/fallow-targets.json",
-  lcov: "coverage/lcov.info",
   istanbul: "coverage/coverage-final.json",
+  lcov: "coverage/lcov.info",
   mutation: "reports/mutation/report.json",
   oxlint: "reports/oxlint.json",
   tsc: "reports/tsc.log",
-  deadCode: "reports/fallow-dead-code.json",
 };
 
 // The capture command for each artifact, printed in the gap report so the agent knows how to
 // produce it. The fallow capture is the ranking command itself.
 const CAPTURE = {
+  deadCode: "fallow dead-code --format json > reports/fallow-dead-code.json",
   fallowTargets: "fallow health --targets --format json > reports/fallow-targets.json",
-  lcov: "bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage",
   istanbul: "vitest run --coverage",
+  lcov: "bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage",
   mutation: "stryker run",
   oxlint: "oxlint --format json > reports/oxlint.json",
   tsc: "tsc --noEmit --pretty false > reports/tsc.log",
-  deadCode: "fallow dead-code --format json > reports/fallow-dead-code.json",
 };
 
 // The sibling skill's score view, resolved from this script's own location: the skills CLI installs
@@ -142,14 +142,14 @@ export function readMutation(doc) {
       if (status === "Killed" || status === "Ignored") continue;
       gaps.push({
         line: typeof m?.location?.start?.line === "number" ? m.location.start.line : null,
-        status,
         mutatorName: typeof m?.mutatorName === "string" ? m.mutatorName : null,
+        status,
       });
     }
     files[path] = {
+      gaps,
       killed: mutants.filter((m) => m?.status === "Killed").length,
       total: mutants.length,
-      gaps,
     };
   }
   return files;
@@ -214,10 +214,10 @@ export function readFallowDeadCode(doc) {
     if (DEAD_CODE_NON_CATEGORIES.has(category) || !Array.isArray(list)) continue;
     categories.push({
       category,
-      findings: list.map((f) => ({ path: deadCodePath(f), detail: deadCodeDetail(f) })),
+      findings: list.map((f) => ({ detail: deadCodeDetail(f), path: deadCodePath(f) })),
     });
   }
-  return { total: typeof doc?.total_issues === "number" ? doc.total_issues : null, categories };
+  return { categories, total: typeof doc?.total_issues === "number" ? doc.total_issues : null };
 }
 
 // oxlint's `--format json`: `diagnostics[]`, each with a project-relative `filename`. Group by file.
@@ -373,18 +373,18 @@ export function collect(root, bases) {
   const baselinePath = join(root, BASELINE_NAME);
   const baseline = readBaseline(baselinePath);
   sources.baseline = {
+    error: baseline.error,
     path: BASELINE_NAME,
     present: Boolean(baseline.doc),
     schemaVersion: baseline.doc?.schemaVersion ?? null,
-    error: baseline.error,
   };
   if (baseline.error) {
-    gaps.push({ source: "baseline", path: BASELINE_NAME, reason: `unreadable: ${baseline.error}` });
+    gaps.push({ path: BASELINE_NAME, reason: `unreadable: ${baseline.error}`, source: "baseline" });
   } else if (!baseline.doc) {
     gaps.push({
-      source: "baseline",
       path: BASELINE_NAME,
       reason: "absent — the setup skill's apply (or `score.mjs --raise`) records one",
+      source: "baseline",
     });
   }
 
@@ -394,48 +394,48 @@ export function collect(root, bases) {
     try {
       const list = readFallowTargets(readJson(fallowPath));
       sources.fallow = {
-        path: ARTIFACTS.fallowTargets,
-        present: true,
         count: list.length,
         error: null,
+        path: ARTIFACTS.fallowTargets,
+        present: true,
       };
       list.forEach((t, i) => {
         targets.push({
-          source: "fallow",
-          path: typeof t?.path === "string" ? t.path : "(unknown)",
-          gate: t?.category === "remove_dead_code" ? "fallow-dead-code" : "fallow-health",
+          actions: Array.isArray(t?.actions) ? t.actions : [],
+          category: t?.category ?? null,
+          confidence: t?.confidence ?? null,
           detail: typeof t?.recommendation === "string" ? t.recommendation : "",
-          priority: t?.priority ?? null,
           efficiency: t?.efficiency ?? null,
           effort: t?.effort ?? null,
-          confidence: t?.confidence ?? null,
+          evidence: t?.evidence ?? null,
+          factors: Array.isArray(t?.factors) ? t.factors : [],
           // fallow's own rank, so its ranking stays visible after the effort-tier reorder.
           fallowRank: i + 1,
-          category: t?.category ?? null,
-          factors: Array.isArray(t?.factors) ? t.factors : [],
-          evidence: t?.evidence ?? null,
-          actions: Array.isArray(t?.actions) ? t.actions : [],
+          gate: t?.category === "remove_dead_code" ? "fallow-dead-code" : "fallow-health",
+          path: typeof t?.path === "string" ? t.path : "(unknown)",
+          priority: t?.priority ?? null,
+          source: "fallow",
         });
       });
     } catch (err) {
       sources.fallow = {
-        path: ARTIFACTS.fallowTargets,
-        present: true,
         count: 0,
         error: String(err?.message ?? err),
+        path: ARTIFACTS.fallowTargets,
+        present: true,
       };
       gaps.push({
-        source: "fallow",
         path: ARTIFACTS.fallowTargets,
         reason: `unreadable: ${err?.message ?? err}`,
+        source: "fallow",
       });
     }
   } else {
-    sources.fallow = { path: ARTIFACTS.fallowTargets, present: false, count: 0, error: null };
+    sources.fallow = { count: 0, error: null, path: ARTIFACTS.fallowTargets, present: false };
     gaps.push({
-      source: "fallow",
       path: ARTIFACTS.fallowTargets,
       reason: `absent — capture it with \`${CAPTURE.fallowTargets}\``,
+      source: "fallow",
     });
   }
 
@@ -452,9 +452,9 @@ export function collect(root, bases) {
       covFiles = readLcov(readFileSync(lcovPath, "utf8"));
     } catch (err) {
       gaps.push({
-        source: "coverage",
         path: ARTIFACTS.lcov,
         reason: `unreadable: ${err?.message ?? err}`,
+        source: "coverage",
       });
     }
   } else if (existsSync(istanbulPath)) {
@@ -464,9 +464,9 @@ export function collect(root, bases) {
       covFiles = readIstanbul(readJson(istanbulPath), bases);
     } catch (err) {
       gaps.push({
-        source: "coverage",
         path: ARTIFACTS.istanbul,
         reason: `unreadable: ${err?.message ?? err}`,
+        source: "coverage",
       });
     }
   }
@@ -476,31 +476,31 @@ export function collect(root, bases) {
       .filter((r) => r.uncovered > 0)
       .sort((a, b) => b.uncovered - a.uncovered || a.file.localeCompare(b.file));
     sources.coverage = {
+      error: null,
+      files: rows.length,
       path: covPath,
       present: true,
       source: covSource,
-      files: rows.length,
-      error: null,
     };
     for (const r of rows) {
       targets.push({
-        source: "coverage",
-        path: r.file,
-        gate: "coverage",
-        detail: `${r.uncovered} uncovered`,
-        metrics: r.metrics,
-        uncovered: r.uncovered,
         belowFloor: coverageBelowFloor(r.metrics, r.file, baseline.doc),
-        effort: null,
         confidence: null,
+        detail: `${r.uncovered} uncovered`,
+        effort: null,
+        gate: "coverage",
+        metrics: r.metrics,
+        path: r.file,
+        source: "coverage",
+        uncovered: r.uncovered,
       });
     }
   } else {
-    sources.coverage = { path: covPath, present: false, source: null, files: 0, error: null };
+    sources.coverage = { error: null, files: 0, path: covPath, present: false, source: null };
     gaps.push({
-      source: "coverage",
       path: covPath,
       reason: `absent — capture it with \`${CAPTURE.lcov}\` (bun) or \`${CAPTURE.istanbul}\` (vitest)`,
+      source: "coverage",
     });
   }
 
@@ -514,49 +514,49 @@ export function collect(root, bases) {
         .sort((a, b) => b[1].gaps.length - a[1].gaps.length || a[0].localeCompare(b[0]));
       const gapCount = rows.reduce((n, [, f]) => n + f.gaps.length, 0);
       sources.mutation = {
+        error: null,
+        files: rows.length,
+        gaps: gapCount,
         path: ARTIFACTS.mutation,
         present: true,
-        gaps: gapCount,
-        files: rows.length,
-        error: null,
       };
       for (const [file, f] of rows) {
         const belowFloor = mutationBelowFloor(f, file, baseline.doc);
         for (const g of f.gaps) {
           targets.push({
-            source: "mutation",
-            path: file,
+            belowFloor,
+            confidence: null,
+            detail: `${g.status} ${g.mutatorName ?? "mutant"}`,
+            effort: null,
             gate: "mutation",
             line: g.line,
-            status: g.status,
             mutatorName: g.mutatorName,
-            detail: `${g.status} ${g.mutatorName ?? "mutant"}`,
-            belowFloor,
-            effort: null,
-            confidence: null,
+            path: file,
+            source: "mutation",
+            status: g.status,
           });
         }
       }
     } catch (err) {
       sources.mutation = {
+        error: String(err?.message ?? err),
+        files: 0,
+        gaps: 0,
         path: ARTIFACTS.mutation,
         present: true,
-        gaps: 0,
-        files: 0,
-        error: String(err?.message ?? err),
       };
       gaps.push({
-        source: "mutation",
         path: ARTIFACTS.mutation,
         reason: `unreadable: ${err?.message ?? err}`,
+        source: "mutation",
       });
     }
   } else {
-    sources.mutation = { path: ARTIFACTS.mutation, present: false, gaps: 0, files: 0, error: null };
+    sources.mutation = { error: null, files: 0, gaps: 0, path: ARTIFACTS.mutation, present: false };
     gaps.push({
-      source: "mutation",
       path: ARTIFACTS.mutation,
       reason: `absent — capture it with \`${CAPTURE.mutation}\``,
+      source: "mutation",
     });
   }
 
@@ -569,52 +569,52 @@ export function collect(root, bases) {
       const count = rows.reduce((n, [, c]) => n + c, 0);
       const floor = baseline.doc?.gates?.lint?.global;
       sources.lint = {
-        path: ARTIFACTS.oxlint,
-        present: true,
         count,
+        error: null,
         files: rows.length,
         floor: typeof floor === "number" ? floor : null,
-        error: null,
+        path: ARTIFACTS.oxlint,
+        present: true,
       };
       for (const [file, c] of rows) {
         targets.push({
-          source: "lint",
-          path: file,
-          gate: "lint",
-          detail: `${c} diagnostic(s)`,
-          count: c,
-          effort: null,
           confidence: null,
+          count: c,
+          detail: `${c} diagnostic(s)`,
+          effort: null,
+          gate: "lint",
+          path: file,
+          source: "lint",
         });
       }
     } catch (err) {
       sources.lint = {
-        path: ARTIFACTS.oxlint,
-        present: true,
         count: 0,
+        error: String(err?.message ?? err),
         files: 0,
         floor: null,
-        error: String(err?.message ?? err),
+        path: ARTIFACTS.oxlint,
+        present: true,
       };
       gaps.push({
-        source: "lint",
         path: ARTIFACTS.oxlint,
         reason: `unreadable: ${err?.message ?? err}`,
+        source: "lint",
       });
     }
   } else {
     sources.lint = {
-      path: ARTIFACTS.oxlint,
-      present: false,
       count: 0,
+      error: null,
       files: 0,
       floor: null,
-      error: null,
+      path: ARTIFACTS.oxlint,
+      present: false,
     };
     gaps.push({
-      source: "lint",
       path: ARTIFACTS.oxlint,
       reason: `absent — capture it with \`${CAPTURE.oxlint}\``,
+      source: "lint",
     });
   }
 
@@ -627,52 +627,52 @@ export function collect(root, bases) {
       const count = rows.reduce((n, [, c]) => n + c, 0);
       const floor = baseline.doc?.gates?.typecheck?.global;
       sources.typecheck = {
-        path: ARTIFACTS.tsc,
-        present: true,
         count,
+        error: null,
         files: rows.length,
         floor: typeof floor === "number" ? floor : null,
-        error: null,
+        path: ARTIFACTS.tsc,
+        present: true,
       };
       for (const [file, c] of rows) {
         targets.push({
-          source: "typecheck",
-          path: file,
-          gate: "typecheck",
-          detail: `${c} error(s)`,
-          count: c,
-          effort: null,
           confidence: null,
+          count: c,
+          detail: `${c} error(s)`,
+          effort: null,
+          gate: "typecheck",
+          path: file,
+          source: "typecheck",
         });
       }
     } catch (err) {
       sources.typecheck = {
-        path: ARTIFACTS.tsc,
-        present: true,
         count: 0,
+        error: String(err?.message ?? err),
         files: 0,
         floor: null,
-        error: String(err?.message ?? err),
+        path: ARTIFACTS.tsc,
+        present: true,
       };
       gaps.push({
-        source: "typecheck",
         path: ARTIFACTS.tsc,
         reason: `unreadable: ${err?.message ?? err}`,
+        source: "typecheck",
       });
     }
   } else {
     sources.typecheck = {
-      path: ARTIFACTS.tsc,
-      present: false,
       count: 0,
+      error: null,
       files: 0,
       floor: null,
-      error: null,
+      path: ARTIFACTS.tsc,
+      present: false,
     };
     gaps.push({
-      source: "typecheck",
       path: ARTIFACTS.tsc,
       reason: `absent — capture it with \`${CAPTURE.tsc}\``,
+      source: "typecheck",
     });
   }
 
@@ -696,53 +696,53 @@ export function collect(root, bases) {
           files.add(f.path);
           count += 1;
           targets.push({
-            source: "dead-code",
-            path: f.path,
-            gate: "fallow-dead-code",
-            category,
-            detail: f.detail,
             aboveFloor,
-            effort: null,
+            category,
             confidence: null,
+            detail: f.detail,
+            effort: null,
+            gate: "fallow-dead-code",
+            path: f.path,
+            source: "dead-code",
           });
         }
       }
       sources["dead-code"] = {
-        path: ARTIFACTS.deadCode,
-        present: true,
         count: total ?? count,
+        error: null,
         files: files.size,
         floor: deadCodeFloorTotal(floor),
-        error: null,
+        path: ARTIFACTS.deadCode,
+        present: true,
       };
     } catch (err) {
       sources["dead-code"] = {
-        path: ARTIFACTS.deadCode,
-        present: true,
         count: 0,
+        error: String(err?.message ?? err),
         files: 0,
         floor: null,
-        error: String(err?.message ?? err),
+        path: ARTIFACTS.deadCode,
+        present: true,
       };
       gaps.push({
-        source: "dead-code",
         path: ARTIFACTS.deadCode,
         reason: `unreadable: ${err?.message ?? err}`,
+        source: "dead-code",
       });
     }
   } else {
     sources["dead-code"] = {
-      path: ARTIFACTS.deadCode,
-      present: false,
       count: 0,
+      error: null,
       files: 0,
       floor: null,
-      error: null,
+      path: ARTIFACTS.deadCode,
+      present: false,
     };
     gaps.push({
-      source: "dead-code",
       path: ARTIFACTS.deadCode,
       reason: `absent — capture it with \`${CAPTURE.deadCode}\``,
+      source: "dead-code",
     });
   }
 
@@ -753,7 +753,7 @@ export function collect(root, bases) {
     t.raise = raiseCommand(t.gate, root);
   });
 
-  return { sources, gaps, targets };
+  return { gaps, sources, targets };
 }
 
 // ---------------------------------------------------------------------------
@@ -1005,7 +1005,7 @@ function main() {
 
   const bases = [root, safeRealpath(root)];
   const { sources, gaps, targets } = collect(root, bases);
-  const report = { schemaVersion: SCHEMA_VERSION, root, sources, gaps, targets };
+  const report = { gaps, root, schemaVersion: SCHEMA_VERSION, sources, targets };
 
   process.stdout.write(json ? canonicalJson(report) : `${renderText(report)}\n`);
   process.exit(0);
