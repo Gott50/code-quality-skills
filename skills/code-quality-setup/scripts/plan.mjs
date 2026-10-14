@@ -971,12 +971,22 @@ function classify(manifest, { library, files }) {
       // content is present — the extras are the repo's — so it is `intact`, not `update` (which
       // would overwrite the file with the bare template and drop the additions). An old manifest
       // recorded the bare template's hash, so `presentHash !== recordedHash` and this never fires.
+      //
+      // The same signature — the recorded hash matches the file, and the file is a superset of the
+      // current render — is also produced by a library move whose render only REMOVES content
+      // (#166): the file is the skill's own earlier render, and the removed content is the
+      // library's, not the repo's. Hashes alone cannot tell the two apart, so the manifest's
+      // per-file `renderHash` — the hash of the RENDERED template the apply wrote — is the
+      // discriminator: it matches the current render only when the library has not moved. Absent
+      // (every manifest written before the field existed) the branch behaves exactly as before, so
+      // a #90 merge recorded by an old manifest still reads `intact`.
       const mergedCreate =
         f.action === "create" &&
         recordedHash !== null &&
         presentHash === recordedHash &&
         files[f.path] != null &&
-        lostContent(f.content, files[f.path], f.path).items.length === 0;
+        lostContent(f.content, files[f.path], f.path).items.length === 0 &&
+        (recFile?.renderHash == null || recFile.renderHash === currentHash);
       // A formatter-only rewrite of a marker block the recipe owns (#143): a repo-wide formatter
       // sweep (`dprint fmt`) rewrote the block's whitespace/alignment, so the hash moved but the
       // content did not. The block still carries the owned content, so it is `intact`, not
@@ -1026,6 +1036,7 @@ function classify(manifest, { library, files }) {
         path: f.path,
         presentHash,
         recordedHash,
+        renderHash: currentHash,
         updateAvailable:
           recordedHash !== null &&
           recordedHash !== currentHash &&
@@ -1152,6 +1163,11 @@ function buildPlan(report, opts) {
         fs: fsVerdict,
         recipeId: r.id,
         recipeState: d?.state ?? null,
+        // The render's hash — the hash of the template the plan just rendered, which the apply
+        // records as the file's `renderHash` (a `create` row prints it). The manifest's per-file
+        // verdict carries the same value for a recorded file; a first install has no manifest to
+        // read it from, so the render is hashed here.
+        renderHash: dFile?.renderHash ?? hash(w.content),
         write: w,
       });
     }
@@ -1603,7 +1619,12 @@ function renderFiles(plan, opts) {
       !(row.fs.verdict === "loss" && (label === "intact" || row.drift?.verdict === "update"))
         ? ` — ${row.fs.note}`
         : "";
-    lines.push(`- \`${w.target}\` (${w.action}, ${scope}) — **${label}**${note}`);
+    // A `create` row carries the render hash the apply records (` · render <hash>`), so a later
+    // library move that only removes content reads `update` instead of being silently dropped
+    // (#166). A `merge`/`patch` row's `hash` is already the render's, so it carries none.
+    const render =
+      w.action === "create" && row.renderHash != null ? ` · render ${row.renderHash}` : "";
+    lines.push(`- \`${w.target}\` (${w.action}, ${scope}) — **${label}**${note}${render}`);
     const showDiff =
       opts.diffPath !== null ||
       opts.diff ||

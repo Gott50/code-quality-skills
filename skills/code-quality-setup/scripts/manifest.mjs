@@ -10,11 +10,18 @@
 //
 // Usage:
 //   node scripts/manifest.mjs record [projectDir] --recipe <id> --recipe-hash <hash> \
-//     [--file <path>:<action>:<hash>]... [--skill-version <v>] [--environment <json>] [--applied-at <iso>]
+//     [--file <path>:<action>:<hash>[:<renderHash>]]... [--skill-version <v>] [--environment <json>] [--applied-at <iso>]
 //   node scripts/manifest.mjs decline [projectDir] --recipe <id> [--applied-at <iso>]
 //   node scripts/manifest.mjs feedback [projectDir] --enable | --disable
 //   node scripts/manifest.mjs library [projectDir] --ref <sha> --schema-version <n> --content-hash <hash>
 //   node scripts/manifest.mjs canonicalize [projectDir]
+//
+// A `--file` spec's optional 4th field, `renderHash`, is the 8-hex sha256 of the RENDERED template
+// the apply wrote — the bare render, before any merge — recorded for `create` targets. `hash` keeps
+// its meaning (the hash of what the apply wrote: the merged file for a #90 merge, the bare render
+// otherwise), so a later plan can tell the skill's own earlier render from the repo's own additions
+// (#166). It is optional: a 3-part spec records no `renderHash`, and the entry is byte-identical to
+// one written before the field existed.
 //
 // The schema is unchanged (schemaVersion 1, recipes[], declined[]; PLAN-SCHEMA.md → the manifest
 // hash convention). This file owns only the serialization. `record` and `decline` are idempotent:
@@ -159,17 +166,24 @@ function parseArgs(argv) {
   return opts;
 }
 
-// `<path>:<action>:<hash>` — the path may itself contain a colon, so split from the right.
+// `<path>:<action>:<hash>[:<renderHash>]` — the path may itself contain a colon, so split from the
+// right. `renderHash` is the 8-hex sha256 of the RENDERED template the apply wrote (the bare
+// render, before any merge), recorded for `create` targets so a later plan can tell the skill's own
+// earlier render from the repo's own additions (#166). It is optional: a 3-part spec yields
+// `renderHash: null`, and `record` then omits the key.
 function parseFileSpec(spec) {
   const parts = spec.split(":");
-  if (parts.length < 3) throw new Error(`--file needs <path>:<action>:<hash>, got "${spec}"`);
+  if (parts.length < 3) {
+    throw new Error(`--file needs <path>:<action>:<hash>[:<renderHash>], got "${spec}"`);
+  }
+  const renderHash = parts.length >= 4 ? parts.pop() : null;
   const hash = parts.pop();
   const action = parts.pop();
   const path = parts.join(":");
   if (!ACTIONS.includes(action)) {
     throw new Error(`--file action must be ${ACTIONS.join("|")}, got "${action}"`);
   }
-  return { action, hash, path };
+  return { action, hash, path, renderHash };
 }
 
 function parseEnvironment(json) {
@@ -206,7 +220,15 @@ function sortFiles(files) {
 }
 
 function record(doc, opts) {
-  const files = sortFiles(opts.files.map(parseFileSpec));
+  const files = sortFiles(
+    opts.files.map(parseFileSpec).map(({ action, hash, path, renderHash }) => {
+      const entry = { action, hash, path };
+      // Omitted when absent, so a 3-part record is byte-identical to one written before the field
+      // existed (the `unchanged` check below compares canonical bytes).
+      if (renderHash !== null) entry.renderHash = renderHash;
+      return entry;
+    }),
+  );
   const existing = (doc.recipes ?? []).find((r) => r.id === opts.recipe);
   const entry = { files, id: opts.recipe, recipeHash: opts.recipeHash };
   const skillVersion = opts.skillVersion ?? existing?.skillVersion;
