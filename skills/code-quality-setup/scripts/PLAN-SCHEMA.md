@@ -128,7 +128,8 @@ The first line after the title is the state:
    `--force` marks them overridden.
 7. **Files (phase 1 — writes, priority order)** — every file to be written: `path (action, scope) — verdict`.
    A `merge`/`patch`/collision/loss/update shows its unified diff inline; a `create` is `new` /
-   `no-op` / `drift` / `update` / `loss`. `--diff` adds the rest.
+   `no-op` / `drift` / `update` / `loss`. A `create` row also carries the render hash the apply
+   records, as ` · render <hash>`. `--diff` adds the rest.
 8. **Losses (create drift — the repo's extra content would be dropped)** — every `create` target the
    repo has customized (verdict `loss`), one `- \`<path>\` (<recipe>) — N key(s)/line(s) the template
    lacks:` line each followed by the lost items as `  - \`<item>\`` bullets, or `_None._`. The repo's
@@ -319,7 +320,12 @@ it wrote (the library's content plus the repo's additions — see the hash conve
 recorded hash matches the file and the file still carries every path/line the current template owns.
 The recipe's owned content is present and the extras are the repo's, so a re-run must not overwrite
 the file with the bare template. An old manifest recorded the bare template's hash, so the recorded
-hash does not match the merged file and this branch never fires for it.
+hash does not match the merged file and this branch never fires for it. The branch also requires the
+manifest's recorded `renderHash` for the file to equal the current render's hash, which separates the
+two situations the hash comparison alone cannot: a #90 merge (the render is unchanged, so the extras
+are the repo's → `intact`) and a library move whose render only **removes** content (the render
+changed, so the extras are the library's earlier content → `update`). A manifest written before this
+change carries no `renderHash`, so the branch behaves exactly as it did before.
 A marker block a repo-wide formatter sweep rewrote (#143) is `intact`, not `drifted`: the sweep
 (`dprint fmt`, `biome format --write`) re-aligns the block's table columns, pads the separator row's
 dashes, and adds or drops blank lines without changing the content, so the block still carries the
@@ -402,6 +408,17 @@ file, with the same normalization `plan.mjs` uses:
   any unrelated edit, and hashing the values would report drift when the repo extends a collection
   the recipe only seeds — the key set is the ownership boundary, the same one a JSON `merge` draws
   with its named leaves.
+
+For a `create` target the entry also carries an optional `renderHash` — the 8-hex sha256 of the
+**rendered template** the apply wrote, recorded alongside `hash` (which stays the hash of what the
+apply wrote: the merged file for a #90 merge, the bare render otherwise). The apply records it
+through the same writer, `--file <path>:<action>:<hash>[:<renderHash>]`, and the plan prints the
+value for each `create` row in the Files section as ` · render <hash>` so the apply can copy it. The
+`mergedCreate` branch (see Verdicts) requires it to equal the current render's hash, which is what
+separates a #90 merge (the render is unchanged → `intact`) from a library move whose render only
+removes content (the render changed → `update`). Only `create` targets carry it — a `merge`/`patch`
+row's `hash` is already the render's. The field is omitted when absent, so a record without it is
+byte-identical to one written before this change.
 
 The hash is `sha256(content).slice(0, 8)` (8 hex chars, the shape the schema shows). `recipes[].recipeHash`
 covers the recipe `.md` plus the content it owns in each file, so a template-only change moves it.
