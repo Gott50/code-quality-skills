@@ -6,7 +6,7 @@ when:
   language: [typescript, javascript]
   packageManager: [npm, pnpm]
   workspace: any
-  requires: [{ file: package.json }, { recipe: biome-assist-npm }, { recipe: oxlint-anti-slop-npm }, { recipe: tsconfig-strict-npm }, { recipe: vitest-coverage }, { recipe: stryker-mutation-vitest }, { recipe: fallow-audit-npm }]
+  requires: [{ file: package.json }, { recipe: biome-assist-npm }, { recipe: oxlint-anti-slop-npm }, { recipe: tsconfig-strict-npm }, { recipe: vitest-coverage }, { recipe: fallow-audit-npm }]
 cost: fast
 priority: 20
 files:
@@ -25,7 +25,7 @@ verify:
 
 1. **`.github/workflows/ci.yml`** — create from `templates/ci-workflow-npm/ci.yml`. Three jobs, and the split is the point:
    - **`ci`** — checkout, `setup-node` from `.node-version`, install, then `lint`, `typecheck`, `format:check` and `test`. `npm run test` carries the per-file coverage gate, floored by the committed baseline (100% when there is none), so the coverage gate is enforced on every PR without a separate step.
-   - **`mutation`** — `if: github.event_name == 'pull_request'`, `fetch-depth: 0`, and the same `scripts/mutation-gate.ts` the pre-push hook runs, fed the PR's head and base SHAs through `npx tsx`.
+   - **`mutation`** — `if: github.event_name == 'pull_request'`, `fetch-depth: 0`, and the same `scripts/mutation-gate.ts` the pre-push hook runs, fed the PR's head and base SHAs through `npx tsx`. The gate step itself carries `if: hashFiles('scripts/mutation-gate.ts') != ''`, so a repo without the `stryker-mutation-vitest` recipe runs the job's checkout and install and then skips the gate rather than failing on a missing script. The `if` is step-level because a job-level `hashFiles` is evaluated before the checkout and sees no files.
    - **`fallow-coverage`** — `npm run fallow:coverage` with `continue-on-error: true`. A health report, not a gate.
 
    Triggers: `pull_request` (skipping markdown-only changes) and `push` to `main`. A `concurrency` group cancels superseded runs.
@@ -34,7 +34,9 @@ The install step is `sh -c 'test -f pnpm-lock.yaml && (corepack enable && pnpm i
 
 The workflow reads `.node-version` through `actions/setup-node`'s `node-version-file`. That file is the `repo-hygiene-npm` recipe's, not this one's: without it, `setup-node` fails before any gate runs.
 
-This recipe requires every gate recipe it wires, because the workflow calls their scripts by name. The detector reports the missing requirement as the failing reason rather than writing a workflow whose steps would fail on a missing script.
+This recipe requires the fast-gate recipes it wires — `biome-assist-npm`, `oxlint-anti-slop-npm`, `tsconfig-strict-npm`, `vitest-coverage` and `fallow-audit-npm` — because the workflow calls their scripts by name. The detector reports a missing one as the failing reason rather than writing a workflow whose steps would fail on a missing script.
+
+It deliberately does **not** require `stryker-mutation-vitest`. The `mutation` job's gate step is conditional on `scripts/mutation-gate.ts` existing, so a repo the mutation recipe does not select — one with no test file, which the recipe's `requires: [{ testFile: true }]` excludes (#170) — still gets lint, typecheck, format and the coverage gate in CI. Requiring the mutation recipe would cascade its absence into losing the whole workflow, which is worse than the red mutation gate it replaced.
 
 ## Idempotency
 

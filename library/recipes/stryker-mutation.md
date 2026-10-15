@@ -6,7 +6,7 @@ when:
   language: [typescript, javascript]
   packageManager: [bun]
   workspace: any
-  requires: [{ file: package.json }]
+  requires: [{ file: package.json }, { testFile: true }]
 cost: heavy
 priority: 30
 files:

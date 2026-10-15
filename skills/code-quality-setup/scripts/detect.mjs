@@ -208,6 +208,28 @@ function walk(dir, { maxDepth = 6, maxEntries = 20000 } = {}) {
   return out;
 }
 
+// The standard test-file naming convention: `*.test.*` / `*.spec.*`, plus bun's `*_test.*` /
+// `*_spec.*` — the union of bun's and vitest's discovery patterns.
+const TEST_FILE = /(?:\.|_)(?:test|spec)\.[cm]?[jt]sx?$/;
+
+// Whether the project has any test file, by that convention. `walk` already skips dot-directories
+// and `node_modules` — the installed skill itself lives in a dot-directory, and a test file inside
+// it is not the project's — so this is the same notion of "the project's files" the language
+// detection uses. A recipe whose gate runs a test runner (mutation, coverage) is not applicable to
+// a repo with nothing to run: the runner exits non-zero on an empty test set.
+//
+// Memoized: the predicate is evaluated once per recipe per selection pass (the fixpoint grows and
+// shrinks), and the walk is the expensive part.
+const testFileCache = new Map();
+function hasTestFiles(root) {
+  let hit = testFileCache.get(root);
+  if (hit === undefined) {
+    hit = walk(root).some((f) => TEST_FILE.test(f));
+    testFileCache.set(root, hit);
+  }
+  return hit;
+}
+
 // `*` = one path segment, `**` = any depth, leading `!` = exclude.
 function globToRegExp(pattern) {
   let re = "";
@@ -642,6 +664,18 @@ function predicateHolds(pred, ctx) {
     const ok = ctx.rootPackage.scripts.includes(pred.script);
     return {
       detail: `root package.json ${ok ? "has" : "has no"} script "${pred.script}"`,
+      pass: ok,
+    };
+  }
+  if ("testFile" in pred) {
+    // The flow reader quotes bare tokens, so a flow `{ testFile: true }` arrives as the string
+    // "true" while a block `- testFile: true` arrives as the boolean; both mean the same thing.
+    // Any other value is not a predicate this contract defines.
+    if (pred.testFile !== true && pred.testFile !== "true")
+      return { detail: `unreadable predicate ${JSON.stringify(pred)}`, pass: false };
+    const ok = hasTestFiles(ctx.root);
+    return {
+      detail: ok ? "the project has a test file" : "the project has no test file",
       pass: ok,
     };
   }

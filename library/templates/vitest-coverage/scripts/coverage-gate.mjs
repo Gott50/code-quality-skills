@@ -19,6 +19,12 @@
  * greenfield wall, so a repo that never raised one is gated exactly as
  * before.
  *
+ * An artifact that is absent, or that lists no file, is a failure — the
+ * reporter did not write — unless the project has no test file at all, in
+ * which case there is nothing to measure and the gate exits 0. That is what
+ * keeps the gate green on day one in a repo with no tests (`vitest run
+ * --passWithNoTests`); a missing artifact with test files present still exits 1.
+ *
  * Usage (the `test` script runs it after `vitest run --coverage`):
  *   node scripts/coverage-gate.mjs --coverage coverage/coverage-final.json --baseline .code-quality-baseline.json
  *
@@ -26,8 +32,8 @@
  *           --baseline ./.code-quality-baseline.json.
  * Exit 0 when every file meets its floor; exit 1 with a report otherwise.
  */
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, relative, resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 
 function parseArg(name) {
   const i = process.argv.indexOf(name);
@@ -40,7 +46,38 @@ const FULL = { functions: { found: 1, hit: 1 }, statements: { found: 1, hit: 1 }
 const coveragePath = parseArg("--coverage") ?? "coverage/coverage-final.json";
 const baselinePath = parseArg("--baseline") ?? ".code-quality-baseline.json";
 
+/** Vitest's default test-file pattern: `**\/*.{test,spec}.?(c|m)[jt]s?(x)`. */
+const TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
+
+// Whether the project has any test file, by vitest's own default include. Only
+// consulted when the artifact is absent or lists no file. Dot-directories are
+// skipped: the installed skill itself lives in one (`.agents/skills/<name>/`),
+// and a test file inside it is not the project's.
+function hasTestFiles(dir) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (hasTestFiles(path)) return true;
+    } else if (TEST_FILE.test(entry.name)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 if (!existsSync(coveragePath)) {
+  // Vitest writes the artifact even with no test files (every `coverage.include`
+  // match is reported at 0%), so this branch is a safety net: a missing artifact
+  // with no test files is nothing to measure, and the gate is green. A missing
+  // artifact with test files present is a real failure (the reporter did not
+  // write), so the scan is deliberately conservative: any matching file counts.
+  if (!hasTestFiles(process.cwd())) {
+    console.log(
+      `coverage-gate: no coverage at ${coveragePath} and no test files — nothing to measure`,
+    );
+    process.exit(0);
+  }
   console.error(`coverage-gate: coverage not found at ${coveragePath}`);
   console.error("Run first: vitest run --coverage");
   process.exit(1);
@@ -149,6 +186,22 @@ try {
   process.exit(1);
 }
 const byFile = readIstanbul(doc);
+
+if (Object.keys(byFile).length === 0) {
+  // An artifact that lists no file measured nothing. With no test files that is
+  // the empty test set — nothing to measure, and the gate is green. With test
+  // files present the coverage setup produced nothing (a `coverage.include`
+  // that matches no file), which must not silently pass.
+  if (!hasTestFiles(process.cwd())) {
+    console.log(
+      `coverage-gate: ${coveragePath} lists no file and no test files — nothing to measure`,
+    );
+    process.exit(0);
+  }
+  console.error(`coverage-gate: ${coveragePath} lists no file but the project has test files`);
+  console.error("Check coverage.include in vitest.config.ts");
+  process.exit(1);
+}
 
 /** The floor for one file: its own if the baseline records it, else global. */
 function floorOf(rec) {

@@ -144,6 +144,7 @@ Predicates, evaluated against the report:
 | `{ file: <path> }` | `<path>` exists at the workspace root |
 | `{ dep: <name> }` | `<name>` is in any detected package's `dependencies` or `devDependencies` |
 | `{ script: <name> }` | `<name>` is a script in the **root** `package.json` |
+| `{ testFile: true }` | the project has at least one test file (`*.test.*` / `*.spec.*`, plus bun's `*_test.*` / `*_spec.*`), outside dot-directories and `node_modules` |
 | `{ recipe: <id> }` | that recipe is in the current selection |
 | `{ recipe: "*" }` | at least one **other** recipe is in the current selection |
 
