@@ -726,12 +726,22 @@ function lostLinesAreTemplateKeys(content, lost) {
 
 // Whether the repo's file carries the template's content (#103, #105): every non-blank template
 // line is present in the repo's file, or the repo's file has a line that *extends* it — the same
-// key, and every token of the template line present in the file. A template line the repo
+// key, and every token of the template line present in that line. A template line the repo
 // *deleted* is not carried: its tokens are gone. This is "the recipe owns the keys it declares, not
 // the file" applied to a `create` target: a repo that extended a seeded value (an array element, a
 // rewritten step) still carries the library's content, so a re-run reads `intact` instead of
 // `update` forever (#105), and a file that is not the library's content plus additions — an earlier
 // library version's template — is not read as the repo's own additions (#103).
+//
+// The token test is scoped to a repo line at the SAME key, not the whole file's token set (#168): a
+// template line's trailing `{` is "present" in any file that uses braces elsewhere, so a repo line
+// that is the template line minus the brace — the library's own earlier render — would read as
+// carried, and the plan would tell the apply to merge a line that duplicates the statement. The key
+// is the ownership boundary `lineKey` draws, so the comparison stays within the line the template
+// owns: a repo line at the key that carries every template token extends it (the #90 merge); one
+// that does not is the library's earlier render, and the caller's `olderRender` branch re-renders
+// it instead. The tokens are not pooled across the repo's lines at the key — a sibling line at the
+// same key must not supply a token the template line's own counterpart lacks.
 //
 // A JSON target is compared structurally, the same test `lostContent` uses: the template's paths
 // must all be present in the repo's document (an array element the repo dropped is not carried).
@@ -744,18 +754,20 @@ function carriesTemplate(repoFile, template, target) {
   const norm = (s) => s.trim().replace(/\s+/g, " ");
   const repoLines = repoFile.split("\n").map(norm);
   const repoSet = new Set(repoLines);
-  const fileTokens = new Set(
-    repoLines
-      .join(" ")
-      .split(/\s+/)
-      .filter((t) => t !== ""),
-  );
-  const keys = new Set(repoLines.map(lineKey));
+  const tokensByKey = new Map();
+  for (const line of repoLines) {
+    const key = lineKey(line);
+    const tokens = new Set(line.split(/\s+/).filter((t) => t !== ""));
+    const atKey = tokensByKey.get(key);
+    if (atKey) atKey.push(tokens);
+    else tokensByKey.set(key, [tokens]);
+  }
   for (const raw of template.split("\n")) {
     const line = norm(raw);
     if (line === "") continue;
     if (repoSet.has(line)) continue;
-    if (keys.has(lineKey(line)) && line.split(/\s+/).every((t) => fileTokens.has(t))) continue;
+    const atKey = tokensByKey.get(lineKey(line));
+    if (atKey && atKey.some((tokens) => line.split(/\s+/).every((t) => tokens.has(t)))) continue;
     return false;
   }
   return true;
