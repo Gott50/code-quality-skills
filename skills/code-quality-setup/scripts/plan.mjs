@@ -700,6 +700,30 @@ function lineKey(line) {
   return m ? m[1] : line;
 }
 
+// Whether a line is a comment (#167): a comment is not content — the recipe does not own it, and the
+// repo's own comment is not an addition the overwrite would drop — so it is excluded before the key
+// test below. The prefixes cover the languages the library's templates are written in: `//` for JS
+// and TS, `#` for shell, YAML, TOML and gitignore (a shebang included), `/*` and `*` for a block
+// comment and its continuation lines, `<!--` for Markdown and HTML.
+function isCommentLine(line) {
+  return /^(\/\/|#|\/\*|\*|<!--)/.test(line.trim());
+}
+
+// Whether every lost line sits at a key the template declares (#167): the line-based counterpart of
+// the structural comparison `lostContent` already makes for a JSON target. A repo line whose key the
+// template declares is the library's value moving — a version bump, a changed default, the library's
+// own earlier render — not the repo's content; a repo line whose key the template does NOT declare
+// is the repo's own addition. Comment lines are not content, so they are excluded first. `lost` is
+// already whitespace-normalized by `lostContent`, so `lineKey` reads the same text the template's
+// lines are normalized to.
+function lostLinesAreTemplateKeys(content, lost) {
+  const norm = (s) => s.trim().replace(/\s+/g, " ");
+  const templateKeys = new Set(content.split("\n").map(norm).map(lineKey));
+  return lost
+    .filter((line) => !isCommentLine(line))
+    .every((line) => templateKeys.has(lineKey(line)));
+}
+
 // Whether the repo's file carries the template's content (#103, #105): every non-blank template
 // line is present in the repo's file, or the repo's file has a line that *extends* it — the same
 // key, and every token of the template line present in the file. A template line the repo
@@ -785,7 +809,10 @@ function formattingEquivalent(a, b) {
 // (#90): with a manifest the plan knows the repo's file is not the recorded content, so it is a
 // `loss` (skip); without one the plan cannot tell the repo's own additions from the skill's own
 // earlier install, so it is an `update` (merge — the library's content is written, the repo's
-// additions are preserved).
+// additions are preserved). Without a manifest a `create` file that is the library's own earlier
+// render is an `update` too (#167), but one the apply re-renders rather than merges: the lost items
+// are the previous render's lines, not the repo's additions, so the row carries `olderRender` and
+// the Updates section says not to re-apply them.
 function filesystemVerdict(write, content, projectRoot, recipeId, manifestPresent) {
   const abs = join(projectRoot, write.target);
   const existing = existsSync(abs) ? readFileSync(abs, "utf8") : null;
@@ -811,12 +838,37 @@ function filesystemVerdict(write, content, projectRoot, recipeId, manifestPresen
       // library's content plus additions — an earlier library version's template, whose lines the
       // current template never had — is not the repo's own additions, so it is a `loss` (skip),
       // not an `update` (merge). Following the Updates section's instruction on such a file would
-      // re-add the old template's lines and break the gate it installs.
+      // re-add the old template's lines and break the gate it installs. An earlier render whose
+      // lines all sit at keys the current template declares is the next branch's case (#167): the
+      // library's own value moved, so the apply re-renders the file instead of skipping it.
       if (!manifestPresent && carriesTemplate(existing, content, write.target)) {
         return {
           diff: unifiedDiff(existing, content, write.target),
           lost,
           note: `the repo's file carries ${lost.length} ${unit}(s) the template does not — merge them in, do not drop them`,
+          unit,
+          verdict: "update",
+        };
+      }
+      // A `create` target whose repo file is the library's own EARLIER RENDER (#167): every lost
+      // line sits at a key the template declares, so the lost content is the library's own earlier
+      // value — a version bump, a changed default — not the repo's addition. This is the line-based
+      // counterpart of the structural comparison the contract already states for a JSON target ("a
+      // path present in both is not lost whatever its value, because a differing value is the
+      // library moving ... which is drift, not the repo's content"): a repo line whose key the
+      // template does NOT declare is the repo's own addition and stays a `loss`. Reading it as
+      // `update` is what lets a library fix delivered through a `create` template reach a repo
+      // migrated from an older library that never committed a manifest — the apply re-renders the
+      // file instead of skipping it, so the fix lands (#167). A JSON target needs no such branch:
+      // `lostPaths` already excludes a path present in both, so every lost path there is a
+      // repo-only path — the repo's addition. `unit === "line"` is the line-based comparison (a
+      // JSON target whose document does not parse falls back to it too).
+      if (!manifestPresent && unit === "line" && lostLinesAreTemplateKeys(content, lost)) {
+        return {
+          diff: unifiedDiff(existing, content, write.target),
+          lost,
+          note: `the repo's file is an earlier render of the template — re-render it from the current library; the ${lost.length} ${unit}(s) below are the previous render's, not the repo's additions`,
+          olderRender: true,
           unit,
           verdict: "update",
         };
@@ -1572,12 +1624,13 @@ function isLossRow(row) {
   return row.fs.verdict === "loss" && (row.drift === null || row.drift.verdict === "loss");
 }
 
-// A row the Updates section names. Two cases, both "the library's content is written, the repo's
+// A row the Updates section names. Three cases, all "the library's content is written, the repo's
 // content kept": a `create` target the repo has extended with no manifest (fs.verdict `update`,
-// #90), and a file the manifest records as the skill's own content while the library's render moved
-// (drift.verdict `update`). The Files label comes from the drift verdict when a manifest is present
-// and from the filesystem verdict otherwise, so the section must name both — otherwise a row reads
-// `update` while no section names it (#155).
+// #90), a `create` target whose file is the library's own earlier render (fs.verdict `update` with
+// `olderRender`, #167), and a file the manifest records as the skill's own content while the
+// library's render moved (drift.verdict `update`). The Files label comes from the drift verdict when
+// a manifest is present and from the filesystem verdict otherwise, so the section must name all of
+// them — otherwise a row reads `update` while no section names it (#155).
 function isUpdateRow(row) {
   return row.fs.verdict === "update" || (row.drift !== null && row.drift.verdict === "update");
 }
@@ -1696,27 +1749,34 @@ function renderLosses(plan, force) {
 }
 
 // The rows the Updates section names (`isUpdateRow`): a `create` target the repo has extended with
-// no manifest (#90), and a file the manifest records as the skill's own content while the library's
-// render moved (the drift `update` state). Both mean the library's content is written and the
-// repo's content is kept — the no-manifest case merges the repo's additions into the library's
-// content, the manifest case re-renders the file the skill wrote. This section names the additions
-// and the decision, so the agent merges instead of overwriting (which would drop them) or skipping
-// (which would leave the gate uninstalled). A `create` row carries the lost items (`fs.lost`); a
-// `merge`/`patch` row has none, so it names the library move instead.
+// no manifest (#90), a `create` target whose file is the library's own earlier render (#167), and a
+// file the manifest records as the skill's own content while the library's render moved (the drift
+// `update` state). All three mean the library's content is written and the repo's content is kept —
+// the #90 case merges the repo's additions into the library's content, the other two re-render the
+// file (the earlier render's lines are the library's, not the repo's). This section names the
+// additions and the decision, so the agent merges instead of overwriting (which would drop them) or
+// skipping (which would leave the gate uninstalled). A `create` row carries the lost items
+// (`fs.lost`); a `merge`/`patch` row has none, so it names the library move instead.
 function renderUpdates(plan) {
   const rows = plan.fileRows.filter((r) => isUpdateRow(r));
   if (rows.length === 0) return null;
   const lines = ["## Updates (the library's content is written, the repo's content kept)", ""];
   lines.push(
-    "_The library's content is written and the repo's content is kept. A `create` target the repo has extended with no manifest is merged — write the library's content and re-apply the repo's additions below; do not overwrite it verbatim (that drops them). A file the manifest records as the skill's own content is re-rendered because the library's render moved. Do not skip either — that leaves the gate uninstalled. The diff shows the library's content against the repo's file._",
+    "_The library's content is written and the repo's content is kept. A `create` target the repo has extended with no manifest is merged — write the library's content and re-apply the repo's additions below; do not overwrite it verbatim (that drops them). A `create` target whose file is an earlier render of the template is re-rendered from the current library — the items below are the previous render's lines, not the repo's additions, so re-applying them would duplicate keys and break the config. A file the manifest records as the skill's own content is re-rendered because the library's render moved. Do not skip any of them — that leaves the gate uninstalled. The diff shows the library's content against the repo's file._",
     "",
   );
   for (const row of rows) {
-    // The lost items are the repo's additions only in the no-manifest case (fs.verdict `update`):
-    // there the file carries the template's content plus the repo's own lines. A manifest-present
-    // `update` (drift.verdict `update`) is the skill's own recorded content, so its "lost" items are
-    // the previous render's lines, not the repo's — the apply re-renders, it does not re-apply them.
-    if (row.fs.verdict === "update" && row.fs.lost) {
+    // The lost items are the repo's additions only in the #90 case (fs.verdict `update` without
+    // `olderRender`): there the file carries the template's content plus the repo's own lines. An
+    // earlier render (`olderRender`) and a manifest-present `update` (drift.verdict `update`) are
+    // the library's own content, so their "lost" items are the previous render's lines, not the
+    // repo's — the apply re-renders, it does not re-apply them.
+    if (row.fs.verdict === "update" && row.fs.olderRender) {
+      lines.push(
+        `- \`${row.write.target}\` (${row.recipeId}) — the repo's file is an earlier render of the template; re-render it from the current library and do NOT re-apply the ${row.fs.lost.length} ${row.fs.unit}(s) below (they are the previous render's lines — re-applying them duplicates keys):`,
+      );
+      for (const l of row.fs.lost) lines.push(`  - \`${l}\``);
+    } else if (row.fs.verdict === "update" && row.fs.lost) {
       lines.push(
         `- \`${row.write.target}\` (${row.recipeId}) — ${row.fs.lost.length} ${row.fs.unit}(s) the template lacks:`,
       );

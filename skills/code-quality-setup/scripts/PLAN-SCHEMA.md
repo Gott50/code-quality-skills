@@ -137,18 +137,22 @@ The first line after the title is the state:
    MUST NOT overwrite these files without an explicit override (`--force`); `--force` marks them
    overridden (SKILL.md → Apply).
 9. **Updates (the library's content is written, the repo's content kept)** — every row whose verdict
-   is `update`, in either case: a `create` target the repo has extended with **no manifest** (the
-   filesystem verdict), or a file the manifest records as the skill's own content while the library's
-   render moved (the drift verdict). One `- \`<path>\` (<recipe>) — …` line each. The section is
-   rendered **only when there is an update**. In the no-manifest case the repo's file carries content
-   the template does not, and the plan cannot tell the repo's own additions from the skill's own
-   earlier install; the filesystem is the source of truth (ADR 0001), so the verdict is `update`: the
-   library's content is the target and the repo's additions are preserved by a merge (#90) — the line
-   lists the additions as `  - \`<item>\`` bullets. In the manifest-present case the library's render
-   moved and the repo's file is untouched; the line says so and the agent re-renders it from the
-   current library. In both cases the agent MUST NOT overwrite the file verbatim (that drops the
-   repo's content) and MUST NOT skip it (that leaves the gate uninstalled). No `--force` is needed
-   (SKILL.md → Apply).
+   is `update`, in any of three cases: a `create` target the repo has extended with **no manifest**
+   (the filesystem verdict), a `create` target whose file is the library's own **earlier render**
+   (the filesystem verdict with `olderRender`), or a file the manifest records as the skill's own
+   content while the library's render moved (the drift verdict). One `- \`<path>\` (<recipe>) — …`
+   line each. The section is rendered **only when there is an update**. In the no-manifest case the
+   repo's file carries content the template does not, and the plan cannot tell the repo's own
+   additions from the skill's own earlier install; the filesystem is the source of truth (ADR 0001),
+   so the verdict is `update`: the library's content is the target and the repo's additions are
+   preserved by a merge (#90) — the line lists the additions as `  - \`<item>\`` bullets. In the
+   earlier-render case every lost line sits at a key the template declares, so the lost items are the
+   previous render's lines, not the repo's additions (#167): the line says to re-render the file from
+   the current library and **not** to re-apply the listed items (re-applying them duplicates keys and
+   breaks the config). In the manifest-present case the library's render moved and the repo's file is
+   untouched; the line says so and the agent re-renders it from the current library. In every case
+   the agent MUST NOT overwrite the file verbatim (that drops the repo's content) and MUST NOT skip
+   it (that leaves the gate uninstalled). No `--force` is needed (SKILL.md → Apply).
 10. **Pre-existing content (duplicate blocks)** — every marker `merge` block the target file already
    carries without a marker (verdict `duplicate`), one `- \`<path>\` (<recipe>) — <evidence>` line
    each, or `_None._`. The hand-set-up repo (#35): the harness is there, the manifest is not, so the
@@ -236,7 +240,7 @@ Without a manifest, from the filesystem alone:
 
 | Action | Verdicts |
 |---|---|
-| `create` | `new` (absent) · `no-op` (byte-identical, or a formatter-only rewrite — see below) · `drift` (present, different, the repo is a subset of the template) · `update` (present, different, the repo carries content the template does not, **no manifest** — see below) · `loss` (present, different, the repo carries content the template does not, **manifest present** — see below) |
+| `create` | `new` (absent) · `no-op` (byte-identical, or a formatter-only rewrite — see below) · `drift` (present, different, the repo is a subset of the template) · `update` (present, different, the repo carries content the template does not, **no manifest** — the repo's additions, or the library's own earlier render — see below) · `loss` (present, different, the repo carries content the template does not and it is the repo's own — **manifest present**, or a repo line whose key the template does not declare — see below) |
 | `merge` (markers) | `new` (no block) · `no-op` (identical block) · `replace` (different block) · `duplicate` (no block, but the file already carries the block's content — see below) |
 | `merge` (JSON) | `new` (absent) · `add` (missing keys) · `no-op` · `collision` (an existing value would change) |
 | `patch` | `new` (absent) · `no-op` (the after-state already holds — see below) · `patch` (always shown; the detector cannot verify it) |
@@ -253,11 +257,19 @@ not overwritten, and a reordered array is not a loss. An array element's path is
 `<array>[<canonical element>]` (e.g. `ignorePatterns["prototype/**"]`). For any other target it is
 line-based: a non-blank line of the repo's file that does not appear in the template (after
 normalizing whitespace, the same normalization `duplicate` uses) is content the template lacks — the
-loss. When nothing is lost the repo is a subset (behind), the verdict is `drift`, and the overwrite
-drops nothing. The apply MUST NOT overwrite a `loss` without an explicit override (`--force`); the
-plan shows the diff and the lost items (SKILL.md → Apply). A `create` file the manifest records as
-`update` is the skill's own recorded content — the difference is the library's, not the repo's — so
-it is not a loss.
+loss. The line-based comparison draws the same boundary the structural one does (#167): a repo line
+whose **key** — the text up to and including the first `:` or `=`, the same ownership boundary a
+`patch` draws — the template also declares is the library's value moving (a version bump, a changed
+default, the library's own earlier render), not the repo's content, so it is not a loss; a repo line
+whose key the template does not declare is the repo's own addition, and is. A comment line is not
+content either way. A `create` file whose lost lines all sit at keys the template declares is
+therefore `update`, not `loss`: the apply re-renders it from the current library, so a library fix
+delivered through a `create` template reaches a repo migrated from an older library that never
+committed a manifest. When nothing is lost the repo is a subset (behind), the verdict is `drift`,
+and the overwrite drops nothing. The apply MUST NOT overwrite a `loss` without an explicit override
+(`--force`); the plan shows the diff and the lost items (SKILL.md → Apply). A `create` file the
+manifest records as `update` is the skill's own recorded content — the difference is the library's,
+not the repo's — so it is not a loss.
 
 A `create` target a repo-wide formatter sweep rewrote (#153) is `intact` (with a manifest) or
 `no-op` (without one), not `loss`: the sweep (`dprint fmt`, `biome format --write`) reformats the
