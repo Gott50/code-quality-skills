@@ -41,6 +41,13 @@ declares `conflicts.tools: [prettier, eslint]` and `conflicts.recipes: [eslint-p
 project that already runs ESLint + Prettier reports the collision *and* holds the competing recipe
 back. `pnpm-workspace` reaches both from a member's tooling; `npm-eslint-prettier` from the root.
 
+`pnpm-workspace`'s `packages/a/vitest.config.ts` is a hand-written stub, not an older render: its only
+line the `vitest-coverage` template does not own is `thresholds: { perFile: true, lines: 100,
+functions: 100 }`, at a key the template declares. The plan reads it as `update` — a repo line whose
+key the template declares is the library's value moving, not the repo's content (#167) — so the
+fixture's plan shows one fewer `loss` than it did before that fix. The fixture is a detection target;
+the apply is not run on it.
+
 `plain-ts` no longer exercises the **empty selection**: with the npm variants in the library, a plain
 npm TypeScript repo now selects every npm recipe. The "nothing applies" entry state is reached by a
 directory with no TypeScript and no manifest — this repo's own root is the usual probe:
