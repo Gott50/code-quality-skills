@@ -63,7 +63,12 @@ jobs:
           bun-version-file: .bun-version
       - name: Install dependencies
         run: bun ci
+      # The gate script is the stryker-mutation recipe's, and this workflow does
+      # not require that recipe: a repo with no test file has no mutation gate
+      # to run. `hashFiles` is step-level because a job-level one runs before
+      # the checkout and would see no files.
       - name: Run mutation gate (scoped to PR changes)
+        if: hashFiles('scripts/mutation-gate.ts') != ''
         run: |
           echo "refs/heads/head ${{ github.event.pull_request.head.sha }} refs/heads/base ${{ github.event.pull_request.base.sha }}" | bun scripts/mutation-gate.ts
 

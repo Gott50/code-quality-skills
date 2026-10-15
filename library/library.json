@@ -374,9 +374,6 @@
             "recipe": "bun-test-coverage"
           },
           {
-            "recipe": "stryker-mutation"
-          },
-          {
             "recipe": "fallow-audit"
           }
         ]
@@ -430,9 +427,6 @@
           },
           {
             "recipe": "vitest-coverage"
-          },
-          {
-            "recipe": "stryker-mutation-vitest"
           },
           {
             "recipe": "fallow-audit-npm"
@@ -1195,6 +1189,9 @@
         "requires": [
           {
             "file": "package.json"
+          },
+          {
+            "testFile": "true"
           }
         ]
       },
@@ -1288,6 +1285,9 @@
           },
           {
             "recipe": "vitest-coverage"
+          },
+          {
+            "testFile": "true"
           }
         ]
       },

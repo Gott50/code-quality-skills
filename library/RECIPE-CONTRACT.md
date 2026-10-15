@@ -46,6 +46,7 @@ Every condition is evaluated against the detector's stack report. All of `requir
 | `{ file: <path> }` | `<path>` exists at the workspace root |
 | `{ dep: <name> }` | `<name>` is in a detected manifest's dependencies or devDependencies |
 | `{ script: <name> }` | `<name>` is a script in the root `package.json` |
+| `{ testFile: true }` | the project has at least one test file (`*.test.*` / `*.spec.*`, plus bun's `*_test.*` / `*_spec.*`), outside dot-directories and `node_modules` |
 | `{ recipe: <id> }` | another recipe with that `id` is selected in the same run |
 | `{ recipe: "*" }` | at least one *other* recipe is selected |
 
@@ -262,5 +263,5 @@ that names it is a contract violation.
 The frontmatter stays inside a strict, dependency-free subset:
 
 - Scalars, block maps, block sequences of maps, and flow lists/maps.
-- Flow-style values are JSON with the quotes left off (`[typescript, javascript]`, `[{ file: package.json }]`); the reader quotes bare tokens before `JSON.parse`. Nothing else is allowed — no anchors, no multi-line strings, no nested block sequences.
+- Flow-style values are JSON with the quotes left off (`[typescript, javascript]`, `[{ file: package.json }]`); the reader quotes bare tokens before `JSON.parse`, so a flow `{ testFile: true }` arrives as the string `"true"` — the detector accepts either spelling. Nothing else is allowed — no anchors, no multi-line strings, no nested block sequences.
 - A frontmatter line outside that subset is a hard error, not a silent skip.

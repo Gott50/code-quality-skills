@@ -20,6 +20,13 @@
  * greenfield wall, so a repo that never raised one is gated exactly as
  * before.
  *
+ * An artifact that is absent, or that lists no file, is a failure — the
+ * reporter did not write — unless the project has no test file at all, in
+ * which case there is nothing to measure and the gate exits 0. That is what
+ * keeps the gate green on day one in a repo with no tests (`bun test
+ * --pass-with-no-tests`); a missing artifact with test files present still
+ * exits 1.
+ *
  * Usage:
  *   bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage
  *   bun scripts/coverage-gate.ts --lcov coverage/lcov.info --baseline .code-quality-baseline.json
@@ -27,8 +34,8 @@
  * Defaults: --lcov ./coverage/lcov.info, --baseline ./.code-quality-baseline.json.
  * Exit 0 when every file meets its floor; exit 1 with a report otherwise.
  */
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 
 function parseArg(name: string): string | undefined {
   const i = process.argv.indexOf(name);
@@ -81,7 +88,35 @@ const FULL: CoverageFrac = { functions: { found: 1, hit: 1 }, lines: { found: 1,
 const lcovPath = parseArg("--lcov") ?? "coverage/lcov.info";
 const baselinePath = parseArg("--baseline") ?? ".code-quality-baseline.json";
 
+/** bun's test-file patterns: `*.test.*`, `*.spec.*`, `*_test.*`, `*_spec.*` (js/ts/jsx/tsx/mjs/mts/cjs/cts). */
+const TEST_FILE = /(?:\.|_)(?:test|spec)\.[cm]?[jt]sx?$/;
+
+// Whether the project has any test file, by bun's own discovery patterns. Only
+// consulted when the artifact is absent or lists no file. Dot-directories are
+// skipped: the installed skill itself lives in one (`.agents/skills/<name>/`),
+// and a test file inside it is not the project's.
+function hasTestFiles(dir: string): boolean {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (hasTestFiles(path)) return true;
+    } else if (TEST_FILE.test(entry.name)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 if (!existsSync(lcovPath)) {
+  // A run that found no test files writes no lcov at all — bun instruments
+  // nothing, so there is nothing to measure and the gate is green. A missing
+  // artifact with test files present is a real failure (the reporter did not
+  // write), so the scan is deliberately conservative: any matching file counts.
+  if (!hasTestFiles(process.cwd())) {
+    console.log(`coverage-gate: no lcov at ${lcovPath} and no test files — nothing to measure`);
+    process.exit(0);
+  }
   console.error(`coverage-gate: lcov not found at ${lcovPath}`);
   console.error(
     `Run first: bun test --coverage --coverage-reporter=lcov --coverage-dir=${"coverage"}`,
@@ -176,6 +211,21 @@ for (const block of text.split(/(?=^SF:)/m)) {
   rec.fnf += num("FNF");
   rec.fnh += num("FNH");
   byFile[sf] = rec;
+}
+
+if (Object.keys(byFile).length === 0) {
+  // An lcov that lists no file measured nothing. With no test files that is the
+  // empty test set — nothing to measure, and the gate is green. With test files
+  // present the coverage setup produced nothing (tests that import no source, or
+  // a `coveragePathIgnorePatterns` that excludes it all), which must not
+  // silently pass.
+  if (!hasTestFiles(process.cwd())) {
+    console.log(`coverage-gate: ${lcovPath} lists no file and no test files — nothing to measure`);
+    process.exit(0);
+  }
+  console.error(`coverage-gate: ${lcovPath} lists no file but the project has test files`);
+  console.error("Check coveragePathIgnorePatterns in bunfig.toml");
+  process.exit(1);
 }
 
 /** `75% (3/4)` — the floor beside the level it failed. */

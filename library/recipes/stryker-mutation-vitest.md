@@ -6,7 +6,7 @@ when:
   language: [typescript, javascript]
   packageManager: [npm, pnpm]
   workspace: any
-  requires: [{ file: package.json }, { recipe: vitest-coverage }]
+  requires: [{ file: package.json }, { recipe: vitest-coverage }, { testFile: true }]
 cost: heavy
 priority: 30
 files:
