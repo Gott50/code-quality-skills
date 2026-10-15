@@ -45,8 +45,10 @@ back. `pnpm-workspace` reaches both from a member's tooling; `npm-eslint-prettie
 line the `vitest-coverage` template does not own is `thresholds: { perFile: true, lines: 100,
 functions: 100 }`, at a key the template declares. The plan reads it as `update` — a repo line whose
 key the template declares is the library's value moving, not the repo's content (#167) — so the
-fixture's plan shows one fewer `loss` than it did before that fix. The fixture is a detection target;
-the apply is not run on it.
+fixture's plan shows one fewer `loss` than it did before that fix. `pnpm-workspace` is an apply
+target, so the apply **re-renders** that member config from the template rather than skipping it: the
+stub is replaced, which is the intended behavior for a file whose keys are a subset of the
+template's.
 
 `plain-ts` no longer exercises the **empty selection**: with the npm variants in the library, a plain
 npm TypeScript repo now selects every npm recipe. The "nothing applies" entry state is reached by a
