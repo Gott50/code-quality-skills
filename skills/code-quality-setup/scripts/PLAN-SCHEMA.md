@@ -144,15 +144,24 @@ The first line after the title is the state:
    line each. The section is rendered **only when there is an update**. In the no-manifest case the
    repo's file carries content the template does not, and the plan cannot tell the repo's own
    additions from the skill's own earlier install; the filesystem is the source of truth (ADR 0001),
-   so the verdict is `update`: the library's content is the target and the repo's additions are
-   preserved by a merge (#90) — the line lists the additions as `  - \`<item>\`` bullets. In the
-   earlier-render case every lost line sits at a key the template declares, so the lost items are the
-   previous render's lines, not the repo's additions (#167): the line says to re-render the file from
-   the current library and **not** to re-apply the listed items (re-applying them duplicates keys and
-   breaks the config). In the manifest-present case the library's render moved and the repo's file is
-   untouched; the line says so and the agent re-renders it from the current library. In every case
-   the agent MUST NOT overwrite the file verbatim (that drops the repo's content) and MUST NOT skip
-   it (that leaves the gate uninstalled). No `--force` is needed (SKILL.md → Apply).
+   so the verdict is `update`. The merge (#90) applies only when the repo's file **carries the
+   template's content** — every non-blank template line is present, or a repo line at the **same
+   key** extends it (every token of the template line present in that line, the repo's own tokens
+   extra). The token test is scoped to the repo's line at the key, not the whole file's token set
+   (#168): a template line's trailing `{` is "present" in any file that uses braces elsewhere, so a
+   repo line that is the template line minus the brace — the library's own earlier render — would
+   otherwise read as carried and the plan would tell the apply to merge a line that duplicates the
+   statement. When the file carries the template's content the library's content is the target and
+   the repo's additions are preserved by a merge — the line lists the additions as `  - \`<item>\``
+   bullets. In the earlier-render case the file does **not** carry the template's content (a repo
+   line at a template key lacks the template line's tokens — the library's own earlier render, #168)
+   and every lost line sits at a key the template declares (#167), so the lost items are the previous
+   render's lines, not the repo's additions: the line says to re-render the file from the current
+   library and **not** to re-apply the listed items (re-applying them duplicates keys and breaks the
+   config). In the manifest-present case the library's render moved and the repo's file is untouched;
+   the line says so and the agent re-renders it from the current library. In every case the agent
+   MUST NOT overwrite the file verbatim (that drops the repo's content) and MUST NOT skip it (that
+   leaves the gate uninstalled). No `--force` is needed (SKILL.md → Apply).
 10. **Pre-existing content (duplicate blocks)** — every marker `merge` block the target file already
    carries without a marker (verdict `duplicate`), one `- \`<path>\` (<recipe>) — <evidence>` line
    each, or `_None._`. The hand-set-up repo (#35): the harness is there, the manifest is not, so the
