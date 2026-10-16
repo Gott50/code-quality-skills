@@ -52,6 +52,8 @@ Every condition is evaluated against the detector's stack report. All of `requir
 
 A recipe with no `when` keys applies to every stack. Prose judgement belongs here as a predicate or not at all: the detector never reads the body to decide applicability.
 
+**The predicate set is part of the library contract.** Adding one bumps `library.json`'s `schemaVersion` (`scripts/build-library.mjs`'s `SCHEMA_VERSION`, and the skill's `update.mjs` `LIBRARY_SCHEMA_VERSION` with it — #182): a reader that does not implement the new predicate drops the recipe with `unknown predicate` rather than refusing the library, so the addition has to move the version gate the update check reads. The same holds for any new frontmatter key.
+
 ### `conflicts` — what must not be applied alongside
 
 - `recipes`: ids that must not both be selected. If both match, the plan keeps the higher `priority` one and reports the other as *held back*.

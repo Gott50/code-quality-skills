@@ -37,8 +37,11 @@ const REPO = "Gott50/code-quality-skills";
 const MANIFEST_NAME = ".code-quality.json";
 const INDEX_PATH = "library/library.json";
 // The library schemaVersion this skill implements (#112). A library whose schemaVersion exceeds it
-// is refused — the skill never plans recipes from a contract it does not implement.
-const LIBRARY_SCHEMA_VERSION = 1;
+// is refused — the skill never plans recipes from a contract it does not implement. It tracks
+// `scripts/build-library.mjs`'s SCHEMA_VERSION, which bumps on any contract addition an older
+// reader cannot honour (a new `when` predicate, a new frontmatter key — #182), not only on a
+// change to an existing one.
+const LIBRARY_SCHEMA_VERSION = 2;
 const NETWORK_TIMEOUT_MS = 30_000;
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 
