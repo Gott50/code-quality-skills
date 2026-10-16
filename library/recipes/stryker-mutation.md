@@ -61,7 +61,7 @@ verify:
 4. **`package.json`** — merge from `templates/stryker-mutation/package.json`: add the `@stryker-mutator/core` and `@hughescr/stryker-bun-runner` devDependencies and the `test:mutation` script.
 5. **Workspace member `package.json`** — merge from `templates/stryker-mutation/package.member.json`: add the `test:mutation` script. `bun run` resolves a script from the nearest `package.json` only — it does not walk up past a member's own manifest — so without this script the per-member verify dies with `Script not found: test:mutation`. The member needs no devDependencies of its own: the two packages are hoisted to the root `node_modules`, and `bun run` puts the root `.bin` on the script's `PATH`. Skipped in a single-package repo, where the root entry writes the same path.
 6. **`.husky/pre-push`** — merge from `templates/stryker-mutation/pre-push.block`, inside this recipe's marker pair.
-7. **`.gitignore`** — merge from `templates/stryker-mutation/gitignore.block`, inside this recipe's marker pair: `reports/` and `.stryker-tmp/`. The incremental cache lives under `reports/`, so it is never committed.
+7. **`.gitignore`** — merge from `templates/stryker-mutation/gitignore.block`, inside this recipe's marker pair: `.stryker-tmp/`. `reports/` (which holds the incremental cache) is owned by the `repo-hygiene` recipe, which is selected for every stack, so it is ignored even on a repo where this recipe is not selected.
 8. **`bun install`** — installs the two devDependencies.
 
 Five things the gate does that a bare `stryker run` does not:
@@ -91,5 +91,5 @@ The gate diffs committed SHAs, so it only runs on files present in a commit. To 
 - Remove the `test:mutation` script from the member `package.json` in a workspace — only where this recipe added it.
 - Remove the `code-quality:stryker-mutation` block from `.husky/pre-push`; delete the file if the block is all it holds.
 - Remove the `code-quality:stryker-mutation` block from `.gitignore`; delete the file if the block is all it holds.
-- Delete `reports/` and `.stryker-tmp/`.
+- Delete `.stryker-tmp/`.
 - `bun install` to drop the packages.

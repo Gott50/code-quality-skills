@@ -5,4 +5,5 @@ dist/
 .env
 .env.local
 *.log
+reports/
 # code-quality:repo-hygiene:end

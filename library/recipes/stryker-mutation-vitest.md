@@ -61,7 +61,7 @@ verify:
 4. **`package.json`** — merge from `templates/stryker-mutation-vitest/package.json`: add the `@stryker-mutator/core` and `tsx` devDependencies and the `test:mutation` script. `tsx` is what the hook uses to run the TypeScript gate under Node. There is no `@stryker-mutator/vitest-runner`: the `command` runner is built into core, and the vitest runner is the broken one (step 1).
 5. **Workspace member `package.json`** — merge from `templates/stryker-mutation-vitest/package.member.json`: add the `test:mutation` script. `npm run` resolves a script from the nearest `package.json` only — it does not walk up past a member's own manifest — so without this script the per-member verify dies with `Missing script: "test:mutation"`. The member needs no devDependencies of its own: the two packages are hoisted to the root `node_modules`, and `npm run` puts the root `.bin` on the script's `PATH`. Skipped in a single-package repo, where the root entry writes the same path.
 6. **`.husky/pre-push`** — merge from `templates/stryker-mutation-vitest/pre-push.block`, inside this recipe's marker pair: the Bun recipe's block with `bun scripts/mutation-gate.ts` → `npx tsx scripts/mutation-gate.ts`.
-7. **`.gitignore`** — merge from `templates/stryker-mutation-vitest/gitignore.block`, inside this recipe's marker pair: `reports/` and `.stryker-tmp/`. The incremental cache lives under `reports/`, so it is never committed.
+7. **`.gitignore`** — merge from `templates/stryker-mutation-vitest/gitignore.block`, inside this recipe's marker pair: `.stryker-tmp/`. `reports/` (which holds the incremental cache) is owned by the `repo-hygiene-npm` recipe, which is selected for every stack, so it is ignored even on a repo where this recipe is not selected.
 8. **The install** — `sh -c 'if test -f pnpm-lock.yaml; then pnpm install; else npm install; fi'`, installing the two devDependencies.
 
 Five things the gate does that a bare `stryker run` does not, unchanged from the Bun recipe:
@@ -93,5 +93,5 @@ The gate diffs committed SHAs, so it only runs on files present in a commit. To 
 - Remove the `test:mutation` script from the member `package.json` in a workspace — only where this recipe added it.
 - Remove the `code-quality:stryker-mutation-vitest` block from `.husky/pre-push`; delete the file if the block is all it holds.
 - Remove the `code-quality:stryker-mutation-vitest` block from `.gitignore`; delete the file if the block is all it holds.
-- Delete `reports/` and `.stryker-tmp/`.
+- Delete `.stryker-tmp/`.
 - Run the project's install to drop the packages.
