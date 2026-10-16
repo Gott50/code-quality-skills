@@ -1,5 +1,5 @@
 ---
-topic: Agent conventions — AGENTS.md, marker ownership, stale instructions, gate tables
+topic: agent-conventions
 question: >-
   What makes a repo legible to the next agent session? What belongs in AGENTS.md versus a
   linked doc, how should marker-delimited ownership of shared files work, what does a stale
