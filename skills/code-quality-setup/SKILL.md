@@ -33,11 +33,11 @@ It reports one of three states and writes nothing:
 
 | State | Meaning | Exit |
 |---|---|---|
-| `up-to-date` | the recorded ref is the available ref | 0 |
+| `up-to-date` | the recorded ref names the same commit as the available ref | 0 |
 | `update-available` | the recorded ref moved — both refs are named | 0 |
 | `incompatible` | the available library's `schemaVersion` exceeds the one this skill implements — *"update the skill first"* | 1 |
 
-`--json` prints one object — `{ status, recorded, available, message }`. `recorded` is the manifest's `library` block as `{ ref, schemaVersion, treeHash }` (or `null`); `available` is `{ ref, schemaVersion, indexHash }`. The two hashes are different scopes — `treeHash` is the whole-tree hash the fetch recorded, `indexHash` is the fetched `library.json`'s own hash — so they are never compared; the **ref** is the decision. `--library <path>` reads a local library directory instead of fetching (offline, and the deterministic path a test uses); `--ref <sha>` pins the available ref instead of resolving `main`. Offline with no `--library` is a clear message and a non-zero exit.
+`--json` prints one object — `{ status, recorded, available, message }`. `recorded` is the manifest's `library` block as `{ ref, schemaVersion, treeHash }` (or `null`); `available` is `{ ref, schemaVersion, indexHash }`. The two hashes are different scopes — `treeHash` is the whole-tree hash the fetch recorded, `indexHash` is the fetched `library.json`'s own hash — so they are never compared; the **ref** is the decision. The refs are compared as commits, not strings: a short SHA, a full SHA, and a branch name that resolves to the same commit all read `up-to-date`. `--library <path>` reads a local library directory instead of fetching (offline, and the deterministic path a test uses); `--ref <sha>` pins the available ref instead of resolving `main`. Offline with no `--library` is a clear message and a non-zero exit.
 
 When the check says **`update-available`**, offer the update — the apply stays on approval. `--apply` re-fetches the library at the new ref, runs the plan against it, and prints the plan's update verdicts; it writes nothing itself. Apply the plan's verdicts (the existing apply), then record the new pin through the canonical writer:
 
