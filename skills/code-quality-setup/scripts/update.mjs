@@ -6,14 +6,16 @@
 // has the library moved since the recorded pin? It fetches only `library/library.json` at the
 // current `main` (one small request — never the whole tarball), reads its `schemaVersion`, and
 // compares the available ref to the recorded one. The ref is the decision (#112: "newer means the
-// recorded SHA moved"); the index's content identity is reported alongside.
+// recorded SHA moved"); the index's content identity is reported alongside. The two refs are
+// compared as commits, not strings: a short SHA, a full SHA, and a branch name that resolves to
+// the same commit all read up-to-date (#179).
 //
 // Usage:
 //   node scripts/update.mjs [--ref <sha>] [--manifest <path>] [--library <path>] [--json]
 //   node scripts/update.mjs --apply [--ref <sha>] [--manifest <path>]
 //
 // The check reports one of:
-//   up-to-date        the recorded ref is the available ref (exit 0)
+//   up-to-date        the recorded ref names the same commit as the available ref (exit 0)
 //   update-available  the recorded ref moved (exit 0) — the recorded and available refs are named
 //   incompatible      the available library's schemaVersion exceeds the one this skill implements
 //                     (exit 1) — "update the skill first"
@@ -120,10 +122,10 @@ function readManifestLibrary(manifestPath) {
 // Ref resolution
 // ---------------------------------------------------------------------------
 
-// `main` → SHA: the authenticated gh path (5000/hr) first, then the public API (60/hr).
-async function resolveMainSha() {
+// `<ref>` → SHA: the authenticated gh path (5000/hr) first, then the public API (60/hr).
+async function resolveRefSha(ref) {
   try {
-    const out = execFileSync("gh", ["api", `repos/${REPO}/commits/main`, "--jq", ".sha"], {
+    const out = execFileSync("gh", ["api", `repos/${REPO}/commits/${ref}`, "--jq", ".sha"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
       timeout: NETWORK_TIMEOUT_MS,
@@ -132,7 +134,7 @@ async function resolveMainSha() {
   } catch {
     // gh missing, unauthenticated, or offline — fall through to the public API
   }
-  const res = await fetch(`https://api.github.com/repos/${REPO}/commits/main`, {
+  const res = await fetch(`https://api.github.com/repos/${REPO}/commits/${ref}`, {
     headers: { Accept: "application/vnd.github+json", "User-Agent": "code-quality-setup" },
     signal: AbortSignal.timeout(NETWORK_TIMEOUT_MS),
   });
@@ -142,6 +144,41 @@ async function resolveMainSha() {
     throw new Error("api.github.com response carried no sha");
   }
   return json.sha;
+}
+
+// A ref is a commit SHA when it is 4–40 hex characters (git's minimum abbreviation is 4).
+function isSha(ref) {
+  return typeof ref === "string" && /^[0-9a-f]{4,40}$/i.test(ref);
+}
+
+// Two SHAs name the same commit when one abbreviates the other: git abbreviates by dropping
+// trailing characters, so a short SHA is always a prefix of its full form.
+function sameSha(a, b) {
+  const x = a.toLowerCase();
+  const y = b.toLowerCase();
+  return x.startsWith(y) || y.startsWith(x);
+}
+
+// A ref's commit SHA: a SHA is itself; a branch or tag name is resolved through the API. Null when
+// it cannot be resolved (offline, unknown ref, or no resolver).
+async function toSha(ref, resolveRef) {
+  if (isSha(ref)) return ref;
+  if (resolveRef === null) return null;
+  try {
+    return await resolveRef(ref);
+  } catch {
+    return null;
+  }
+}
+
+// Do two refs name the same commit? Equal strings; two SHAs where one abbreviates the other; or a
+// branch/tag name that resolves to the other's commit. `resolveRef` maps a branch or tag name to
+// its commit SHA; the `--library` path passes null, so a local library's ref label is never
+// resolved over the network.
+async function sameRef(a, b, resolveRef) {
+  if (a === b) return true;
+  const [shaA, shaB] = await Promise.all([toSha(a, resolveRef), toSha(b, resolveRef)]);
+  return shaA !== null && shaB !== null && sameSha(shaA, shaB);
 }
 
 // ---------------------------------------------------------------------------
@@ -186,7 +223,7 @@ async function resolveAvailable(opts) {
     const bytes = readFileSync(indexPath);
     return { bytes, ref: opts.ref ?? "local" };
   }
-  const ref = opts.ref ?? (await resolveMainSha());
+  const ref = opts.ref ?? (await resolveRefSha("main"));
   return { bytes: await fetchIndex(ref), ref };
 }
 
@@ -235,10 +272,14 @@ async function check(opts) {
       status: "update-available",
     };
   }
-  if (recorded.ref === available.ref) {
+  // The refs are compared as commits, not strings: a short SHA, a full SHA, and a branch name that
+  // resolves to the same commit all read up-to-date (#179). The `--library` path is offline by
+  // contract, so a local library's ref label is never resolved over the network.
+  const resolveRef = opts.library === null ? resolveRefSha : null;
+  if (await sameRef(recorded.ref, available.ref, resolveRef)) {
     return {
       available: availableBlock,
-      message: "the recorded ref is the available ref",
+      message: "the recorded ref names the same commit as the available ref",
       recorded,
       status: "up-to-date",
     };
