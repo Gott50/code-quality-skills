@@ -75,3 +75,7 @@ _Avoid_: recipe writer, generator
 **Gap**:
 A place the shared library does not cover the project: a tooling category the project uses that no selected recipe covers, or a recipe one `when` predicate away from applying.
 _Avoid_: hole, missing recipe, TODO
+
+**Research note**:
+A `/research/<topic>.md` file recording what a best-practice question resolved to — frontmatter `topic`/`question`/`verdict`/`sources`, findings below with every claim cited to its primary source, and a closing `## Routing` section that says whether a gate can fail on each practice.
+_Avoid_: research doc, findings, report

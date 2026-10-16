@@ -23,3 +23,11 @@ The five canonical triage roles map 1:1 to label strings of the same name (`need
 ### Domain docs
 
 Single-context: one `GLOSSARY.md` plus `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+## Research notes
+
+Research notes live in root `/research/`, one topic per file (`research/<topic>.md`, kebab-case). Each opens with YAML frontmatter carrying exactly four keys — `topic` (the slug, matching the filename stem), `question`, `verdict`, and `sources` (a list of primary-source URLs) — and every claim in the body is cited to its primary source. Each note closes with a `## Routing` section naming, per practice, whether a gate can fail on it (→ a recipe id from `library/recipes/`) or not (→ a `library/practices/<id>.md` agent instruction).
+
+They live at the repo root and never inside a skill directory: the skills CLI copies the whole `skills/<name>/` directory into every consumer's `.agents/skills/<name>/`, so anything inside ships to every user and churns the lockfile's `computedHash`, which covers every file in the skill dir. Research results land on `main` — this overrides wayfinder's throwaway-branch default.
+
+See `research/README.md` for the full convention.
