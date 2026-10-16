@@ -52,6 +52,10 @@ _Avoid_: section, insert, hunk
 A project-facing check a recipe leaves behind for humans and agents to run.
 _Avoid_: check, script, command — commands belong to the run, gates to the project
 
+**Greenfield wall**:
+The level a gate installs when nothing has been measured — the level a greenfield repo measures at, per gate. Not every gate has one: a change-scoped gate is gated by its scope instead.
+_Avoid_: default floor, fallback level
+
 **Verify**:
 A recipe's own proof, run once after it applies.
 _Avoid_: test, validation, smoke

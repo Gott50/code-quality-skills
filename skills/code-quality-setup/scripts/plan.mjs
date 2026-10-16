@@ -1300,12 +1300,14 @@ const FLOOR_ARTIFACT = {
 };
 
 // The greenfield wall: the floor a gate installs when nothing has been measured. 100% on both
-// coverage metrics and on mutation, 0 for lint and typecheck, fallow's report-only mode. This is
-// the SAME code path as a measured level — the wall is just the level a greenfield repo measures at.
+// coverage metrics and on mutation, 0 for lint and typecheck, zero error-severity findings for
+// fallow-health. This is the SAME code path as a measured level — the wall is just the level a
+// greenfield repo measures at. fallow-dead-code has no wall: its gate is the change-scoped
+// `fallow:audit`, which with no baseline still fails on the findings the changeset introduces.
 const WALL = {
   coverage: "100% (both metrics)",
-  "fallow-dead-code": "report-only",
-  "fallow-health": "report-only",
+  "fallow-dead-code": "new-only (no baseline)",
+  "fallow-health": "zero findings",
   lint: "0",
   mutation: "100%",
   typecheck: "0",

@@ -71,7 +71,7 @@ The plan still writes nothing and runs no gate. It reads the artifacts that alre
 | Measured now | Floor the apply installs |
 |---|---|
 | a level (e.g. `56.7% (34/60)`, `93.3 (A)`, `3`) | that level |
-| `_unmeasured_` — no artifact yet | the greenfield wall: 100% for coverage and mutation, 0 for lint and typecheck, fallow's report-only mode |
+| `_unmeasured_` — no artifact yet | the greenfield wall: 100% for coverage and mutation, 0 for lint and typecheck, zero findings for `fallow-health`, and `fallow:audit`'s new-only gate for `fallow-dead-code` |
 
 An artifact older than the newest source file is flagged `⚠ stale`: the level shown is not the level of the code as it stands. The apply re-runs the gate before writing the baseline, so a stale artifact never becomes a floor — the recorded floor is always the level the apply just measured. The plan never runs the heavy gates (Stryker takes minutes); the apply does, once, in the commands/verify phase.
 

@@ -434,12 +434,16 @@ Each practice from §1–§5, routed to the mechanism the library can actually e
   `fail-on-empty-analysis: true` on the fallow step. Without it, a run that analyzed nothing
   reports zero findings and passes, which is indistinguishable from a clean project.
 - **A floor that cannot be read must fail closed** → already stated in `library/RECIPE-CONTRACT.md`
-  for the unified baseline. The fallow floors are the gap: `.fallow-health-baseline.json` and
+  for the unified baseline. The fallow floors were the gap: `.fallow-health-baseline.json` and
   `.fallow-dead-code-baseline.json` are read by `fallow:ratchet` and `fallow:audit`, and a
   malformed file makes fallow exit 2 (which fails the gate) — but a *missing* file silently
-  degrades to `--report-only` in `fallow:ratchet`. The recipe body should state that a missing
-  fallow floor is the greenfield wall (report-only), not a pass, and the gate script should say
-  which mode it ran in.
+  degraded to `--report-only` in `fallow:ratchet`. **Resolved**
+  ([#201](https://github.com/Gott50/code-quality-skills/issues/201)), superseding this note's
+  earlier recommendation to keep report-only: a missing fallow floor is the greenfield wall, not a
+  pass. `fallow:ratchet` drops `--report-only` and gates at zero error-severity findings, printing
+  the mode and the `fallow:raise` command on stderr; `fallow:audit` was already fail-closed — its
+  `new-only` gate stays active with no baseline, so it fails on the findings the changeset
+  introduces, with no grandfathers.
 
 ### Judgement — `library/practices/<id>.md` agent instruction
 

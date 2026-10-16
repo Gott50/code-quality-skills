@@ -223,7 +223,7 @@ _The apply installs each gate with its floor at the measured level, so the gates
 |---|---|
 | Gate | the `floor` value the selected recipe's gate declares — `coverage`, `mutation`, `lint`, `typecheck`, `fallow-health`, `fallow-dead-code` |
 | Measured now | the level the gate's artifact carries, read by `scripts/score.mjs`'s readers (the same ones the score view uses); `_unmeasured_` when the artifact is absent, `⚠ stale` when the artifact is older than the newest source file |
-| Floor the apply installs | the **recorded** floor when the gate already has one (the unified baseline for coverage/mutation/lint/typecheck, fallow's own file for the two fallow gates — shown as `recorded`), else the measured level, else the greenfield wall when unmeasured: 100% for coverage and mutation, 0 for lint and typecheck, fallow's report-only mode. `⚠ regression` when the measured level is below the recorded floor |
+| Floor the apply installs | the **recorded** floor when the gate already has one (the unified baseline for coverage/mutation/lint/typecheck, fallow's own file for the two fallow gates — shown as `recorded`), else the measured level, else the greenfield wall when unmeasured: 100% for coverage and mutation, 0 for lint and typecheck, zero findings for `fallow-health`, and `fallow:audit`'s new-only gate for `fallow-dead-code`. `⚠ regression` when the measured level is below the recorded floor |
 | Apply | `keep` — the gate already has a recorded floor, so the apply does not re-raise it; `raise` — no recorded floor, so the apply writes the measured level |
 | Source | `unified` (`.code-quality-baseline.json`) or `fallow` (fallow's own baseline files) |
 
