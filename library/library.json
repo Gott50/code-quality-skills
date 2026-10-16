@@ -252,6 +252,12 @@
           "template": "templates/bun-test-coverage/scripts/coverage-gate.ts"
         },
         {
+          "path": "scripts/coverage-ignore-audit.ts",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/bun-test-coverage/scripts/coverage-ignore-audit.ts"
+        },
+        {
           "path": "bunfig.toml",
           "action": "patch",
           "scope": "member",
@@ -297,12 +303,21 @@
           "run": "bun run test",
           "description": "bun test with the per-file lines-and-functions coverage floor from the baseline",
           "floor": "coverage"
+        },
+        {
+          "id": "coverage-ignore-audit",
+          "run": "bun scripts/coverage-ignore-audit.ts",
+          "description": "every coveragePathIgnorePatterns entry names a file the runner cannot execute"
         }
       ],
       "verify": [
         {
           "gate": "test",
           "scope": "each-member"
+        },
+        {
+          "gate": "coverage-ignore-audit",
+          "scope": "root"
         }
       ]
     },
@@ -723,6 +738,12 @@
           "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/index.ts"
         },
         {
+          "path": "tools/oxlint/anti-slop/rules/max-expects-per-test.ts",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/max-expects-per-test.ts"
+        },
+        {
           "path": "tools/oxlint/anti-slop/rules/no-chained-type-assertions.ts",
           "action": "create",
           "scope": "root",
@@ -733,6 +754,12 @@
           "action": "create",
           "scope": "root",
           "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/no-conditional-empty-object-spread.ts"
+        },
+        {
+          "path": "tools/oxlint/anti-slop/rules/no-conditional-expect.ts",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/no-conditional-expect.ts"
         },
         {
           "path": "tools/oxlint/anti-slop/rules/no-known-value-widening.ts",
@@ -771,6 +798,12 @@
           "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/no-runtime-typeof.ts"
         },
         {
+          "path": "tools/oxlint/anti-slop/rules/no-standalone-expect.ts",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/no-standalone-expect.ts"
+        },
+        {
           "path": "tools/oxlint/anti-slop/rules/no-shape-in-symbol-names.ts",
           "action": "create",
           "scope": "root",
@@ -807,10 +840,28 @@
           "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/no-widen-then-assert.ts"
         },
         {
+          "path": "tools/oxlint/anti-slop/rules/require-assertion-in-test.ts",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/require-assertion-in-test.ts"
+        },
+        {
+          "path": "tools/oxlint/anti-slop/rules/require-preserve-on-coverage-ignore.ts",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/require-preserve-on-coverage-ignore.ts"
+        },
+        {
           "path": "tools/oxlint/anti-slop/rules/require-safety-comment-for-type-assertion.ts",
           "action": "create",
           "scope": "root",
           "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/require-safety-comment-for-type-assertion.ts"
+        },
+        {
+          "path": "tools/oxlint/anti-slop/rules/valid-test-title.ts",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/valid-test-title.ts"
         },
         {
           "path": "tools/oxlint/anti-slop/shared/dictionary-types.ts",
@@ -829,6 +880,12 @@
           "action": "create",
           "scope": "root",
           "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/shared/reflect-method.ts"
+        },
+        {
+          "path": "tools/oxlint/anti-slop/shared/test-framework.ts",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/shared/test-framework.ts"
         },
         {
           "path": "scripts/lint-gate.mjs",
@@ -912,6 +969,12 @@
           "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/index.ts"
         },
         {
+          "path": "tools/oxlint/anti-slop/rules/max-expects-per-test.ts",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/max-expects-per-test.ts"
+        },
+        {
           "path": "tools/oxlint/anti-slop/rules/no-chained-type-assertions.ts",
           "action": "create",
           "scope": "root",
@@ -922,6 +985,12 @@
           "action": "create",
           "scope": "root",
           "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/no-conditional-empty-object-spread.ts"
+        },
+        {
+          "path": "tools/oxlint/anti-slop/rules/no-conditional-expect.ts",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/no-conditional-expect.ts"
         },
         {
           "path": "tools/oxlint/anti-slop/rules/no-known-value-widening.ts",
@@ -960,6 +1029,12 @@
           "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/no-runtime-typeof.ts"
         },
         {
+          "path": "tools/oxlint/anti-slop/rules/no-standalone-expect.ts",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/no-standalone-expect.ts"
+        },
+        {
           "path": "tools/oxlint/anti-slop/rules/no-shape-in-symbol-names.ts",
           "action": "create",
           "scope": "root",
@@ -996,10 +1071,28 @@
           "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/no-widen-then-assert.ts"
         },
         {
+          "path": "tools/oxlint/anti-slop/rules/require-assertion-in-test.ts",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/require-assertion-in-test.ts"
+        },
+        {
+          "path": "tools/oxlint/anti-slop/rules/require-preserve-on-coverage-ignore.ts",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/require-preserve-on-coverage-ignore.ts"
+        },
+        {
           "path": "tools/oxlint/anti-slop/rules/require-safety-comment-for-type-assertion.ts",
           "action": "create",
           "scope": "root",
           "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/require-safety-comment-for-type-assertion.ts"
+        },
+        {
+          "path": "tools/oxlint/anti-slop/rules/valid-test-title.ts",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/valid-test-title.ts"
         },
         {
           "path": "tools/oxlint/anti-slop/shared/dictionary-types.ts",
@@ -1018,6 +1111,12 @@
           "action": "create",
           "scope": "root",
           "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/shared/reflect-method.ts"
+        },
+        {
+          "path": "tools/oxlint/anti-slop/shared/test-framework.ts",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/shared/test-framework.ts"
         },
         {
           "path": "scripts/lint-gate.mjs",
@@ -1599,6 +1698,12 @@
           "template": "templates/vitest-coverage/scripts/coverage-gate.mjs"
         },
         {
+          "path": "scripts/coverage-ignore-audit.mjs",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/vitest-coverage/scripts/coverage-ignore-audit.mjs"
+        },
+        {
           "path": "package.json",
           "action": "merge",
           "scope": "root",
@@ -1636,15 +1741,279 @@
           "run": "npm run test",
           "description": "vitest run with the per-file statements-and-functions coverage floor from the baseline",
           "floor": "coverage"
+        },
+        {
+          "id": "coverage-ignore-audit",
+          "run": "node scripts/coverage-ignore-audit.mjs",
+          "description": "every coverage.exclude entry names a file the runner cannot execute"
         }
       ],
       "verify": [
         {
           "gate": "test",
           "scope": "each-member"
+        },
+        {
+          "gate": "coverage-ignore-audit",
+          "scope": "root"
         }
       ]
     }
   ],
-  "practices": []
+  "practices": [
+    {
+      "id": "coverage-ignore-list",
+      "title": "Ignore a file only when the runner cannot execute it",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "testFile": "true"
+          }
+        ]
+      },
+      "source": "research/coverage.md",
+      "enforcedBy": [
+        "bun-test-coverage",
+        "vitest-coverage",
+        "oxlint-anti-slop",
+        "oxlint-anti-slop-npm"
+      ]
+    },
+    {
+      "id": "coverage-is-not-verification",
+      "title": "Coverage is not verification",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "testFile": "true"
+          }
+        ]
+      },
+      "source": "research/coverage.md",
+      "enforcedBy": [
+        "stryker-mutation",
+        "stryker-mutation-vitest"
+      ]
+    },
+    {
+      "id": "equivalent-mutants",
+      "title": "An equivalent mutant is a decision, not a survivor",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "testFile": "true"
+          }
+        ]
+      },
+      "source": "research/mutation.md",
+      "enforcedBy": [
+        "stryker-mutation",
+        "stryker-mutation-vitest"
+      ]
+    },
+    {
+      "id": "mutation-cost",
+      "title": "Pay for mutation testing only where someone acts on it",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "testFile": "true"
+          }
+        ]
+      },
+      "source": "research/mutation.md",
+      "enforcedBy": [
+        "stryker-mutation",
+        "stryker-mutation-vitest"
+      ]
+    },
+    {
+      "id": "mutation-floor-vs-target",
+      "title": "The score is a floor, never a target",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "testFile": "true"
+          }
+        ]
+      },
+      "source": "research/mutation.md",
+      "enforcedBy": [
+        "stryker-mutation",
+        "stryker-mutation-vitest"
+      ]
+    },
+    {
+      "id": "mutation-scope",
+      "title": "Mutate production code, and decide what production code is",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "testFile": "true"
+          }
+        ]
+      },
+      "source": "research/mutation.md",
+      "enforcedBy": [
+        "stryker-mutation",
+        "stryker-mutation-vitest"
+      ]
+    },
+    {
+      "id": "mutation-type-checker",
+      "title": "The TypeScript checker trades run time for honest survivors",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "testFile": "true"
+          }
+        ]
+      },
+      "source": "research/mutation.md",
+      "enforcedBy": [
+        "stryker-mutation",
+        "stryker-mutation-vitest"
+      ]
+    },
+    {
+      "id": "never-failing-tests",
+      "title": "A test that never fails is not a test",
+      "when": {
+        "requires": [
+          {
+            "testFile": "true"
+          }
+        ]
+      },
+      "source": "research/testing.md",
+      "enforcedBy": [
+        "stryker-mutation",
+        "stryker-mutation-vitest",
+        "bun-test-coverage",
+        "vitest-coverage"
+      ]
+    },
+    {
+      "id": "one-reason-per-test",
+      "title": "One reason to fail per test",
+      "when": {
+        "requires": [
+          {
+            "testFile": "true"
+          }
+        ]
+      },
+      "source": "research/testing.md",
+      "enforcedBy": [
+        "oxlint-anti-slop",
+        "oxlint-anti-slop-npm"
+      ]
+    },
+    {
+      "id": "surviving-mutant",
+      "title": "A survivor is a test that did not fail",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "testFile": "true"
+          }
+        ]
+      },
+      "source": "research/mutation.md",
+      "enforcedBy": [
+        "stryker-mutation",
+        "stryker-mutation-vitest"
+      ]
+    },
+    {
+      "id": "test-behaviour-not-implementation",
+      "title": "Test behaviour, not implementation",
+      "when": {
+        "requires": [
+          {
+            "testFile": "true"
+          }
+        ]
+      },
+      "source": "research/testing.md",
+      "enforcedBy": [
+        "oxlint-anti-slop",
+        "oxlint-anti-slop-npm"
+      ]
+    },
+    {
+      "id": "test-boundary",
+      "title": "Draw the unit boundary deliberately",
+      "when": {
+        "requires": [
+          {
+            "testFile": "true"
+          }
+        ]
+      },
+      "source": "research/testing.md",
+      "enforcedBy": []
+    },
+    {
+      "id": "test-fixtures",
+      "title": "Fixtures encapsulate setup, factories build data",
+      "when": {
+        "requires": [
+          {
+            "testFile": "true"
+          }
+        ]
+      },
+      "source": "research/testing.md",
+      "enforcedBy": []
+    },
+    {
+      "id": "test-naming",
+      "title": "Name the behaviour, not the method",
+      "when": {
+        "requires": [
+          {
+            "testFile": "true"
+          }
+        ]
+      },
+      "source": "research/testing.md",
+      "enforcedBy": [
+        "oxlint-anti-slop",
+        "oxlint-anti-slop-npm"
+      ]
+    }
+  ]
 }

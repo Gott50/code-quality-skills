@@ -36,6 +36,13 @@ function breakThreshold() {
 const breakAt = breakThreshold();
 
 export default {
+  // The TypeScript checker validates each mutant against the type system before
+  // the tests run, so a mutant that does not compile is reported as a compile
+  // error instead of a survivor. It costs a type-check per mutant; the trade is
+  // `docs/code-quality/practices/mutation-type-checker.md`. The checker loads
+  // through Stryker's default `plugins` (`@stryker-mutator/*`); this config sets
+  // no `plugins` key, so nothing overrides that default.
+  checkers: ["typescript"],
   // The `command` runner, not `vitest`: `@stryker-mutator/vitest-runner` 10.0.0
   // is broken on Vitest 5. Vitest 5 matches `testNamePattern` against the suite
   // chain joined with " > " (a documented breaking change), while the runner
@@ -60,6 +67,16 @@ export default {
   // Excluding them also keeps the skill's own test files out of the sandbox,
   // where `npx vitest run` would otherwise pick them up.
   ignorePatterns: ["node_modules", ".git", "reports", "coverage", "tmp", ".claude", ".agents"],
+  // `ignoreStatic` is deliberately absent: it requires `coverageAnalysis:
+  // perTest`, and the `command` runner reports no per-test coverage, so the
+  // static mutants it would drop cannot be detected here. The Bun recipe, whose
+  // runner does report coverage, sets it.
+  // Equivalent-mutant suppression. `ignorers` names ignore-plugins whose
+  // `shouldIgnore(path)` predicate drops a recurring pattern; empty by default
+  // because which pattern to drop is a project decision. The per-line
+  // `// Stryker disable next-line <Mutator>: <reason>` comment is the surgical
+  // tool; see `docs/code-quality/practices/equivalent-mutants.md`.
+  ignorers: [],
   jsonReporter: { fileName: "reports/mutation/report.json" },
   // The mutation scope. `scripts/` and `tools/` are deliberately outside it:
   // they are not the project's code, and `--mutate` on the command line would
@@ -72,10 +89,19 @@ export default {
     "!**/*-bin.ts",
     "!**/coverage/**",
   ],
+  // `mutator.excludedMutations` turns a mutator off for every file, which is a
+  // shotgun: it hides the real survivors that mutator would have found next to
+  // the equivalent ones. Empty by default — the choice is a project decision,
+  // and the per-line `// Stryker disable` comment is the narrower tool.
+  mutator: { excludedMutations: [] },
   reporters: ["html", "json", "clear-text", "progress"],
   testRunner: "command",
   // The gate: `break` is the threshold that sets the exit code (Stryker 10),
   // floored at the baseline's global mutation score; `high`/`low` only colour
   // the report, so a config with `high`/`low` alone never fails a build.
   thresholds: { break: breakAt, high: 100, low: breakAt },
+  // The root tsconfig the TypeScript checker reads; Stryker also rewrites its
+  // `extends`/`references` in the sandbox. Resolved against the cwd, so a
+  // member config picks up the member's own tsconfig.
+  tsconfigFile: "tsconfig.json",
 };

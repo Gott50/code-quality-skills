@@ -20,6 +20,10 @@ files:
     action: create
     scope: root
     template: templates/oxlint-anti-slop/tools/oxlint/anti-slop/index.ts
+  - path: tools/oxlint/anti-slop/rules/max-expects-per-test.ts
+    action: create
+    scope: root
+    template: templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/max-expects-per-test.ts
   - path: tools/oxlint/anti-slop/rules/no-chained-type-assertions.ts
     action: create
     scope: root
@@ -28,6 +32,10 @@ files:
     action: create
     scope: root
     template: templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/no-conditional-empty-object-spread.ts
+  - path: tools/oxlint/anti-slop/rules/no-conditional-expect.ts
+    action: create
+    scope: root
+    template: templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/no-conditional-expect.ts
   - path: tools/oxlint/anti-slop/rules/no-known-value-widening.ts
     action: create
     scope: root
@@ -52,6 +60,10 @@ files:
     action: create
     scope: root
     template: templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/no-runtime-typeof.ts
+  - path: tools/oxlint/anti-slop/rules/no-standalone-expect.ts
+    action: create
+    scope: root
+    template: templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/no-standalone-expect.ts
   - path: tools/oxlint/anti-slop/rules/no-shape-in-symbol-names.ts
     action: create
     scope: root
@@ -76,10 +88,22 @@ files:
     action: create
     scope: root
     template: templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/no-widen-then-assert.ts
+  - path: tools/oxlint/anti-slop/rules/require-assertion-in-test.ts
+    action: create
+    scope: root
+    template: templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/require-assertion-in-test.ts
+  - path: tools/oxlint/anti-slop/rules/require-preserve-on-coverage-ignore.ts
+    action: create
+    scope: root
+    template: templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/require-preserve-on-coverage-ignore.ts
   - path: tools/oxlint/anti-slop/rules/require-safety-comment-for-type-assertion.ts
     action: create
     scope: root
     template: templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/require-safety-comment-for-type-assertion.ts
+  - path: tools/oxlint/anti-slop/rules/valid-test-title.ts
+    action: create
+    scope: root
+    template: templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/valid-test-title.ts
   - path: tools/oxlint/anti-slop/shared/dictionary-types.ts
     action: create
     scope: root
@@ -92,6 +116,10 @@ files:
     action: create
     scope: root
     template: templates/oxlint-anti-slop/tools/oxlint/anti-slop/shared/reflect-method.ts
+  - path: tools/oxlint/anti-slop/shared/test-framework.ts
+    action: create
+    scope: root
+    template: templates/oxlint-anti-slop/tools/oxlint/anti-slop/shared/test-framework.ts
   - path: scripts/lint-gate.mjs
     action: create
     scope: root

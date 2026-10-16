@@ -48,6 +48,11 @@ export default {
     // and times out. Directories are accepted as bun test filters.
     testFiles: ["test/"],
   },
+  // The TypeScript checker validates each mutant against the type system before
+  // the tests run, so a mutant that does not compile is reported as a compile
+  // error instead of a survivor. It costs a type-check per mutant; the trade is
+  // `docs/code-quality/practices/mutation-type-checker.md`.
+  checkers: ["typescript"],
   concurrency: 4,
   coverageAnalysis: "perTest",
   htmlReporter: {
@@ -56,6 +61,17 @@ export default {
   // `.claude` and `.agents` are the skills CLI's install dirs: `.claude/skills/<name>`
   // is a symlink, and Stryker's sandbox copy dies with ENOTSUP on it (#138).
   ignorePatterns: ["node_modules", ".git", "reports", "coverage", "tmp", ".claude", ".agents"],
+  // A static mutant is executed once at file load, so per-test coverage cannot
+  // measure it and Stryker would run the whole suite for each one — in one real
+  // run 13% of the mutants took 85% of the time. Dropping them needs
+  // `coverageAnalysis: perTest` (set above), which is what detects them.
+  ignoreStatic: true,
+  // Equivalent-mutant suppression. `ignorers` names ignore-plugins whose
+  // `shouldIgnore(path)` predicate drops a recurring pattern; empty by default
+  // because which pattern to drop is a project decision. The per-line
+  // `// Stryker disable next-line <Mutator>: <reason>` comment is the surgical
+  // tool; see `docs/code-quality/practices/equivalent-mutants.md`.
+  ignorers: [],
   jsonReporter: { fileName: "reports/mutation/report.json" },
   // The mutation scope. `scripts/` and `tools/` are deliberately outside it:
   // the bun runner eagerly imports every file in the mutation set into the test
@@ -69,7 +85,16 @@ export default {
     "!**/*-bin.ts",
     "!**/coverage/**",
   ],
-  plugins: ["@hughescr/stryker-bun-runner"],
+  // `mutator.excludedMutations` turns a mutator off for every file, which is a
+  // shotgun: it hides the real survivors that mutator would have found next to
+  // the equivalent ones. Empty by default — the choice is a project decision,
+  // and the per-line `// Stryker disable` comment is the narrower tool.
+  mutator: { excludedMutations: [] },
+  // `plugins` overrides Stryker's default (`@stryker-mutator/*`), so the
+  // TypeScript checker must be listed here as well as in `checkers` — without
+  // it Stryker fails to inject the checker worker ("no Checker plugins were
+  // loaded").
+  plugins: ["@hughescr/stryker-bun-runner", "@stryker-mutator/typescript-checker"],
   reporters: ["html", "json", "clear-text", "progress"],
   symlinkNodeModules: false,
   testFiles: ["test/**/*.test.ts"],
@@ -78,4 +103,8 @@ export default {
   // floored at the baseline's global mutation score; `high`/`low` only colour
   // the report, so a config with `high`/`low` alone never fails a build.
   thresholds: { break: breakAt, high: 100, low: breakAt },
+  // The root tsconfig the TypeScript checker reads; Stryker also rewrites its
+  // `extends`/`references` in the sandbox. Resolved against the cwd, so a
+  // member config picks up the member's own tsconfig.
+  tsconfigFile: "tsconfig.json",
 };
