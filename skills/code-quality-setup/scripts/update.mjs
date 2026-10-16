@@ -41,7 +41,7 @@ const INDEX_PATH = "library/library.json";
 // `scripts/build-library.mjs`'s SCHEMA_VERSION, which bumps on any contract addition an older
 // reader cannot honour (a new `when` predicate, a new frontmatter key — #182), not only on a
 // change to an existing one.
-const LIBRARY_SCHEMA_VERSION = 2;
+const LIBRARY_SCHEMA_VERSION = 3;
 const NETWORK_TIMEOUT_MS = 30_000;
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 

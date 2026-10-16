@@ -4,6 +4,30 @@ A **recipe** is one Markdown file at `recipes/<id>.md`: YAML frontmatter that `s
 
 The library is language-agnostic; a recipe is language-specific. Everything below is the shape every language's recipes share.
 
+## Practices
+
+A **practice** is one Markdown file at `practices/<id>.md`: reference prose the agent reads, for the half of a best practice no gate can fail on. It is a separate artifact kind from a recipe — a recipe installs and enforces, a practice instructs — and it lives in its own namespace. `scripts/build-library.mjs` emits one `practices` entry per file beside `recipes`; `scripts/check-library.mjs` validates the rules below.
+
+```yaml
+---
+id: test-behaviour-not-implementation
+title: Test behaviour, not implementation
+when: { requires: [{ testFile: true }] }               # the recipe predicate language; absent = every stack
+source: research/testing.md                            # repo-relative path to the research note
+enforcedBy: [oxlint-anti-slop, oxlint-anti-slop-npm]   # recipe ids enforcing the machine-checkable half; possibly empty
+---
+```
+
+| Key | Rule |
+|---|---|
+| `id` | `^[a-z][a-z0-9-]*$`, MUST equal the filename stem. A **separate namespace** from recipe ids: the library check refuses a collision. |
+| `title` | Short human title; the pointer's trigger word. |
+| `when` | The recipe predicate language (see [`when`](#when--machine-checkable-applicability)). Absent = every stack. |
+| `source` | Repo-relative path to the research note. **Library-internal**: never rendered into a consumer doc. The library check refuses a path that does not exist under the repo root. |
+| `enforcedBy` | List of recipe ids enforcing the machine-checkable half, possibly empty. The library check refuses an id that names no recipe. |
+
+A practice is **selected by its own `when`**, evaluated by the same engine as a recipe, and can be selected with no recipe at all (the greenfield case). `enforcedBy` is metadata, never a selection input. The body is reference prose, not steps: it opens with the rule as one imperative sentence, has no required headings, and must not restate a gate (the recipe owns that) or the research note (it links it). Delivery is one file per practice at `docs/code-quality/practices/<id>.md`, listed inline in the `agent-guidance` block.
+
 ## Frontmatter
 
 ```yaml
@@ -49,10 +73,12 @@ Every condition is evaluated against the detector's stack report. All of `requir
 | `{ testFile: true }` | the project has at least one test file (`*.test.*` / `*.spec.*`, plus bun's `*_test.*` / `*_spec.*`), outside dot-directories and `node_modules` |
 | `{ recipe: <id> }` | another recipe with that `id` is selected in the same run |
 | `{ recipe: "*" }` | at least one *other* recipe is selected |
+| `{ practice: <id> }` | a practice with that `id` is selected in the same run |
+| `{ practice: "*" }` | at least one *other* practice is selected |
 
 A recipe with no `when` keys applies to every stack. Prose judgement belongs here as a predicate or not at all: the detector never reads the body to decide applicability.
 
-**The predicate set is part of the library contract.** Adding one bumps `library.json`'s `schemaVersion` (`scripts/build-library.mjs`'s `SCHEMA_VERSION`, and the skill's `update.mjs` `LIBRARY_SCHEMA_VERSION` with it — #182): a reader that does not implement the new predicate drops the recipe with `unknown predicate` rather than refusing the library, so the addition has to move the version gate the update check reads. The same holds for any new frontmatter key.
+**The predicate set is part of the library contract.** Adding one bumps `library.json`'s `schemaVersion` (`scripts/build-library.mjs`'s `SCHEMA_VERSION`, and the skill's `update.mjs` `LIBRARY_SCHEMA_VERSION` with it — #182): a reader that does not implement the new predicate drops the recipe or practice with `unknown predicate` rather than refusing the library, so the addition has to move the version gate the update check reads. The same holds for any new frontmatter key.
 
 ### `conflicts` — what must not be applied alongside
 

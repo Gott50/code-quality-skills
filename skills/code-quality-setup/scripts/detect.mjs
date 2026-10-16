@@ -2,14 +2,14 @@
 // detect.mjs — the code-quality-setup stack detector.
 //
 // Zero dependencies, node builtins only. Reads a project from the filesystem and prints a JSON
-// applicability matrix: the stack, the existing tooling per package, and every known recipe's
-// evaluated `when` result with the reason it passed or failed. It never invokes a package manager
-// and never writes anything.
+// applicability matrix: the stack, the existing tooling per package, and every known recipe's and
+// practice's evaluated `when` result with the reason it passed or failed. It never invokes a
+// package manager and never writes anything.
 //
 // Usage: node scripts/detect.mjs [projectDir] [--library <path>] [--compact]
 //
-// The output shape is specified in DETECT-SCHEMA.md next to this file; the recipe frontmatter it
-// reads is specified in the library's RECIPE-CONTRACT.md (library/RECIPE-CONTRACT.md).
+// The output shape is specified in DETECT-SCHEMA.md next to this file; the recipe and practice
+// frontmatter it reads is specified in the library's RECIPE-CONTRACT.md (library/RECIPE-CONTRACT.md).
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
@@ -122,6 +122,44 @@ function loadRecipes(dir, { optional = false, source = "library" } = {}) {
       };
     } catch (err) {
       return { error: err.message, id: stem, libraryDir: dir, source };
+    }
+  });
+}
+
+// A practice is one file at `<dir>/practices/<id>.md` (RECIPE-CONTRACT.md → "Practices"). The
+// directory is optional in both layers: a library or project with no practices is valid, so an
+// absent `<dir>/practices/` is an empty list, never an error. A malformed practice is reported,
+// never fatal, and never selected — the same rule as a recipe.
+//
+// `layer` labels the source ("library" or "local"). A practice's own `source` frontmatter key is
+// the research note, so it is carried as `source`; the layer is `layer`, not `source` the way a
+// recipe's layer is.
+function loadPractices(dir, { layer = "library" } = {}) {
+  const practicesDir = join(dir, "practices");
+  if (!existsSync(practicesDir)) return [];
+  const files = readdirSync(practicesDir)
+    .filter((f) => f.endsWith(".md"))
+    .sort();
+  return files.map((file) => {
+    const stem = basename(file, ".md");
+    const label = `${layer === "local" ? ".code-quality" : "library"}/practices/${file}`;
+    try {
+      const fm = parseFrontmatter(readFileSync(join(practicesDir, file), "utf8"), label);
+      if (fm.id !== stem) throw new Error(`${label}: id "${fm.id}" must equal the filename stem`);
+      if (!/^[a-z][a-z0-9-]*$/.test(fm.id))
+        throw new Error(`${label}: id "${fm.id}" is not kebab-case`);
+      return {
+        enforcedBy: fm.enforcedBy ?? [],
+        error: null,
+        id: fm.id,
+        layer,
+        libraryDir: dir,
+        source: fm.source ?? "",
+        title: fm.title ?? fm.id,
+        when: fm.when ?? {},
+      };
+    } catch (err) {
+      return { error: err.message, id: stem, layer, libraryDir: dir };
     }
   });
 }
@@ -681,7 +719,7 @@ function predicateHolds(pred, ctx) {
   }
   if ("recipe" in pred) {
     if (pred.recipe === "*") {
-      const others = [...ctx.selection].filter((id) => id !== ctx.recipeId);
+      const others = [...ctx.selection].filter((id) => id !== ctx.itemId && ctx.recipeIds.has(id));
       return {
         detail:
           others.length > 0
@@ -690,14 +728,30 @@ function predicateHolds(pred, ctx) {
         pass: others.length > 0,
       };
     }
-    const ok = ctx.selection.has(pred.recipe);
+    const ok = ctx.recipeIds.has(pred.recipe) && ctx.selection.has(pred.recipe);
     return { detail: `recipe "${pred.recipe}" ${ok ? "is" : "is not"} selected`, pass: ok };
+  }
+  if ("practice" in pred) {
+    if (pred.practice === "*") {
+      const others = [...ctx.selection].filter(
+        (id) => id !== ctx.itemId && ctx.practiceIds.has(id),
+      );
+      return {
+        detail:
+          others.length > 0
+            ? `other practices selected: ${others.join(", ")}`
+            : "no other practice is selected",
+        pass: others.length > 0,
+      };
+    }
+    const ok = ctx.practiceIds.has(pred.practice) && ctx.selection.has(pred.practice);
+    return { detail: `practice "${pred.practice}" ${ok ? "is" : "is not"} selected`, pass: ok };
   }
   return { detail: `unknown predicate ${JSON.stringify(pred)}`, pass: false };
 }
 
-function evaluateWhen(recipe, ctx) {
-  const when = recipe.when ?? {};
+function evaluateWhen(item, ctx) {
+  const when = item.when ?? {};
   const reasons = [];
   const push = (predicate, pass, detail) => reasons.push({ detail, pass, predicate });
 
@@ -736,14 +790,16 @@ function evaluateWhen(recipe, ctx) {
   return { applicable: reasons.every((r) => r.pass), reasons };
 }
 
-// Selection is a fixpoint: `requires: [{ recipe: X }]` makes applicability depend on the selection,
-// and `conflicts.recipes` can remove a recipe another one requires. Grow, then shrink, until stable.
-function selectRecipes(recipes, ctx) {
-  const usable = recipes.filter((r) => r.error === null);
+// Selection is a fixpoint over recipes AND practices: `requires: [{ recipe: X }]` /
+// `requires: [{ practice: X }]` makes applicability depend on the selection, and `conflicts.recipes`
+// can remove a recipe another one requires. A practice's own `when` decides, evaluated by the same
+// engine; `enforcedBy` is metadata and never selects. Grow, then shrink, until stable.
+function selectItems(recipes, practices, ctx) {
+  const usable = [...recipes, ...practices].filter((r) => r.error === null);
   const byId = new Map(usable.map((r) => [r.id, r]));
   const base = new Set();
   for (const r of usable) {
-    const { applicable } = evaluateWhen(r, { ...ctx, recipeId: r.id, selection: new Set() });
+    const { applicable } = evaluateWhen(r, { ...ctx, itemId: r.id, selection: new Set() });
     if (applicable) base.add(r.id);
   }
 
@@ -752,7 +808,7 @@ function selectRecipes(recipes, ctx) {
     let changed = false;
     for (const r of usable) {
       if (selection.has(r.id)) continue;
-      const { applicable } = evaluateWhen(r, { ...ctx, recipeId: r.id, selection });
+      const { applicable } = evaluateWhen(r, { ...ctx, itemId: r.id, selection });
       if (applicable) {
         selection.add(r.id);
         changed = true;
@@ -784,10 +840,10 @@ function selectRecipes(recipes, ctx) {
     }
     for (const id of [...selection]) {
       const r = byId.get(id);
-      const { applicable } = evaluateWhen(r, { ...ctx, recipeId: r.id, selection });
+      const { applicable } = evaluateWhen(r, { ...ctx, itemId: r.id, selection });
       if (!applicable) {
         selection.delete(id);
-        heldBack.push({ id, reason: "a recipe it requires is no longer selected" });
+        heldBack.push({ id, reason: "a dependency it requires is no longer selected" });
         changed = true;
       }
     }
@@ -851,23 +907,38 @@ function detect(projectDir, libraryDir) {
   const recipes = [...local, ...remote.filter((r) => !localIds.has(r.id))].sort((a, b) =>
     `${a.id}.md` < `${b.id}.md` ? -1 : `${a.id}.md` > `${b.id}.md` ? 1 : 0,
   );
+
+  // Practices load from the same two layers, with the same local-wins merge. The directory is
+  // optional in both: a library or project with no practices is valid.
+  const remotePractices = loadPractices(libraryDir, { layer: "library" });
+  const localPractices = loadPractices(join(root, ".code-quality"), { layer: "local" });
+  const localPracticeIds = new Set(localPractices.map((p) => p.id));
+  const practices = [
+    ...localPractices,
+    ...remotePractices.filter((p) => !localPracticeIds.has(p.id)),
+  ].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+
   const ctx = {
+    itemId: null,
     languages,
     packageManager,
     packages,
-    recipeId: null,
+    // The universes of selectable ids, by kind: `{ recipe: … }` matches only a recipe and
+    // `{ practice: … }` only a practice, so the two namespaces never bleed into each other.
+    practiceIds: new Set(practices.filter((p) => p.error === null).map((p) => p.id)),
+    recipeIds: new Set(recipes.filter((r) => r.error === null).map((r) => r.id)),
     root,
     rootPackage,
     selection: new Set(),
     workspace,
   };
 
-  const { selection, heldBack } = selectRecipes(recipes, ctx);
+  const { selection, heldBack } = selectItems(recipes, practices, ctx);
   const collisions = detectToolCollisions(recipes, selection, ctx);
 
   const matrix = recipes.map((r) => {
     if (r.error !== null) return { error: r.error, id: r.id, source: r.source };
-    const { applicable, reasons } = evaluateWhen(r, { ...ctx, recipeId: r.id, selection });
+    const { applicable, reasons } = evaluateWhen(r, { ...ctx, itemId: r.id, selection });
     return {
       applicable,
       commands: r.commands,
@@ -889,17 +960,36 @@ function detect(projectDir, libraryDir) {
     };
   });
 
+  const practiceMatrix = practices.map((p) => {
+    if (p.error !== null) return { error: p.error, id: p.id, layer: p.layer };
+    const { applicable, reasons } = evaluateWhen(p, { ...ctx, itemId: p.id, selection });
+    return {
+      applicable,
+      enforcedBy: p.enforcedBy,
+      error: null,
+      id: p.id,
+      layer: p.layer,
+      libraryDir: p.libraryDir,
+      reasons,
+      selected: selection.has(p.id),
+      source: p.source,
+      title: p.title,
+      when: p.when,
+    };
+  });
+
+  const byId = new Map([...recipes, ...practices].map((r) => [r.id, r]));
+
   return {
     collisions,
     heldBack,
     packages,
+    practices: practiceMatrix,
     recipes: matrix,
     root,
     schemaVersion: SCHEMA_VERSION,
     selection: [...selection].sort(
-      (a, b) =>
-        (recipes.find((r) => r.id === b).priority ?? 0) -
-        (recipes.find((r) => r.id === a).priority ?? 0),
+      (a, b) => (byId.get(b)?.priority ?? 0) - (byId.get(a)?.priority ?? 0),
     ),
     stack: { languages, packageManager, workspace },
   };

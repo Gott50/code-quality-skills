@@ -25,8 +25,9 @@ it defines the frontmatter this script reads.
   "stack": { "languages": {}, "packageManager": {}, "workspace": {} },
   "packages": [],     // the root package first, then one entry per workspace member
   "recipes": [],      // one entry per recipe file, in filename order
-  "selection": [],    // recipe ids, highest priority first
-  "heldBack": [],     // recipes dropped by conflicts.recipes or by a broken `requires`
+  "practices": [],    // one entry per practice file, in id order
+  "selection": [],    // recipe and practice ids, highest priority first
+  "heldBack": [],     // recipes and practices dropped by conflicts.recipes or by a broken `requires`
   "collisions": []    // selected recipes colliding with a pre-existing tool
 }
 ```
@@ -147,22 +148,27 @@ Predicates, evaluated against the report:
 | `{ testFile: true }` | the project has at least one test file (`*.test.*` / `*.spec.*`, plus bun's `*_test.*` / `*_spec.*`), outside dot-directories and `node_modules` |
 | `{ recipe: <id> }` | that recipe is in the current selection |
 | `{ recipe: "*" }` | at least one **other** recipe is in the current selection |
+| `{ practice: <id> }` | that practice is in the current selection |
+| `{ practice: "*" }` | at least one **other** practice is in the current selection |
 
 A recipe with no `when` keys applies to every stack. The body is never read to decide
 applicability.
 
 ### Selection is a fixpoint
 
-`requires: [{ recipe: … }]` makes applicability depend on the selection, and `conflicts.recipes`
-can remove a recipe another one requires. The detector therefore:
+`requires: [{ recipe: … }]` / `requires: [{ practice: … }]` makes applicability depend on the
+selection, and `conflicts.recipes` can remove a recipe another one requires. Recipes and practices
+are selectable in the same fixpoint — a practice's own `when` decides, evaluated by the same engine,
+and `enforcedBy` is metadata that never selects. The detector therefore:
 
-1. **Seeds** with every recipe whose non-recipe checks pass.
-2. **Grows** — repeatedly adds any recipe whose `requires` now hold, until nothing changes.
+1. **Seeds** with every recipe and practice whose non-recipe checks pass.
+2. **Grows** — repeatedly adds any recipe or practice whose `requires` now hold, until nothing
+   changes.
 3. **Shrinks** — repeatedly drops the lower-`priority` side of each `conflicts.recipes` pair, then
-   drops any recipe whose `requires` no longer hold, until nothing changes.
+   drops any recipe or practice whose `requires` no longer hold, until nothing changes.
 
-Dropped recipes land in `heldBack` with the reason. `selection` is sorted by `priority` descending —
-the order the plan applies them in.
+Dropped recipes and practices land in `heldBack` with the reason. `selection` is sorted by `priority`
+descending — the order the plan applies them in; a practice has no `priority` and sorts at 0.
 
 ### `collisions`
 
@@ -175,6 +181,34 @@ never silently dropped:
 { "recipe": "biome-assist", "tool": "prettier",
   "evidence": ["root/package.json declares prettier", "formatter: .prettierrc"] }
 ```
+
+## `practices[]`
+
+One entry per `library/practices/*.md`, carrying the parsed frontmatter plus the evaluated result.
+The list is in **id order**. A practice is reference prose for the half of a best practice no gate
+can fail on (RECIPE-CONTRACT.md → Practices); it is a separate artifact kind from a recipe and lives
+in its own id namespace.
+
+```jsonc
+{
+  "id": "test-behaviour-not-implementation",
+  "error": null,          // a string when the practice file could not be read; then this is the only
+                          // other field present, and the practice is never selected
+  "layer": "library",     // "library" (the fetched library) or "local" (the project's .code-quality/)
+  "libraryDir": "/abs/path/to/library",  // the directory this practice was loaded from
+  "title": "…",
+  "when": { "requires": [{ "testFile": true }] },
+  "source": "research/testing.md",       // the research note (the practice's own `source` key)
+  "enforcedBy": ["oxlint-anti-slop"],    // recipe ids enforcing the machine-checkable half
+  "applicable": true,     // every `when` check passed
+  "selected": true,       // applicable AND survived conflicts
+  "reasons": [{ "predicate": "requires {\"testFile\":true}", "pass": true, "detail": "the project has a test file" }]
+}
+```
+
+A practice entry's `source` is the **research note** (its frontmatter key), not the layer — a
+practice's `source` is not the layer the way a recipe's is. The layer is `layer`. `enforcedBy` is
+metadata: it is reported, never used to select.
 
 ## Local recipes
 
@@ -191,6 +225,11 @@ produced. Each matrix entry's `source` says which layer it came
 from, and `libraryDir` is the directory it was loaded from (the project's `.code-quality/` for a
 local recipe), so the plan and the proposal reader resolve a recipe's own templates against the
 right root.
+
+The same layer carries local **practices** at `.code-quality/practices/<id>.md`, merged the same
+way (local wins on id collision, sorted by id). A practice entry's layer is `layer`, not `source`
+(see [`practices[]`](#practices)). The practices directory is optional in **both** layers: a library
+or project with no practices is valid, so an absent `practices/` is an empty list, never an error.
 
 ## What it does not do
 
@@ -210,6 +249,11 @@ equal the filename stem, a missing or empty `## Undo` section — is reported as
 `{ "id": "<filename stem>", "error": "<what is wrong>", "source": "library" | "local" }` in
 `recipes[]`, is never selected, and does not stop the other recipes from producing a matrix and a
 plan. Loud, never a silent skip.
+
+A practice that cannot be read — a frontmatter line outside the strict subset, an `id` that does not
+equal the filename stem — is reported the same way in `practices[]` as
+`{ "id": "<filename stem>", "error": "<what is wrong>", "layer": "library" | "local" }`, is never
+selected, and does not stop the rest of the matrix.
 
 The run itself exits 1 only when there is nothing to report: the target is not a directory, or the
 resolved library's `recipes/` directory is missing.

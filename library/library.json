@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "recipes": [
     {
       "id": "agent-guidance",
@@ -1614,5 +1614,6 @@
         }
       ]
     }
-  ]
+  ],
+  "practices": []
 }

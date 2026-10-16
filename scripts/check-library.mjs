@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // check-library.mjs — validate the recipe library at the repo root.
 //
-// Five independent checks; the script exits non-zero if any fails:
+// Six independent checks; the script exits non-zero if any fails:
 //
 //   1. index freshness — regenerate library/library.json exactly as
 //      scripts/build-library.mjs does and compare bytes. The generator is
@@ -11,17 +11,22 @@
 //      RECIPE-CONTRACT.md: `id` equals the filename stem and is kebab-case;
 //      every files[].template exists under library/; every gates[].floor is
 //      one of the six known gates.
-//   3. template formatting — every biome-parseable template under
+//   3. practice contract — every library/practices/*.md parses and satisfies
+//      RECIPE-CONTRACT.md: `id` equals the filename stem, is kebab-case, and
+//      does not collide with a recipe id; `source` resolves to an existing
+//      path under the repo root; every `enforcedBy` id names an existing
+//      recipe; `when` parses. An absent library/practices/ is zero practices.
+//   4. template formatting — every biome-parseable template under
 //      library/templates/** is `biome format`-clean after the {{root}} /
 //      {{plan.*}} placeholders are substituted with dummy values. Files biome
 //      cannot parse (by extension, or a parse error) are skipped and printed.
-//   4. template lint — every template is laid out as a consumer would see it
+//   5. template lint — every template is laid out as a consumer would see it
 //      (the oxlint config at the root, its plugin under tools/, the rest at
 //      their recipe-relative paths) and linted against that config, so the
 //      scripts the recipes install satisfy the rules the same selection
 //      installs. Templates oxlint does not lint (by extension) are skipped and
 //      printed.
-//   5. skill script formatting — the skill's own shipped scripts under
+//   6. skill script formatting — the skill's own shipped scripts under
 //      skills/*/scripts/ are `biome check`-clean under the config the
 //      biome-assist recipe installs (library/templates/biome-assist/biome.json),
 //      not the repo's own biome.json. A consumer's `biome check .` runs over the
@@ -56,10 +61,11 @@ import { parseFrontmatter } from "../skills/code-quality-setup/scripts/frontmatt
 // here, the generator, and the skill's `update.mjs` `LIBRARY_SCHEMA_VERSION` (which cannot import
 // from this repo: the skill ships standalone). A bump here without the generator's (or vice
 // versa) fails check 1; a bump without the skill's leaves the version gate unable to fire (#182).
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const LIBRARY_DIR = join(REPO_ROOT, "library");
 const RECIPES_DIR = join(LIBRARY_DIR, "recipes");
+const PRACTICES_DIR = join(LIBRARY_DIR, "practices");
 const TEMPLATES_DIR = join(LIBRARY_DIR, "templates");
 const INDEX = join(LIBRARY_DIR, "library.json");
 const BIOME_CONFIG = join(REPO_ROOT, "biome.json");
@@ -160,7 +166,39 @@ function buildIndex() {
     };
   });
   recipes.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  return { schemaVersion: SCHEMA_VERSION, recipes };
+
+  // The practices directory is optional: a library with no practices is valid, so an absent
+  // library/practices/ is an empty list, not an error. A malformed practice fails the build the
+  // same way a malformed recipe does.
+  const practices = existsSync(PRACTICES_DIR)
+    ? readdirSync(PRACTICES_DIR)
+        .filter((f) => f.endsWith(".md"))
+        .sort()
+        .map((file) => {
+          const stem = basename(file, ".md");
+          const label = `library/practices/${file}`;
+          let fm;
+          try {
+            fm = parseFrontmatter(readFileSync(join(PRACTICES_DIR, file), "utf8"), label);
+          } catch (err) {
+            throw new Error(`${label}: ${err.message}`);
+          }
+          if (fm.id !== stem)
+            throw new Error(`${label}: id "${fm.id}" must equal the filename stem`);
+          if (!/^[a-z][a-z0-9-]*$/.test(fm.id))
+            throw new Error(`${label}: id "${fm.id}" is not kebab-case`);
+          return {
+            id: fm.id,
+            title: fm.title ?? fm.id,
+            when: fm.when ?? {},
+            source: fm.source ?? "",
+            enforcedBy: fm.enforcedBy ?? [],
+          };
+        })
+    : [];
+  practices.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+
+  return { schemaVersion: SCHEMA_VERSION, recipes, practices };
 }
 
 function checkIndex() {
@@ -215,10 +253,81 @@ function checkRecipes() {
       }
     }
   }
+  return files.map((f) => basename(f, ".md"));
+}
+
+// --- 3. practice contract ---------------------------------------------------
+
+// A practice's `when` is the recipe predicate language, so it must parse to a map whose known keys
+// have the right shape. The frontmatter reader already parsed the block; this rejects a `when` that
+// is a scalar, an array, or a map with a malformed predicate list.
+function checkWhen(when, label) {
+  if (when === null || typeof when !== "object" || Array.isArray(when)) {
+    fail(`${label}: when must be a map`);
+    return;
+  }
+  for (const key of ["language", "packageManager"]) {
+    if (when[key] !== undefined && !Array.isArray(when[key])) {
+      fail(`${label}: when.${key} must be a list`);
+    }
+  }
+  if (when.workspace !== undefined && typeof when.workspace !== "string") {
+    fail(`${label}: when.workspace must be a string`);
+  }
+  for (const key of ["requires", "excludes"]) {
+    if (when[key] === undefined) continue;
+    if (!Array.isArray(when[key])) {
+      fail(`${label}: when.${key} must be a list of predicates`);
+      continue;
+    }
+    for (const pred of when[key]) {
+      if (pred === null || typeof pred !== "object" || Array.isArray(pred)) {
+        fail(`${label}: when.${key} entry ${JSON.stringify(pred)} is not a predicate`);
+      }
+    }
+  }
+}
+
+function checkPractices(recipeIds) {
+  if (!existsSync(PRACTICES_DIR)) return 0;
+  const files = readdirSync(PRACTICES_DIR)
+    .filter((f) => f.endsWith(".md"))
+    .sort();
+  for (const file of files) {
+    const stem = basename(file, ".md");
+    const label = `library/practices/${file}`;
+    let fm;
+    try {
+      fm = parseFrontmatter(readFileSync(join(PRACTICES_DIR, file), "utf8"), label);
+    } catch (err) {
+      fail(`${label}: ${err.message}`);
+      continue;
+    }
+    if (fm.id !== stem) fail(`${label}: id "${fm.id}" must equal the filename stem "${stem}"`);
+    if (typeof fm.id !== "string" || !/^[a-z][a-z0-9-]*$/.test(fm.id)) {
+      fail(`${label}: id "${fm.id}" is not kebab-case`);
+    }
+    if (recipeIds.has(fm.id)) {
+      fail(`${label}: id "${fm.id}" collides with a recipe id`);
+    }
+    if (typeof fm.source !== "string" || fm.source === "") {
+      fail(`${label}: source must be a repo-relative path`);
+    } else if (!existsSync(join(REPO_ROOT, fm.source))) {
+      fail(`${label}: source "${fm.source}" does not exist under the repo root`);
+    }
+    if (fm.enforcedBy !== undefined && !Array.isArray(fm.enforcedBy)) {
+      fail(`${label}: enforcedBy must be a list of recipe ids`);
+    } else {
+      for (const id of fm.enforcedBy ?? []) {
+        if (!recipeIds.has(id)) fail(`${label}: enforcedBy "${id}" names no recipe`);
+      }
+    }
+    checkWhen(fm.when ?? {}, label);
+  }
   return files.length;
 }
 
-// --- 3. template formatting -------------------------------------------------
+// --- 4. template formatting -------------------------------------------------
 
 function substitute(text) {
   let out = text;
@@ -302,7 +411,7 @@ function checkTemplates() {
   return { checked: parseable.length, skipped };
 }
 
-// --- 4. template lint -------------------------------------------------------
+// --- 5. template lint -------------------------------------------------------
 
 // The oxlint config the oxlint-anti-slop recipe installs, and the plugin it
 // registers. The templates are linted against it in a scratch consumer layout:
@@ -403,7 +512,7 @@ function checkTemplateLint() {
   return { checked, skipped };
 }
 
-// --- 5. skill script formatting ---------------------------------------------
+// --- 6. skill script formatting ---------------------------------------------
 
 // The skill's own scripts must satisfy the config the skill installs
 // (library/templates/biome-assist/biome.json: 2-space, lineWidth 100, double
@@ -476,7 +585,8 @@ function checkSkillScripts() {
 // --- run --------------------------------------------------------------------
 
 checkIndex();
-const recipeCount = checkRecipes();
+const recipeIds = checkRecipes();
+const practiceCount = checkPractices(new Set(recipeIds));
 const { checked, skipped } = checkTemplates();
 const lint = checkTemplateLint();
 const scripts = checkSkillScripts();
@@ -488,5 +598,5 @@ if (errors.length > 0) {
 }
 
 process.stdout.write(
-  `check-library: ok — index fresh, ${recipeCount} recipes valid, ${checked} templates formatted (${skipped.length} skipped), ${lint.checked} templates linted, ${scripts.checked} skill scripts formatted (${scripts.skipped.length} skipped)\n`,
+  `check-library: ok — index fresh, ${recipeIds.length} recipes valid, ${practiceCount} practices valid, ${checked} templates formatted (${skipped.length} skipped), ${lint.checked} templates linted, ${scripts.checked} skill scripts formatted (${scripts.skipped.length} skipped)\n`,
 );
