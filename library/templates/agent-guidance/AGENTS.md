@@ -5,5 +5,7 @@ Gates wired by `code-quality-setup`. Run them before you commit; the pre-commit 
 
 {{plan.gates}}
 
+{{plan.practices}}
+
 Detail, invariants, and gotchas: [docs/code-quality.md](docs/code-quality.md).
 <!-- code-quality:agent-guidance:end -->

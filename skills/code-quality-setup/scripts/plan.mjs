@@ -107,6 +107,20 @@ function renderGatesTable(selected) {
   return lines.join("\n");
 }
 
+// `{{plan.practices}}` — the pointer list, rendered from the whole selection like
+// `renderGatesTable`: one line per selected practice, `- [<title>](docs/code-quality/practices/
+// <id>.md)`. The lead-in is part of the rendered value, not the template, so a selection with no
+// practice renders the empty string and the block carries no dangling lead-in (RECIPE-CONTRACT.md
+// → Substitution).
+function renderPractices(selected) {
+  if (selected.length === 0) return "";
+  const lines = ["Practices — judgement the gates cannot check:", ""];
+  for (const p of selected) {
+    lines.push(`- [${p.title}](docs/code-quality/practices/${p.id}.md)`);
+  }
+  return lines.join("\n");
+}
+
 function renderDetails(selected) {
   const parts = [];
   for (const r of selected) {
@@ -135,13 +149,14 @@ function renderAreas(workspace) {
   return `[\n${lines.join("\n")}\n]`;
 }
 
-function substitute(text, { root, gates, details, areas }) {
+function substitute(text, { root, gates, details, areas, practices }) {
   // Function replacements: a `$&`/`$1` in the rendered text must stay literal.
   return text
     .replaceAll("{{root}}", () => root)
     .replaceAll("{{plan.gates}}", () => gates)
     .replaceAll("{{plan.details}}", () => details)
-    .replaceAll("{{plan.areas}}", () => areas);
+    .replaceAll("{{plan.areas}}", () => areas)
+    .replaceAll("{{plan.practices}}", () => practices);
 }
 
 // ---------------------------------------------------------------------------
@@ -151,7 +166,12 @@ function substitute(text, { root, gates, details, areas }) {
 // Resolve a recipe's `files[]` into concrete writes. A `member` entry collapses into a `root` entry
 // on the same resolved path (a single workspace resolves both to the same directory); nothing is
 // written twice. `{{root}}` is the member's path back to the workspace root, `.` for a root file.
-function resolveWrites(recipe, workspace) {
+//
+// A `files[]` entry whose `path` or `template` names `{{practice.id}}` is expanded once per
+// selected practice (RECIPE-CONTRACT.md → files): one write per practice, each with its own target,
+// so every delivered practice is independently owned, drift-checked and undone. The write carries
+// the practice object, which `buildPlan` renders the doc from.
+function resolveWrites(recipe, workspace, practices = []) {
   const writes = [];
   const seen = new Set();
   const add = (f, target, member, rootPrefix) => {
@@ -162,17 +182,33 @@ function resolveWrites(recipe, workspace) {
       member,
       memberMode: f.memberMode ?? "standalone",
       path: f.path,
+      practice: f.practice ?? null,
       rootPrefix,
       scope: f.scope ?? "root",
       target,
       template: f.template,
     });
   };
+  const expanded = [];
   for (const f of recipe.files ?? []) {
+    if (f.path.includes("{{practice.id}}") || f.template.includes("{{practice.id}}")) {
+      for (const p of practices) {
+        expanded.push({
+          ...f,
+          path: f.path.replaceAll("{{practice.id}}", p.id),
+          practice: p,
+          template: f.template.replaceAll("{{practice.id}}", p.id),
+        });
+      }
+    } else {
+      expanded.push(f);
+    }
+  }
+  for (const f of expanded) {
     const scope = f.scope ?? "root";
     if (scope === "root" || scope === "both") add(f, f.path, null, ".");
   }
-  for (const f of recipe.files ?? []) {
+  for (const f of expanded) {
     const scope = f.scope ?? "root";
     if (scope !== "member" && scope !== "both") continue;
     if (workspace.members.length === 0) {
@@ -198,6 +234,18 @@ function resolveScopes(scope, workspace) {
 
 function readTemplate(libraryDir, libraryRelPath) {
   return readFileSync(join(libraryDir, libraryRelPath), "utf8");
+}
+
+// A practice file is the delivery template: `practices/<id>.md` carries frontmatter (`id`,
+// `title`, `when`, `source`, `enforcedBy`) plus the reference body. The delivered doc is
+// `# <title>` then the body — the frontmatter is library-internal, so `source` and `enforcedBy`
+// never leak into the consumer's repo. The title comes from the detector's practice entry, so the
+// frontmatter is not re-parsed here; only the block is stripped.
+function renderPracticeDoc(practice) {
+  const raw = readFileSync(join(practice.libraryDir, "practices", `${practice.id}.md`), "utf8");
+  const m = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(raw);
+  const body = m ? raw.slice(m[0].length) : raw;
+  return `# ${practice.title ?? practice.id}\n\n${body.trimStart()}`;
 }
 
 // Whether the project is a git repository with at least one commit. A gate whose base is the
@@ -1129,7 +1177,7 @@ function classify(manifest, { library, files }) {
 // ---------------------------------------------------------------------------
 
 function buildPlan(report, opts) {
-  const { stack, recipes, selection, heldBack, collisions } = report;
+  const { stack, recipes, selection, heldBack, collisions, practices } = report;
   const libraryDir = resolveLibraryDir(opts.library);
   const byId = new Map(recipes.map((r) => [r.id, r]));
   const errored = recipes.filter((r) => r.error !== null);
@@ -1161,11 +1209,16 @@ function buildPlan(report, opts) {
 
   const selected = selectedIds.map((id) => byId.get(id)).filter(Boolean);
 
+  // The selected practices, from the detector's practice matrix. A practice is selected by its own
+  // `when`; `--recipe` narrows recipes only, so the practice list is the report's own selection.
+  const selectedPractices = (practices ?? []).filter((p) => p.selected === true);
+
   // Substitution context, rendered from the whole selection.
   const subst = {
     areas: renderAreas(stack.workspace),
     details: renderDetails(selected),
     gates: renderGatesTable(selected),
+    practices: renderPractices(selectedPractices),
   };
 
   // Concrete writes per selected recipe, with rendered content. A template the recipe names but
@@ -1174,13 +1227,15 @@ function buildPlan(report, opts) {
   const templateErrors = [];
   for (const r of selected) {
     const writes = [];
-    for (const w of resolveWrites(r, stack.workspace)) {
+    for (const w of resolveWrites(r, stack.workspace, selectedPractices)) {
       let content;
       try {
-        content = substitute(readTemplate(r.libraryDir ?? libraryDir, w.template), {
-          ...subst,
-          root: w.rootPrefix,
-        });
+        content = w.practice
+          ? renderPracticeDoc(w.practice)
+          : substitute(readTemplate(r.libraryDir ?? libraryDir, w.template), {
+              ...subst,
+              root: w.rootPrefix,
+            });
       } catch (err) {
         templateErrors.push({ error: `${w.template}: ${err.message}`, id: r.id });
         continue;
@@ -1275,6 +1330,7 @@ function buildPlan(report, opts) {
             ? "applicable — not selected (narrowed by --recipe)"
             : null,
       })),
+    practices: selectedPractices,
     selected,
     selectedIds,
     stack,

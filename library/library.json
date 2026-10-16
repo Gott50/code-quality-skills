@@ -1061,6 +1061,37 @@
       ]
     },
     {
+      "id": "practice-delivery",
+      "title": "Practice delivery — one doc per selected practice",
+      "purpose": "Write each selected practice to docs/code-quality/practices/<id>.md so the agent can read it.",
+      "when": {
+        "requires": [
+          {
+            "practice": "*"
+          }
+        ]
+      },
+      "conflicts": {},
+      "cost": "fast",
+      "priority": 1,
+      "files": [
+        {
+          "path": "docs/code-quality/practices/{{practice.id}}.md",
+          "action": "create",
+          "scope": "root",
+          "template": "practices/{{practice.id}}.md"
+        }
+      ],
+      "commands": [],
+      "gates": [],
+      "verify": [
+        {
+          "run": "for f in $(grep -o \"docs/code-quality/practices/[a-z0-9-]*\\.md\" AGENTS.md 2>/dev/null) docs/code-quality/practices/*.md; do test -f \"$f\" && grep -q \"^# \" \"$f\" || exit 1; done",
+          "scope": "root"
+        }
+      ]
+    },
+    {
       "id": "repo-hygiene",
       "title": "Repo hygiene — runtime pin, ignore entries, and the husky prepare hook",
       "purpose": "Pin the Bun version, ignore build and env artifacts, and wire `prepare` so the git hooks install on every install.",

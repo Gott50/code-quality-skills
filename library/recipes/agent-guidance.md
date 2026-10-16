@@ -24,9 +24,9 @@ verify:
 ## Apply
 
 1. **`docs/code-quality.md`** — create from `templates/agent-guidance/docs/code-quality.md`. Its body is one `{{plan.details}}` substitution: one section per selected recipe, carrying that recipe's `title`, `purpose`, its gates, and its undo bullets. The detail lives here, not in `AGENTS.md`.
-2. **`AGENTS.md`** — merge the lean section from `templates/agent-guidance/AGENTS.md`, inside this recipe's marker pair. It carries only the gate table (`{{plan.gates}}`) and the pointer to `docs/code-quality.md`; everything else is disclosed behind that pointer. A missing `AGENTS.md` is created from the template, which is the whole section.
+2. **`AGENTS.md`** — merge the lean section from `templates/agent-guidance/AGENTS.md`, inside this recipe's marker pair. It carries the gate table (`{{plan.gates}}`), the practice pointer list (`{{plan.practices}}`), and the pointer to `docs/code-quality.md`; everything else is disclosed behind that pointer. A missing `AGENTS.md` is created from the template, which is the whole section.
 
-The two placeholders are the contract's only substitution keys, and both are rendered from the *whole selection*, not from this recipe: `{{plan.gates}}` is one table of every selected recipe's gates, `{{plan.details}}` one section per selected recipe. That is what lets a recipe whose output describes the whole run stay a static template.
+The placeholders are rendered from the *whole selection*, not from this recipe: `{{plan.gates}}` is one table of every selected recipe's gates, `{{plan.details}}` one section per selected recipe, `{{plan.practices}}` one pointer line per selected practice. That is what lets a recipe whose output describes the whole run stay a static template. `{{plan.practices}}` renders the empty string when no practice is selected, so the block carries no dangling lead-in.
 
 This recipe runs last (`priority: 0`, below every gate) because it documents the recipes the same run selected: with no other recipe selected it does not apply at all (`requires: [{ recipe: "*" }]`).
 

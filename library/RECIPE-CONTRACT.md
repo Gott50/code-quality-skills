@@ -108,6 +108,7 @@ files:
 
 - `path` is workspace-root-relative and MUST NOT contain `..` or an absolute prefix.
 - `template` is always explicit. Naming convention: mirror the target under `templates/<id>/`, minus the leading dot (`templates/biome-assist/pre-commit.block` for `.husky/pre-commit`) — a dotfile inside the library directory is not worth the packaging risk.
+- **A `path` or `template` that names `{{practice.id}}` is expanded once per selected practice.** The placeholder is replaced with the practice's id, so one `files[]` entry yields one write per selected practice — each with its own target, its own manifest entry, its own drift verdict, and its own undo. The template is the practice file itself (`practices/<id>.md`); the delivered doc is `# <title>` then the practice body, and the practice's `source`/`enforcedBy` are library-internal and never rendered. The library check accepts the placeholder in `template` without an on-disk file of that literal name.
 - **A template MUST already satisfy every gate the whole selection installs**, not only its own recipe's. A formatter's own config that the formatter would rewrite is permanent drift from the first run; equally, a file a *different* recipe's gate checks fails that gate the moment it runs. `verify` cannot catch the second case by construction: the gate belongs to another recipe and its own `verify` ran before this recipe's files existed. The port found it twice — `scripts/mutation-gate.ts` was rejected by `require-safety-comment-for-type-assertion` (an oxlint rule, another recipe's gate) and rewritten by Biome's key sort (a third recipe's gate). Format and lint every template against the library's own gates before landing it.
 - `scope`:
   - `root` — one file at the workspace root.
@@ -250,12 +251,13 @@ Three headings, in this order:
 
 ## Substitution
 
-Templates and body may use `{{plan.<key>}}` placeholders, substituted from the detector's plan JSON. Two keys are defined here; the detector ticket fixes any others:
+Templates and body may use `{{plan.<key>}}` placeholders, substituted from the detector's plan JSON. The keys are defined here; the detector ticket fixes any others:
 
 | Placeholder | Renders |
 |---|---|
 | `{{plan.gates}}` | one complete Markdown table of every selected recipe's gates, or `_No gates wired._` when the selection has none |
 | `{{plan.details}}` | one Markdown section per selected recipe: `title`, `purpose`, its gates, and its undo bullets (the detector extracts the body's `## Undo` section; a recipe file is otherwise never read to render) |
+| `{{plan.practices}}` | one pointer line per selected practice, `- [<title>](docs/code-quality/practices/<id>.md)`, preceded by a lead-in line. The empty string when the selection has no practice, so the block that names it carries no dangling lead-in |
 | `{{plan.areas}}` | the `AREA_CONFIGS` literal for a recipe that maps directory prefixes to per-area configs: `[["", "stryker.conf.mjs"]]` in a single repo, or that catch-all plus one `[<member>/, <member>/stryker.conf.mjs]` per `stack.workspace.members` entry. **Rendered already formatted** — each entry `["<prefix>", "<config>"]`, single-line when the list holds one entry, and otherwise one entry per line, two-space indented with a trailing comma — because the file it lands in must satisfy the formatter gate the selection installs. Rendered from the detector's member list, so the mapping never drifts from the members on disk |
 
 This is what lets a recipe whose output describes the *whole selection* — the agent-guidance recipe — stay a static template.

@@ -453,6 +453,9 @@ names them:
   recipe's gates, or `_No gates wired._`.
 - `{{plan.details}}` — one `### <title>` section per selected recipe: its purpose, its gates, and
   its `## Undo` bullets.
+- `{{plan.practices}}` — one pointer line per selected practice,
+  `- [<title>](docs/code-quality/practices/<id>.md)`, preceded by a lead-in line; the empty string
+  when no practice is selected, so the block that names it carries no dangling lead-in.
 - `{{plan.areas}}` — the `AREA_CONFIGS` literal: `[["", "stryker.conf.mjs"]]` in a single repo, or
   that catch-all plus one `[<member>/, <member>/stryker.conf.mjs]` per member, one entry per line,
   two-space indented with a trailing comma.

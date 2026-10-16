@@ -118,6 +118,7 @@ const SUBSTITUTIONS = [
   ["{{plan.areas}}", '[["", "stryker.conf.mjs"]]'],
   ["{{plan.gates}}", "_No gates wired._"],
   ["{{plan.details}}", "_No details._"],
+  ["{{plan.practices}}", "- [A practice](docs/code-quality/practices/a-practice.md)"],
 ];
 
 const errors = [];
@@ -241,6 +242,10 @@ function checkRecipes() {
         fail(`${label}: files[] entry for "${f.path}" names no template`);
         continue;
       }
+      // A per-practice entry names `{{practice.id}}` in its template (RECIPE-CONTRACT.md → files):
+      // the entry is expanded once per selected practice, so the literal path does not exist on
+      // disk. The practice files it resolves to are validated by check 3.
+      if (f.template.includes("{{practice.id}}")) continue;
       if (!existsSync(join(LIBRARY_DIR, f.template))) {
         fail(`${label}: template "${f.template}" does not exist under library/`);
       }
