@@ -11,13 +11,19 @@
 // The frontmatter contract is library/RECIPE-CONTRACT.md. A malformed recipe fails the build with
 // a clear message; it is never silently skipped. The content hash is computed by the fetch, not
 // stored here (ticket #112); library.json carries only the integer schemaVersion.
+//
+// The version is the LIBRARY CONTRACT's, and it bumps on any addition an older reader cannot
+// honour — a new `when` predicate, a new frontmatter key — not only on a change to an existing
+// one (#182). An older skill reading a recipe that declares an unknown predicate drops it with
+// `unknown predicate` instead of refusing the library, so the addition has to move the gate the
+// skill's `update.mjs` reads (`LIBRARY_SCHEMA_VERSION`). Bump the two together.
 
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseFrontmatter } from "../skills/code-quality-setup/scripts/frontmatter.mjs";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const LIBRARY_DIR = join(REPO_ROOT, "library");
 const RECIPES_DIR = join(LIBRARY_DIR, "recipes");

@@ -51,7 +51,12 @@ import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseFrontmatter } from "../skills/code-quality-setup/scripts/frontmatter.mjs";
 
-const SCHEMA_VERSION = 1;
+// The library contract version, duplicated from scripts/build-library.mjs (see the header: the
+// generator is duplicated on purpose). It lives in three places and they must move together —
+// here, the generator, and the skill's `update.mjs` `LIBRARY_SCHEMA_VERSION` (which cannot import
+// from this repo: the skill ships standalone). A bump here without the generator's (or vice
+// versa) fails check 1; a bump without the skill's leaves the version gate unable to fire (#182).
+const SCHEMA_VERSION = 2;
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const LIBRARY_DIR = join(REPO_ROOT, "library");
 const RECIPES_DIR = join(LIBRARY_DIR, "recipes");
