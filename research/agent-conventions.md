@@ -273,8 +273,9 @@ is this gate's floor ([RECIPE-CONTRACT.md](library/RECIPE-CONTRACT.md), `gates`)
 
 **The floor/wall distinction is the thing a hand-written table loses.** "A gate WITHOUT `floor` is a wall
 at a fixed level — a formatter's zero-diff gate has no floor… With **no baseline** … the floor falls
-back to the greenfield wall: 100% for coverage and mutation, 0 for lint and typecheck, and fallow's
-report-only mode" ([RECIPE-CONTRACT.md](library/RECIPE-CONTRACT.md), `floor`). A gate with a floor "MUST
+back to the greenfield wall, the level a greenfield repo measures at: 100% for coverage and
+mutation, 0 for lint and typecheck, and zero error-severity findings for `fallow-health`"
+([RECIPE-CONTRACT.md](library/RECIPE-CONTRACT.md), `floor`). A gate with a floor "MUST
 read its floor from that source at run time — never from a hard-coded level — and the recipe's body MUST
 say where the floor is read" ([RECIPE-CONTRACT.md](library/RECIPE-CONTRACT.md)). So a table that shows
 only `run` tells a reader the command but not what the command is *anchored to*; that detail belongs in

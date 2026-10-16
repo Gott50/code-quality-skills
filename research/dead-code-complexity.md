@@ -159,11 +159,12 @@ is no coverage to score against" (`library/recipes/fallow-audit.md`).
 The library's own contract states the distinction precisely. A gate **with** `floor` reads its
 level from a committed baseline; a gate **without** `floor` "is a wall at a fixed level — a
 formatter's zero-diff gate has no floor". And the fallback is explicit: "With **no baseline** — or
-a baseline whose gate was never raised — the floor falls back to the greenfield wall: 100% for
-coverage and mutation, 0 for lint and typecheck, and fallow's report-only mode. A repo that never
-raised a baseline is therefore gated exactly as before the floor existed. A gate whose floor file
-exists but is unreadable fails closed: a floor that cannot be read must not silently become the
-wall" (`library/RECIPE-CONTRACT.md`).
+a baseline whose gate was never raised — the floor falls back to the greenfield wall, the level a
+greenfield repo measures at: 100% for coverage and mutation, 0 for lint and typecheck, and zero
+error-severity findings for `fallow-health`… `fallow-dead-code` is the exception: it has no wall,
+because its gate is `fallow:audit`, which is change-scoped… A repo that never raised a baseline is
+therefore never left ungated. A gate whose floor file exists but is unreadable fails closed: a
+floor that cannot be read must not silently become the wall" (`library/RECIPE-CONTRACT.md`).
 
 fallow implements the same shape with two independent mechanisms, and they are not
 interchangeable:
