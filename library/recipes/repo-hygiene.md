@@ -34,7 +34,7 @@ verify:
 ## Apply
 
 1. **`.bun-version`** — create from `templates/repo-hygiene/bun-version`. The pin is what `oven-sh/setup-bun`'s `bun-version-file` reads in CI, so the workflow and the local runtime agree. A project that already pins its runtime is a `create` drift, reported and applied only on approval.
-2. **`.gitignore`** — merge from `templates/repo-hygiene/gitignore.block`, inside this recipe's marker pair. It carries only the entries no other recipe owns (`.npm/`, `dist/`, `*.tsbuildinfo`, `.env`, `.env.local`, `*.log`); `node_modules/`, `coverage/`, `reports/` and `.stryker-tmp/` belong to the recipes that produce them, each under its own marker.
+2. **`.gitignore`** — merge from `templates/repo-hygiene/gitignore.block`, inside this recipe's marker pair. It carries only the entries no other recipe owns (`.npm/`, `dist/`, `*.tsbuildinfo`, `.env`, `.env.local`, `*.log`, `reports/`); `node_modules/`, `coverage/` and `.stryker-tmp/` belong to the recipes that produce them, each under its own marker. `reports/` is here rather than in the mutation recipes because the skill's capture step writes it on every stack, including a repo with no test file where no mutation recipe is selected — so the ignore must ride a recipe that is always selected.
 3. **`package.json`** — merge from `templates/repo-hygiene/package.json`: add the `husky` devDependency and the `prepare: husky` script. `prepare` is the hook installer: it runs on `bun install`, so a fresh checkout wires `.husky/` without a manual step. This recipe owns it because it runs first (`priority: 60`), before any recipe that writes a hook block.
 4. **`bun install`** — installs `husky` and runs `prepare`, which installs the hooks.
 
