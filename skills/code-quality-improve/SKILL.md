@@ -1,6 +1,8 @@
 ---
 name: code-quality-improve
 description: Raises a TypeScript repo's code-quality score one target at a time. Use when a repo already has code-quality gates and a committed baseline and the user wants to improve coverage, mutation, lint, typecheck, dead code or complexity without regressing.
+metadata:
+  version: 1.0.0
 ---
 
 # code-quality-improve

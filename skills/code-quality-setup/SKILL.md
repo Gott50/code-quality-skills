@@ -1,6 +1,8 @@
 ---
 name: code-quality-setup
 description: Sets up or repairs code-quality gates in a TypeScript repo. Use when a TypeScript project needs formatting, linting, typechecking, tests, coverage, mutation testing, git hooks, or CI gates wired in, audited, or repaired.
+metadata:
+  version: 1.0.0
 ---
 
 # code-quality-setup

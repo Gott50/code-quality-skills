@@ -1,6 +1,8 @@
 ---
 name: code-quality-author
 description: Authors a code-quality recipe into a project's local library and installs it. Use when a project needs a gate the recipe library does not cover, or a recipe variant for its stack.
+metadata:
+  version: 1.0.0
 ---
 
 # code-quality-author
