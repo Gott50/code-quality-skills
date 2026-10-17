@@ -1389,6 +1389,189 @@
       ]
     },
     {
+      "id": "release-automation",
+      "title": "Release automation — commit-msg check, changelog and version derivation",
+      "purpose": "Reject a commit message the changelog cannot read, then derive the changelog and the next version from the history on main.",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "packageManager": [
+          "bun"
+        ],
+        "workspace": "any",
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "conflicts": {},
+      "cost": "fast",
+      "priority": 25,
+      "files": [
+        {
+          "path": "scripts/commit-msg.sh",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/release-automation/scripts/commit-msg.sh"
+        },
+        {
+          "path": "commitlint.config.mjs",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/release-automation/commitlint.config.mjs"
+        },
+        {
+          "path": ".husky/commit-msg",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/release-automation/commit-msg.block"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/release-automation/release.yml"
+        },
+        {
+          "path": "release-please-config.json",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/release-automation/release-please-config.json"
+        },
+        {
+          "path": ".release-please-manifest.json",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/release-automation/.release-please-manifest.json"
+        },
+        {
+          "path": "package.json",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/release-automation/package.json"
+        }
+      ],
+      "commands": [
+        {
+          "run": "bun install",
+          "scope": "root",
+          "showInPlan": false
+        }
+      ],
+      "gates": [
+        {
+          "id": "commit-msg",
+          "run": "sh scripts/commit-msg.sh .git/COMMIT_EDITMSG",
+          "description": "commitlint over a commit message — the same check the commit-msg hook runs"
+        }
+      ],
+      "verify": [
+        {
+          "run": "sh -c 'printf \"added a thing\\n\" > /tmp/cq-commit-msg-bad.txt; if sh scripts/commit-msg.sh /tmp/cq-commit-msg-bad.txt; then echo \"malformed message was accepted\" >&2; exit 1; fi; printf \"feat: add a thing\\n\" > /tmp/cq-commit-msg-good.txt; sh scripts/commit-msg.sh /tmp/cq-commit-msg-good.txt'",
+          "scope": "root"
+        },
+        {
+          "run": "bun -e \"const y = Bun.YAML.parse(await Bun.file('.github/workflows/release.yml').text()); const j = y.jobs.release; if (Object.keys(y.jobs).join() !== 'release') process.exit(1); if (!j) process.exit(1); if (j.steps.map((s) => s.name).join() !== 'checkout,release-please') process.exit(1); if (j.steps[0].uses !== 'actions/checkout@v7' || Number(j.steps[0].with['fetch-depth']) !== 0) process.exit(1); if (j.steps[1].uses !== 'googleapis/release-please-action@v4') process.exit(1); if (j.steps[1].with['config-file'] !== 'release-please-config.json' || j.steps[1].with['manifest-file'] !== '.release-please-manifest.json') process.exit(1)\"",
+          "scope": "root"
+        }
+      ]
+    },
+    {
+      "id": "release-automation-npm",
+      "title": "Release automation — commit-msg check, changelog and version derivation (npm/pnpm)",
+      "purpose": "Reject a commit message the changelog cannot read, then derive the changelog and the next version from the history on main.",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "packageManager": [
+          "npm",
+          "pnpm"
+        ],
+        "workspace": "any",
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "conflicts": {},
+      "cost": "fast",
+      "priority": 25,
+      "files": [
+        {
+          "path": "scripts/commit-msg.sh",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/release-automation-npm/scripts/commit-msg.sh"
+        },
+        {
+          "path": "commitlint.config.mjs",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/release-automation/commitlint.config.mjs"
+        },
+        {
+          "path": ".husky/commit-msg",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/release-automation-npm/commit-msg.block"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/release-automation/release.yml"
+        },
+        {
+          "path": "release-please-config.json",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/release-automation/release-please-config.json"
+        },
+        {
+          "path": ".release-please-manifest.json",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/release-automation/.release-please-manifest.json"
+        },
+        {
+          "path": "package.json",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/release-automation-npm/package.json"
+        }
+      ],
+      "commands": [
+        {
+          "run": "sh -c 'if test -f pnpm-lock.yaml; then pnpm install; else npm install; fi'",
+          "scope": "root",
+          "showInPlan": false
+        }
+      ],
+      "gates": [
+        {
+          "id": "commit-msg",
+          "run": "sh scripts/commit-msg.sh .git/COMMIT_EDITMSG",
+          "description": "commitlint over a commit message — the same check the commit-msg hook runs"
+        }
+      ],
+      "verify": [
+        {
+          "run": "sh -c 'printf \"added a thing\\n\" > /tmp/cq-commit-msg-bad.txt; if sh scripts/commit-msg.sh /tmp/cq-commit-msg-bad.txt; then echo \"malformed message was accepted\" >&2; exit 1; fi; printf \"feat: add a thing\\n\" > /tmp/cq-commit-msg-good.txt; sh scripts/commit-msg.sh /tmp/cq-commit-msg-good.txt'",
+          "scope": "root"
+        },
+        {
+          "run": "bun -e \"const y = Bun.YAML.parse(await Bun.file('.github/workflows/release.yml').text()); const j = y.jobs.release; if (Object.keys(y.jobs).join() !== 'release') process.exit(1); if (!j) process.exit(1); if (j.steps.map((s) => s.name).join() !== 'checkout,release-please') process.exit(1); if (j.steps[0].uses !== 'actions/checkout@v7' || Number(j.steps[0].with['fetch-depth']) !== 0) process.exit(1); if (j.steps[1].uses !== 'googleapis/release-please-action@v4') process.exit(1); if (j.steps[1].with['config-file'] !== 'release-please-config.json' || j.steps[1].with['manifest-file'] !== '.release-please-manifest.json') process.exit(1)\"",
+          "scope": "root"
+        }
+      ]
+    },
+    {
       "id": "repo-hygiene",
       "title": "Repo hygiene — runtime pin, ignore entries, and the husky prepare hook",
       "purpose": "Pin the Bun version, ignore build and env artifacts, and wire `prepare` so the git hooks install on every install.",

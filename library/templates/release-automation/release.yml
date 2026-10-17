@@ -1,0 +1,41 @@
+name: release
+
+# Derives the changelog and the next version from the commit history on main.
+# The commit-msg hook is what makes this meaningful: every message on main has
+# already been checked against the same Conventional Commits config, so the
+# derivation reads a history it can classify rather than guessing.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # `fetch-depth: 0` is required: the derivation walks the commit history
+      # from the last release tag, and a shallow clone has no history to walk.
+      - name: checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Opens (or updates) one release PR carrying the changelog and the version
+      # bump. Merging that PR is the release; the tag and the GitHub release are
+      # created from it. The config file names the changelog sections, so the
+      # sections and the commit types the hook accepts cannot drift apart.
+      - name: release-please
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

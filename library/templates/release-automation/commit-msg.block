@@ -1,0 +1,5 @@
+# code-quality:release-automation:start
+# Reject a commit message the changelog and version derivation cannot read.
+# The message file is git's own argument ($1), passed through explicitly.
+sh scripts/commit-msg.sh "$1" || exit 1
+# code-quality:release-automation:end
