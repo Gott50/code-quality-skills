@@ -439,6 +439,10 @@
         {
           "run": "bun -e \"const y = Bun.YAML.parse(await Bun.file('.github/workflows/ci.yml').text()); if (Object.keys(y.jobs).join() !== 'ci,mutation,fallow-coverage') process.exit(1)\"",
           "scope": "root"
+        },
+        {
+          "run": "node -e 'const fs=require(\"node:fs\"),s=fs.readFileSync(\".github/workflows/ci.yml\",\"utf8\"),L=s.split(\"\\n\"),die=(m)=>{console.error(m);process.exit(1)};const j=L.findIndex((l)=>/^  ci:$/.test(l));if(j<0)die(\"no ci job\");const n=L.findIndex((l,index)=>index>j&&/^  \\S+:$/.test(l));const block=L.slice(j+1,n<0?L.length:n).join(\"\\n\");if(!/actions\\/checkout@/.test(block))die(\"ci job has no checkout step\");if(!/CODE_QUALITY_BASE_REF: \\$\\{\\{ github\\.event\\.pull_request\\.base\\.sha \\}\\}/.test(block))die(\"the test step does not pass the PR base ref to the coverage gate\");if(!/fetch-depth: 0/.test(block))die(\"the ci checkout does not fetch the base ref\");'",
+          "scope": "root"
         }
       ]
     },
@@ -493,6 +497,10 @@
       "verify": [
         {
           "run": "test -f .github/workflows/ci.yml && grep -q \"node-version-file\" .github/workflows/ci.yml && grep -q \"npm run test\" .github/workflows/ci.yml",
+          "scope": "root"
+        },
+        {
+          "run": "node -e 'const fs=require(\"node:fs\"),s=fs.readFileSync(\".github/workflows/ci.yml\",\"utf8\"),L=s.split(\"\\n\"),die=(m)=>{console.error(m);process.exit(1)};const j=L.findIndex((l)=>/^  ci:$/.test(l));if(j<0)die(\"no ci job\");const n=L.findIndex((l,index)=>index>j&&/^  \\S+:$/.test(l));const block=L.slice(j+1,n<0?L.length:n).join(\"\\n\");if(!/actions\\/checkout@/.test(block))die(\"ci job has no checkout step\");if(!/CODE_QUALITY_BASE_REF: \\$\\{\\{ github\\.event\\.pull_request\\.base\\.sha \\}\\}/.test(block))die(\"the test step does not pass the PR base ref to the coverage gate\");if(!/fetch-depth: 0/.test(block))die(\"the ci checkout does not fetch the base ref\");'",
           "scope": "root"
         }
       ]

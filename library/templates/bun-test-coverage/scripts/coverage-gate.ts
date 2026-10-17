@@ -30,16 +30,74 @@
  * Usage:
  *   bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage
  *   bun scripts/coverage-gate.ts --lcov coverage/lcov.info --baseline .code-quality-baseline.json
+ *   bun scripts/coverage-gate.ts --changed-lines origin/main
  *
  * Defaults: --lcov ./coverage/lcov.info, --baseline ./.code-quality-baseline.json.
- * Exit 0 when every file meets its floor; exit 1 with a report otherwise.
+ * `--changed-lines <ref>` adds the PR rule: every line the diff against `<ref>`
+ * adds or modifies must be executed. The per-file floor still governs the whole
+ * file, so a change to an uncovered line of a grandfathered file fails the
+ * changed-lines rule even though the file meets its floor. `$CODE_QUALITY_BASE_REF`
+ * supplies the ref when the flag is absent, so the CI workflow sets it on the
+ * test step without the `test` script carrying a flag a local run cannot resolve.
+ *
+ * Exit 0 when every file meets its floor and every changed line is covered;
+ * exit 1 with a report otherwise.
  */
+import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 
 function parseArg(name: string): string | undefined {
   const i = process.argv.indexOf(name);
   return i >= 0 ? process.argv[i + 1] : undefined;
+}
+
+// A ref is usable when it is a non-empty string: a workflow that interpolates an
+// absent context (`${{ github.event.pull_request.base.sha }}` on a push) sets the
+// variable to the empty string, and `git diff ""` is an error rather than a
+// no-op.
+function resolveBaseRef(): string | undefined {
+  const ref = parseArg("--changed-lines") ?? process.env.CODE_QUALITY_BASE_REF;
+  return ref !== undefined && ref !== "" ? ref : undefined;
+}
+
+/**
+ * The lines a diff against `ref` adds or modifies, per file. The `git diff`
+ * paths are repo-root-relative; the lcov `SF:` paths are cwd-relative, and the
+ * gate is run from the same directory as the test run, so both are resolved to
+ * an absolute path before matching.
+ *
+ * A diff that cannot be computed is a failure, not a silent pass: a gate that
+ * cannot see the change must not report it covered.
+ */
+function changedLines(ref: string): Map<string, Set<number>> {
+  let out: string;
+  try {
+    out = execFileSync("git", ["diff", "--unified=0", "--no-color", ref, "--"], {
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+    });
+  } catch (err) {
+    console.error(`coverage-gate: git diff against ${ref} failed: ${err}`);
+    process.exit(1);
+  }
+  const changed = new Map<string, Set<number>>();
+  let file: string | null = null;
+  for (const line of out.split("\n")) {
+    if (line.startsWith("+++ ")) {
+      const path = line.slice(4).trim();
+      file = path === "/dev/null" ? null : path.replace(/^b\//, "");
+      continue;
+    }
+    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
+    if (!hunk || file === null) continue;
+    const start = Number(hunk[1]);
+    const count = hunk[2] === undefined ? 1 : Number(hunk[2]);
+    const lines = changed.get(resolve(file)) ?? new Set<number>();
+    for (let i = 0; i < count; i++) lines.add(start + i);
+    changed.set(resolve(file), lines);
+  }
+  return changed;
 }
 
 /** An exact fraction, as the baseline records it — never a rounded ratio. */
@@ -186,6 +244,7 @@ const text = readFileSync(lcovPath, "utf-8");
 interface CovFile {
   fnf: number;
   fnh: number;
+  lines: Map<number, number>;
   lf: number;
   lh: number;
   sf: string;
@@ -205,11 +264,19 @@ for (const block of text.split(/(?=^SF:)/m)) {
     const l = lines.find((x) => x.startsWith(`${k}:`));
     return l ? Number(l.split(":")[1]) : 0;
   };
-  const rec = byFile[sf] ?? { fnf: 0, fnh: 0, lf: 0, lh: 0, sf };
+  const rec = byFile[sf] ?? { fnf: 0, fnh: 0, lines: new Map(), lf: 0, lh: 0, sf };
   rec.lf += num("LF");
   rec.lh += num("LH");
   rec.fnf += num("FNF");
   rec.fnh += num("FNH");
+  // `DA:<line>,<hits>` is the per-line record the changed-lines rule needs; the
+  // line's own hit count is the maximum across repeated records.
+  for (const l of lines) {
+    if (!l.startsWith("DA:")) continue;
+    const [lineNo, hits] = l.slice(3).split(",");
+    const n = Number(lineNo);
+    rec.lines.set(n, Math.max(rec.lines.get(n) ?? 0, Number(hits)));
+  }
   byFile[sf] = rec;
 }
 
@@ -282,10 +349,43 @@ console.log(
     `across ${Object.keys(byFile).length} files`,
 );
 
+// The changed-lines rule (the PR rule): every line the diff against the base
+// ref adds or modifies must be executed. It layers on top of the per-file floor
+// rather than replacing it, so a change to an uncovered line of a grandfathered
+// file fails here even though the file meets its recorded floor. A file the
+// diff touches that the coverage report does not list has no executed line, so
+// every changed line in it is uncovered.
+const baseRef = resolveBaseRef();
+const uncovered: string[] = [];
+if (baseRef !== undefined) {
+  const changed = changedLines(baseRef);
+  let checked = 0;
+  for (const [abs, lineSet] of changed) {
+    const rec = Object.values(byFile).find((r) => resolve(r.sf) === abs);
+    const missed = [...lineSet].filter((n) => (rec?.lines.get(n) ?? 0) === 0).sort((a, b) => a - b);
+    checked += lineSet.size;
+    if (missed.length > 0) {
+      uncovered.push(
+        `${relative(process.cwd(), abs) || abs}\n    ${missed.length} uncovered changed line(s): ${missed.join(", ")}`,
+      );
+    }
+  }
+  console.log(
+    `coverage-gate: changed-lines ${baseRef} | ${checked} changed line(s) across ${changed.size} file(s)`,
+  );
+}
+
 if (failing.length > 0) {
   console.error(`\n${failing.length} file(s) below their coverage floor:\n`);
   console.error(failing.join("\n\n"));
   process.exit(1);
 }
 
+if (uncovered.length > 0) {
+  console.error(`\n${uncovered.length} file(s) with uncovered changed lines:\n`);
+  console.error(uncovered.join("\n\n"));
+  process.exit(1);
+}
+
 console.log("coverage-gate: PASS — every file meets its floor");
+if (baseRef !== undefined) console.log("coverage-gate: PASS — every changed line is covered");

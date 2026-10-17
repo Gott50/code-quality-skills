@@ -32,7 +32,7 @@ a capture.
 | mutation | `reports/mutation/report.json` | `stryker run` (the `jsonReporter` path) |
 | lint | `reports/oxlint.json` | `oxlint --format json > reports/oxlint.json` |
 | typecheck | `reports/tsc.log` | `tsc --noEmit --pretty false > reports/tsc.log` |
-| dep-audit | `reports/dep-audit.json` | the scanner in JSON mode, one entry per advisory occurrence under a top-level `findings` array — e.g. `osv-scanner scan --format json --output reports/dep-audit.json` |
+| dep-audit | `reports/dep-audit.json` | `node scripts/dep-audit-gate.mjs` — the gate runs the scanner (osv-scanner) and writes the normalized report itself, one entry per advisory occurrence under a top-level `findings` array. The raw scanner JSON is not that shape (`osv-scanner` nests `results[].packages[].vulnerabilities[]`), so the gate, not the scanner, owns the artifact. |
 | fallow health | `reports/fallow-health.json` | `fallow health --format json --report-only > reports/fallow-health.json` |
 | fallow dead-code | `reports/fallow-dead-code.json` | `fallow dead-code --format json > reports/fallow-dead-code.json` |
 
