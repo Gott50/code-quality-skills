@@ -37,16 +37,16 @@ const breakAt = breakThreshold();
 
 // The shared Stryker base. In a single-package repo this file is the config
 // Stryker runs; in a workspace each member's `stryker.conf.mjs` imports it and
-// overrides `mutate`/`testFiles`/`bun.testFiles` with its own member-relative
-// scope (see `stryker.member.conf.mjs`).
+// overrides `mutate`/`testFiles` with its own member-relative scope (see
+// `stryker.member.conf.mjs`).
 export default {
   bun: {
     inspectorTimeout: 10000,
     smol: true,
-    // The bun runner reads `bun.testFiles` (explicit list), NOT the top-level
-    // `testFiles` globs. Without this, every mutant runs the full repo suite
-    // and times out. Directories are accepted as bun test filters.
-    testFiles: ["test/"],
+    // No `bun.testFiles` here: Stryker's top-level `testFiles` (below) takes
+    // precedence over it, and setting both to different selections makes the
+    // runner warn on every run. `bun.testFiles` is only the fallback for when
+    // Stryker's globs match nothing.
   },
   // The TypeScript checker validates each mutant against the type system before
   // the tests run, so a mutant that does not compile is reported as a compile
@@ -97,6 +97,8 @@ export default {
   plugins: ["@hughescr/stryker-bun-runner", "@stryker-mutator/typescript-checker"],
   reporters: ["html", "json", "clear-text", "progress"],
   symlinkNodeModules: false,
+  // The test selection the bun runner uses: Stryker resolves these globs and
+  // passes the file list to the runner, which prefers it over `bun.testFiles`.
   testFiles: ["test/**/*.test.ts"],
   testRunner: "bun",
   // The gate: `break` is the threshold that sets the exit code (Stryker 10),
