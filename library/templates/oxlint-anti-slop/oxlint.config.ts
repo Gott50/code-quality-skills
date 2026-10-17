@@ -53,6 +53,9 @@ export default defineConfig({
     "anti-slop/require-safety-comment-for-type-assertion": "error",
     "anti-slop/valid-test-title": "error",
     "no-unused-vars": "error",
+    "typescript/ban-ts-comment": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-unsafe-function-type": "error",
     complexity: ["error", 10], // cyclomatic complexity threshold
     "max-classes-per-file": ["error", 1],
     "max-depth": ["error", 4], // nesting depth

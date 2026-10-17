@@ -38,6 +38,10 @@ files:
     action: merge
     scope: root
     template: templates/bun-test-coverage/pre-commit.block
+  - path: .husky/pre-push
+    action: merge
+    scope: root
+    template: templates/bun-test-coverage/pre-push.block
   - path: .gitignore
     action: merge
     scope: root
@@ -67,7 +71,7 @@ verify:
 1b. **`scripts/coverage-ignore-audit.ts`** — create from `templates/bun-test-coverage/scripts/coverage-ignore-audit.ts`, **root-shared** like the gate script. It is the machine-checkable half of the ignore list: for every `bunfig.toml` in the tree it reads `test.coveragePathIgnorePatterns`, expands each entry to the files it matches, and fails when a matched file is neither on the allowlist of known-uninstrumentable patterns (the `-bin.ts` convention, `generated/`, `tmp/`) nor free of executable statements. The judgement — *cannot be executed* versus *has not been executed* — is not gate-able, so the audit checks only the proxy: a type-only module is a legitimate entry, a file with runtime code is not. It is a gate the project must climb: a repo whose ignore list hides real code fails the verify until the entry is removed or the file is made uninstrumentable, and the recipe stays unrecorded until then.
 2. **`bunfig.toml`** — a `patch`, not a `merge`: the target is TOML, and a marker block carrying its own `[test]` header would duplicate a table the project may already declare. **Member-scoped, `standalone`**: bun has no projects concept, so a per-directory `bunfig.toml` is the only per-package knob — a root run sweeps every package, so the coverage settings cannot live at the root. Each member gets its own `[test]` table; in a single-package repo the member entry collapses to the root. The before/after is exact — **before**: no `[test]` table, or a `[test]` table without `coveragePathIgnorePatterns`; **after**: `[test]` declares `coverage = true` and `coveragePathIgnorePatterns = ["**/tmp/**", "**/*-bin.ts"]`. A missing `bunfig.toml` is created from the template. The detector cannot verify a `patch`, so the plan always shows it.
 3. **`package.json`** — two merges from two templates. **Root** (`templates/bun-test-coverage/package.json`): the real script, `bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage --pass-with-no-tests && bun scripts/coverage-gate.ts --lcov coverage/lcov.info --baseline .code-quality-baseline.json`. In a workspace the root run sweeps every member — bun has no projects concept, so `bun test` at the root recursively searches the whole tree — and that aggregate run is what the root-scoped `.husky/pre-commit` hook and `fallow-audit`'s root `bun run test` execute. **Member** (`templates/bun-test-coverage/package.member.json`): each member's own `test` script, `bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage --pass-with-no-tests && bun {{root}}/scripts/coverage-gate.ts --lcov coverage/lcov.info --baseline {{root}}/.code-quality-baseline.json` — the baseline lives at the workspace root, so the member names it through `{{root}}` too. `--pass-with-no-tests` is what keeps the gate green on day one in a repo with no test files: without it `bun test` exits 1 (`0 test files matching …`) and the installed pre-commit hook blocks every commit. It only relaxes the *empty* test set — a failing test still fails the run.
-4. **`.husky/pre-commit`** — merge from `templates/bun-test-coverage/pre-commit.block`, inside this recipe's marker pair. The hook runs at the workspace root, where the root `test` script (step 3) sweeps every member.
+4. **`.husky/pre-commit`** — merge from `templates/bun-test-coverage/pre-commit.block`, inside this recipe's marker pair. The hook runs at the workspace root, where the root `test` script (step 3) sweeps every member. The same gate is merged into **`.husky/pre-push`** from `templates/bun-test-coverage/pre-push.block`, inside the same marker pair: a commit made with `--no-verify` skips the pre-commit hook, so the push re-runs the test gate before the change leaves the machine. The pre-push block closes stdin, which carries the pushed refs the mutation gate reads.
 5. **`.gitignore`** — merge from `templates/bun-test-coverage/gitignore.block`, inside this recipe's marker pair: `coverage/`. The pattern is unanchored, so it also ignores a member's `packages/a/coverage/`.
 6. **`bun install`** — no new dependency, but the install is what makes the script runnable in a fresh checkout.
 
@@ -81,7 +85,7 @@ The gate is a ratchet, not a wall: with a committed baseline (raised by the skil
 - `scripts/coverage-ignore-audit.ts` is a `create`: byte-identical on re-run, so it is a no-op. A local edit shows as drift and is reported, not overwritten.
 - `bunfig.toml` is a `patch`, per member: re-applying to the same before-state is a no-op, and a hand-edited file shows as drift.
 - `package.json` is a `merge` at the root and per member: re-running re-adds only missing keys; a differing `test` script is a collision the plan must show.
-- `.husky/pre-commit` and `.gitignore` are `merge`s: re-running replaces this recipe's marker block and re-adds only missing keys.
+- `.husky/pre-commit`, `.husky/pre-push` and `.gitignore` are `merge`s: re-running replaces this recipe's marker block and re-adds only missing keys.
 
 ## Undo
 
@@ -89,5 +93,6 @@ The gate is a ratchet, not a wall: with a committed baseline (raised by the skil
 - Remove the `[test]` keys this recipe added from each member's `bunfig.toml`; delete the file if the fragment is all it holds.
 - Restore the previous `test` script in the root and each member's `package.json` — only where this recipe replaced it.
 - Remove the `code-quality:bun-test-coverage` block from `.husky/pre-commit`; delete the file if the block is all it holds.
+- Remove the `code-quality:bun-test-coverage` block from `.husky/pre-push`; delete the file if the block is all it holds.
 - Remove the `code-quality:bun-test-coverage` block from `.gitignore`; delete the file if the block is all it holds.
 - Delete `coverage/` at the root and in each member.

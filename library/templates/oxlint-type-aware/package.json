@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "lint:type-aware": "bun scripts/lint-type-aware-gate.mjs"
+  },
+  "devDependencies": {
+    "oxlint-tsgolint": "^7.0.2004"
+  }
+}

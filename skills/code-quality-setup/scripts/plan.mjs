@@ -17,7 +17,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ARTIFACTS, compare, measure, readBaseline, safeRealpath } from "./score.mjs";
 
@@ -112,11 +112,17 @@ function renderGatesTable(selected) {
 // <id>.md)`. The lead-in is part of the rendered value, not the template, so a selection with no
 // practice renders the empty string and the block carries no dangling lead-in (RECIPE-CONTRACT.md
 // → Substitution).
-function renderPractices(selected) {
+//
+// The links are relative to the file the list lands in, so `prefix` is the file's path back to the
+// workspace root (`""` for a root file, `../../` for a member at `packages/a`) — the same per-file
+// token `{{root}}` carries, applied to a `{{plan.*}}` value. A member's `AGENTS.md` carries the
+// same block as the root's, and a root-relative link there would point at a file that does not
+// exist.
+function renderPractices(selected, prefix = "") {
   if (selected.length === 0) return "";
   const lines = ["Practices — judgement the gates cannot check:", ""];
   for (const p of selected) {
-    lines.push(`- [${p.title}](docs/code-quality/practices/${p.id}.md)`);
+    lines.push(`- [${p.title}](${prefix}docs/code-quality/practices/${p.id}.md)`);
   }
   return lines.join("\n");
 }
@@ -1213,12 +1219,12 @@ function buildPlan(report, opts) {
   // `when`; `--recipe` narrows recipes only, so the practice list is the report's own selection.
   const selectedPractices = (practices ?? []).filter((p) => p.selected === true);
 
-  // Substitution context, rendered from the whole selection.
+  // The selection-wide substitution context. `{{plan.practices}}` is not here: its links are
+  // relative to the file they land in, so it is rendered per write (see `renderPractices`).
   const subst = {
     areas: renderAreas(stack.workspace),
     details: renderDetails(selected),
     gates: renderGatesTable(selected),
-    practices: renderPractices(selectedPractices),
   };
 
   // Concrete writes per selected recipe, with rendered content. A template the recipe names but
@@ -1234,6 +1240,12 @@ function buildPlan(report, opts) {
           ? renderPracticeDoc(w.practice)
           : substitute(readTemplate(r.libraryDir ?? libraryDir, w.template), {
               ...subst,
+              // The practice pointers are links, so they are relative to the file they land in:
+              // `""` for a root file, `../../` for a member at `packages/a`.
+              practices: renderPractices(
+                selectedPractices,
+                w.rootPrefix === "." ? "" : `${w.rootPrefix}/`,
+              ),
               root: w.rootPrefix,
             });
       } catch (err) {
@@ -1304,6 +1316,8 @@ function buildPlan(report, opts) {
   }
 
   return {
+    // The rendered `AGENTS.md` block against the harness budget (a warning, never a verify).
+    agentsMdWarnings: agentsMdWarnings(selected, writesByRecipe),
     collisions: collisions.filter((c) => selectedIds.includes(c.recipe)),
     degraded,
     degradedReason: reason,
@@ -1895,12 +1909,22 @@ function renderCommands(selected, workspace) {
 // verdict), so it renders that verify with the marker grep replaced by `true`. The clause is the
 // recipe's own marker grep — `grep -q "code-quality:<id>:start" <path>` — and `<path>` is the
 // duplicate block's file, so the replacement is exact (an optional `./` prefix is tolerated).
-function adjustVerifyRun(run, recipeId, duplicatePaths) {
+function adjustVerifyRun(run, recipeId, duplicatePaths, dirs) {
   let out = run;
   for (const path of duplicatePaths) {
-    const escaped = path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const re = new RegExp(`grep -q "code-quality:${recipeId}:start" \\.?/?${escaped}(?=\\s|$)`);
-    out = out.replace(re, "true");
+    for (const dir of dirs) {
+      // The verify runs in the directory its scope resolves to, so its `<path>` is relative to that
+      // directory while the duplicate path is workspace-relative: a member's `AGENTS.md` is
+      // `packages/a/AGENTS.md` in the plan and `AGENTS.md` in the verify. Making the duplicate path
+      // relative to each scope directory keeps the match exact, so a duplicate in one member does
+      // not silence the root's own grep.
+      const rel =
+        dir === "." ? path : path.startsWith(`${dir}/`) ? path.slice(dir.length + 1) : null;
+      if (rel === null) continue;
+      const escaped = rel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp(`grep -q "code-quality:${recipeId}:start" \\.?/?${escaped}(?=\\s|$)`);
+      out = out.replace(re, "true");
+    }
   }
   return out;
 }
@@ -1924,11 +1948,13 @@ function renderGatesAndVerify(selected, workspace, duplicatePathsByRecipe) {
       lines.push("Verify:");
       for (const v of r.verify) {
         const scope = v.scope ?? "root";
-        const dirs = resolveScopes(scope, workspace).join(", ");
+        const scopeDirs = resolveScopes(scope, workspace);
         const run = v.gate
           ? null
-          : adjustVerifyRun(v.run, r.id, duplicatePathsByRecipe.get(r.id) ?? []);
-        lines.push(`- ${v.gate ? `gate \`${v.gate}\`` : `\`${run}\``} (${scope} → ${dirs})`);
+          : adjustVerifyRun(v.run, r.id, duplicatePathsByRecipe.get(r.id) ?? [], scopeDirs);
+        lines.push(
+          `- ${v.gate ? `gate \`${v.gate}\`` : `\`${run}\``} (${scope} → ${scopeDirs.join(", ")})`,
+        );
       }
     } else {
       lines.push("Verify: _none_");
@@ -1938,9 +1964,48 @@ function renderGatesAndVerify(selected, workspace, duplicatePathsByRecipe) {
   return lines.join("\n").trimEnd();
 }
 
-function renderWarnings(errored, templateErrors, gitWarnings) {
+// The harness budgets the agent-conventions note states: Codex stops concatenating the instruction
+// chain at `project_doc_max_bytes` (32 KiB by default) and Claude Code targets under 200 lines per
+// file. The block is a section of a file that also carries the repo's own content, so the block
+// alone reaching either budget is already over — the check is deliberately conservative, and it
+// fires as the library's block grows with the selection (one gate row per gate, one pointer line
+// per practice). It is a warning, never a `verify`: a repo whose `AGENTS.md` predates the block
+// must not fail closed and leave the recipe unrecorded (RECIPE-CONTRACT.md → verify).
+const AGENTS_MD_BUDGET = { bytes: 32 * 1024, lines: 200 };
+
+// The rendered `AGENTS.md` block, measured against the harness budget. One warning line per
+// over-budget block, or an empty list. The block is what the library controls; the rest of the file
+// is the repo's.
+function agentsMdWarnings(selected, writesByRecipe) {
+  const warnings = [];
+  for (const r of selected) {
+    for (const w of writesByRecipe.get(r.id) ?? []) {
+      if (basename(w.target) !== "AGENTS.md") continue;
+      const lines = w.content.split("\n").length;
+      const bytes = Buffer.byteLength(w.content, "utf8");
+      if (lines <= AGENTS_MD_BUDGET.lines && bytes <= AGENTS_MD_BUDGET.bytes) continue;
+      warnings.push(
+        [
+          `\`${w.target}\`: the rendered block is ${lines} lines / ${bytes} bytes — over the`,
+          `harness budget (${AGENTS_MD_BUDGET.lines} lines, ${AGENTS_MD_BUDGET.bytes} bytes).`,
+          "The harness loads the whole file at session start (Codex stops concatenating at 32 KiB,",
+          "Claude Code targets under 200 lines), and the block is only part of it. Prune the block:",
+          "see `docs/code-quality/practices/agents-md-budget.md`.",
+        ].join(" "),
+      );
+    }
+  }
+  return warnings;
+}
+
+function renderWarnings(errored, templateErrors, gitWarnings, agentsMd) {
   const lines = ["## Warnings", ""];
-  if (errored.length === 0 && templateErrors.length === 0 && gitWarnings.length === 0) {
+  if (
+    errored.length === 0 &&
+    templateErrors.length === 0 &&
+    gitWarnings.length === 0 &&
+    agentsMd.length === 0
+  ) {
     lines.push("_None._");
     return lines.join("\n");
   }
@@ -1956,6 +2021,7 @@ function renderWarnings(errored, templateErrors, gitWarnings) {
       ].join(" "),
     );
   }
+  for (const w of agentsMd) lines.push(`- ${w}`);
   return lines.join("\n");
 }
 
@@ -2050,7 +2116,10 @@ function renderPlan(plan, opts) {
     renderGatesAndVerify(plan.selected, plan.stack.workspace, plan.duplicatePathsByRecipe),
     "",
   );
-  out.push(renderWarnings(plan.errored, plan.templateErrors, plan.gitWarnings), "");
+  out.push(
+    renderWarnings(plan.errored, plan.templateErrors, plan.gitWarnings, plan.agentsMdWarnings),
+    "",
+  );
 
   // The drift section is suppressed when nothing is selected and there is no manifest: the plan
   // already says "Nothing applies" and there is no library to compare against.

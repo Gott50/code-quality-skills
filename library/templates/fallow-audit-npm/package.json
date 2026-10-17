@@ -1,12 +1,13 @@
 {
   "scripts": {
     "fallow": "fallow health --coverage coverage/coverage-final.json --report-only",
-    "fallow:audit": "sh -c 'set --; test -f .fallow-dead-code-baseline.json && set -- \"$@\" --dead-code-baseline .fallow-dead-code-baseline.json; test -f .fallow-health-baseline.json && set -- \"$@\" --health-baseline .fallow-health-baseline.json; fallow audit --format json --quiet --explain --gate-marker agent \"$@\"'",
+    "fallow:audit": "sh -c 'set --; test -f .fallow-dead-code-baseline.json && set -- \"$@\" --dead-code-baseline .fallow-dead-code-baseline.json; test -f .fallow-health-baseline.json && set -- \"$@\" --health-baseline .fallow-health-baseline.json; if test -f .fallow-dead-code-baseline.json || test -f .fallow-health-baseline.json; then base=\"${FALLOW_AUDIT_BASE:-$(git merge-base HEAD \"$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || echo origin/main)\" 2>/dev/null || git rev-parse --abbrev-ref HEAD)}\"; set -- \"$@\" --fail-on-baseline-growth --baseline-base \"$base\"; fi; fallow audit --format json --quiet --explain --gate-marker agent \"$@\"'",
     "fallow:coverage": "npm run test && npm run fallow",
-    "fallow:ratchet": "sh -c 'if test -f .fallow-health-baseline.json; then fallow health --coverage coverage/coverage-final.json --baseline .fallow-health-baseline.json; else echo \"fallow:ratchet: no .fallow-health-baseline.json - gating at zero findings (the greenfield wall); run fallow:raise to record the current level\" >&2; fallow health --coverage coverage/coverage-final.json; fi'",
+    "fallow:dead-code": "sh -c 'if test -f .fallow-dead-code-baseline.json; then fallow dead-code --baseline .fallow-dead-code-baseline.json --fail-on-stale-baseline; else echo \"fallow:dead-code: no .fallow-dead-code-baseline.json - nothing to check for staleness; run fallow:raise to record one\" >&2; fi'",
+    "fallow:ratchet": "sh -c 'if test -f .fallow-health-baseline.json; then fallow health --coverage coverage/coverage-final.json --baseline .fallow-health-baseline.json --fail-on-stale-baseline; else echo \"fallow:ratchet: no .fallow-health-baseline.json - gating at zero findings (the greenfield wall); run fallow:raise to record the current level\" >&2; fallow health --coverage coverage/coverage-final.json; fi'",
     "fallow:raise": "sh -c 'fallow health --coverage coverage/coverage-final.json --report-only --save-baseline .fallow-health-baseline.json; fallow dead-code --save-baseline .fallow-dead-code-baseline.json; test -f .fallow-health-baseline.json && test -f .fallow-dead-code-baseline.json && if command -v biome >/dev/null 2>&1; then biome check --write --unsafe --linter-enabled=false .fallow-health-baseline.json .fallow-dead-code-baseline.json; elif command -v prettier >/dev/null 2>&1; then prettier --write .fallow-health-baseline.json .fallow-dead-code-baseline.json; else for f in .fallow-health-baseline.json .fallow-dead-code-baseline.json; do [ -z \"$(tail -c 1 \"$f\")\" ] || echo >> \"$f\"; done; fi'"
   },
   "devDependencies": {
-    "fallow": "3.19.0"
+    "fallow": "3.33.1"
   }
 }

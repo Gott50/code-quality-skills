@@ -85,7 +85,7 @@ One entry per package: the root (`role: "root"`, `path: "."`) then each member
 | `hasManifest` | a `package.json` exists here |
 | `scripts` | the script names, sorted |
 | `dependencies` | `dependencies` + `devDependencies` names, sorted |
-| `typescript` | `{ configFile, strict, strictSource, solutionStyle, unresolvedExtends }`, or `null` when there is no `tsconfig.json` |
+| `typescript` | `{ configFile, compilerOptions, strict, strictSource, solutionStyle, unresolvedExtends }`, or `null` when there is no `tsconfig.json` |
 | `tooling` | the categories below, each `[{ tool, files }]` naming the exact files found |
 
 `tooling` categories: `formatter`, `linter`, `typechecker`, `testRunner`, `coverage`, `mutation`,
@@ -146,6 +146,7 @@ Predicates, evaluated against the report:
 | `{ dep: <name> }` | `<name>` is in any detected package's `dependencies` or `devDependencies` |
 | `{ script: <name> }` | `<name>` is a script in the **root** `package.json` |
 | `{ testFile: true }` | the project has at least one test file (`*.test.*` / `*.spec.*`, plus bun's `*_test.*` / `*_spec.*`), outside dot-directories and `node_modules` |
+| `{ tsconfig: <option> }` | the project's tsconfig chain turns the compiler option `<option>` on. `strict: true` implies the strict-mode family (`strictNullChecks`, `noImplicitAny`, …), and a solution-style root that states nothing falls back to the members that do |
 | `{ recipe: <id> }` | that recipe is in the current selection |
 | `{ recipe: "*" }` | at least one **other** recipe is in the current selection |
 | `{ practice: <id> }` | that practice is in the current selection |

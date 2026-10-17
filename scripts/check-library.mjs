@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // check-library.mjs — validate the recipe library at the repo root.
 //
-// Six independent checks; the script exits non-zero if any fails:
+// Seven independent checks; the script exits non-zero if any fails:
 //
 //   1. index freshness — regenerate library/library.json exactly as
 //      scripts/build-library.mjs does and compare bytes. The generator is
@@ -36,6 +36,10 @@
 //      refuses to read as a nested config), so this is the only place that
 //      holds them. Files biome cannot parse (by extension) are skipped and
 //      printed.
+//   7. shell template syntax — every template whose target is a husky hook
+//      (`.husky/*`) is rendered and parsed with `sh -n`, because the consumer
+//      executes the rendered file on every commit and a syntax error there is a
+//      broken commit, not a cosmetic one.
 //
 // Zero dependencies beyond the shared frontmatter reader and the repo's own
 // biome devDependency; the lint check installs the oxlint devDependencies the
@@ -61,7 +65,7 @@ import { parseFrontmatter } from "../skills/code-quality-setup/scripts/frontmatt
 // here, the generator, and the skill's `update.mjs` `LIBRARY_SCHEMA_VERSION` (which cannot import
 // from this repo: the skill ships standalone). A bump here without the generator's (or vice
 // versa) fails check 1; a bump without the skill's leaves the version gate unable to fire (#182).
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const LIBRARY_DIR = join(REPO_ROOT, "library");
 const RECIPES_DIR = join(LIBRARY_DIR, "recipes");
@@ -587,6 +591,51 @@ function checkSkillScripts() {
   return { checked: parseable.length, skipped };
 }
 
+// --- 7. shell template syntax -----------------------------------------------
+
+// A template whose target is a husky hook is executed by `sh` on every commit, so a syntax error
+// in it is a broken commit, not a cosmetic one (RECIPE-CONTRACT.md → files: "The comment syntax is
+// the template's choice and MUST be a valid comment in the target language"). The target path is
+// what decides the language — the template's own name does not — so the map comes from the
+// recipes' `files[]` entries. The template is rendered first, because the consumer runs the
+// rendered file, not the template.
+function checkShellTemplates() {
+  const checked = [];
+  for (const file of readdirSync(RECIPES_DIR)
+    .filter((f) => f.endsWith(".md"))
+    .sort()) {
+    const label = `library/recipes/${file}`;
+    let fm;
+    try {
+      fm = parseFrontmatter(readFileSync(join(RECIPES_DIR, file), "utf8"), label);
+    } catch {
+      continue; // check 2 already reports the parse failure
+    }
+    for (const f of fm.files ?? []) {
+      if (!f.template || !(f.path ?? "").startsWith(".husky/")) continue;
+      const abs = join(LIBRARY_DIR, f.template);
+      if (!existsSync(abs)) continue; // check 2 already reports the missing template
+      const rendered = substitute(readFileSync(abs, "utf8"));
+      try {
+        // stderr is piped, not inherited: `sh` prints the offending line, and the check reports it
+        // as its own failure rather than letting it land on the console unlabelled.
+        execFileSync("sh", ["-n"], {
+          encoding: "utf8",
+          input: rendered,
+          stdio: ["pipe", "ignore", "pipe"],
+        });
+        checked.push(f.template);
+      } catch (err) {
+        const first = String(err.stderr ?? "")
+          .trim()
+          .split("\n")[0];
+        fail(`${f.template}: not valid sh (target ${f.path}) — ${first}`);
+      }
+    }
+  }
+  return { checked: checked.length };
+}
+
 // --- run --------------------------------------------------------------------
 
 checkIndex();
@@ -595,6 +644,7 @@ const practiceCount = checkPractices(new Set(recipeIds));
 const { checked, skipped } = checkTemplates();
 const lint = checkTemplateLint();
 const scripts = checkSkillScripts();
+const shell = checkShellTemplates();
 
 if (errors.length > 0) {
   process.stderr.write(`check-library: FAILED (${errors.length})\n`);
@@ -603,5 +653,5 @@ if (errors.length > 0) {
 }
 
 process.stdout.write(
-  `check-library: ok — index fresh, ${recipeIds.length} recipes valid, ${practiceCount} practices valid, ${checked} templates formatted (${skipped.length} skipped), ${lint.checked} templates linted, ${scripts.checked} skill scripts formatted (${scripts.skipped.length} skipped)\n`,
+  `check-library: ok — index fresh, ${recipeIds.length} recipes valid, ${practiceCount} practices valid, ${checked} templates formatted (${skipped.length} skipped), ${lint.checked} templates linted, ${scripts.checked} skill scripts formatted (${scripts.skipped.length} skipped), ${shell.checked} shell templates parsed\n`,
 );

@@ -75,8 +75,9 @@ jobs:
           echo "refs/heads/head ${{ github.event.pull_request.head.sha }} refs/heads/base ${{ github.event.pull_request.base.sha }}" | npx tsx scripts/mutation-gate.ts
 
   # Fallow health report against real Istanbul coverage — a quality signal, not
-  # a gate. Non-blocking (continue-on-error) so a health regression never fails
-  # the build.
+  # a gate. `fail-on-issues: false` keeps a health regression from failing the
+  # build; `fail-on-empty-analysis: true` still fails a run that analyzed no
+  # source file, because every count is zero there for the wrong reason.
   fallow-coverage:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -91,6 +92,14 @@ jobs:
           node-version-file: .node-version
       - name: Install dependencies
         run: sh -c 'if test -f pnpm-lock.yaml; then corepack enable && pnpm install --frozen-lockfile; else npm ci; fi'
-      - name: Produce coverage + run fallow health
-        run: npm run fallow:coverage
+      - name: Produce coverage
+        run: npm run test
         continue-on-error: true
+      - name: Fallow health report
+        uses: fallow-rs/fallow@v3
+        with:
+          command: health
+          coverage: coverage/coverage-final.json
+          score: true
+          fail-on-issues: false
+          fail-on-empty-analysis: true

@@ -1,0 +1,6 @@
+# code-quality:bun-test-coverage:start
+# The test gate again, so a commit made with --no-verify still meets it before it
+# leaves the machine. stdin carries the pushed refs for the mutation gate, so it
+# is closed here rather than consumed.
+bun run test </dev/null || exit 1
+# code-quality:bun-test-coverage:end

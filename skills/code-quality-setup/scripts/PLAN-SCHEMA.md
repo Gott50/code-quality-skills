@@ -177,7 +177,12 @@ The first line after the title is the state:
    **as rendered**, not as the recipe's frontmatter states it (RECIPE-CONTRACT.md → `verify`).
 13. **Warnings** — one `{ id, error }` line per unreadable recipe (or unreadable template), plus one
    line per selected recipe whose verify needs a git base (the `fallow-audit` gate) when the project
-   has no commits — `fallow audit` exits 2 with `could not detect base branch` there.
+   has no commits — `fallow audit` exits 2 with `could not detect base branch` there — plus one line
+   per rendered `AGENTS.md` block that reaches the harness budget (200 lines or 32 KiB, the numbers
+   the agent-conventions note states). The block is a section of a file that also carries the repo's
+   own content, so the check is conservative by construction; it is a warning and never a `verify`,
+   because a repo whose `AGENTS.md` predates the block must not fail closed and leave the recipe
+   unrecorded (RECIPE-CONTRACT.md → `verify`).
 14. **Drift (manifest)** — the per-recipe state from the manifest, or a degraded note. The state is
    the worst file verdict (`missing` > `loss` > `drifted` > `update` > `intact`), so a recipe whose
    only non-intact file is a skipped `create` loss reads `loss`, not `drifted` (#46).

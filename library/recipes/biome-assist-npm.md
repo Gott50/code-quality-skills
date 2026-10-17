@@ -30,6 +30,10 @@ files:
     action: merge
     scope: root
     template: templates/biome-assist-npm/pre-commit.block
+  - path: .husky/pre-push
+    action: merge
+    scope: root
+    template: templates/biome-assist-npm/pre-push.block
   - path: .gitignore
     action: merge
     scope: root
@@ -58,6 +62,8 @@ verify:
 4. **`.husky/pre-commit`** — merge from `templates/biome-assist-npm/pre-commit.block`, inside this recipe's marker pair. The block is the Bun recipe's with `bunx` → `npx`. It opens with the same guard: `git status --short | grep -qE '^[^ ?][^ ?]'` refuses the commit when any file shows a non-empty character in **both** the index and worktree columns (`MM`, `AM`), because Biome's `--staged --write` rewrites the worktree and re-staging a file that also has unstaged changes would commit a blend of reviewed and unreviewed content. Untracked (`??`) and clean files do not trip it. The re-stage is `git update-index --again`, which re-adds only the paths already in the index and never sweeps in unstaged hunks — `git add -u` would stage the whole file. It is not a bare `git add` either, which with no pathspec prints "Nothing specified, nothing added", exits **0**, and stages nothing.
 
    The guard is inlined rather than shipped as a `scripts/biome-staged.ts` template. The two recipes cannot share a marker block (a block's marker must name its owning recipe), so a script would not remove the duplication; it would add a per-manager invocation (`bun` vs `npx tsx`) and a `tsx` devDependency this variant would have to install and the hook resolve. The guard is three lines of POSIX `sh` and the hook already runs under `sh`, so inlining keeps the hook self-contained and dependency-free.
+
+   The same gate is merged into **`.husky/pre-push`** from `templates/biome-assist-npm/pre-push.block`, inside the same marker pair. A commit made with `--no-verify` skips the pre-commit hook, so the push re-runs the gate before the change leaves the machine. The pre-push block runs `format:check` — the gate, not the fixer, because a push cannot re-stage — and closes stdin, which carries the pushed refs the mutation gate reads.
 5. **`.gitignore`** — merge from `templates/biome-assist-npm/gitignore.block`, inside this recipe's marker pair: `node_modules/` and `skills-lock.json`. The manifest (`.code-quality.json`) is committed (ADR 0002), so it is not ignored here; a repo that does not want it committed adds its own ignore line. The block is duplicated from the Bun recipe rather than shared, because a marker block must name the recipe that owns it.
 
    `skills-lock.json` is the skills CLI's lockfile, rewritten with unsorted keys on every `skills add`, so Biome's `useSortedKeys` fails the `format:check` gate on it. The exemption rides this recipe's `.gitignore` block because Biome reads `.gitignore` when the config enables `vcs` with `vcs.useIgnoreFile` (the template does), and a `merge` always lands — including on a repo whose `biome.json` the plan reads `loss`, which a `create` never overwrites. So an exemption carried in the template's own `biome.json` (an `overrides` entry, or a `files.includes` negation) cannot reach a customized repo, while this block can. The line lives here rather than in `repo-hygiene-npm`'s block because the exemption exists only for this recipe's gate, and the two recipes are selected independently: `repo-hygiene-npm`'s block can be absent while this one is not, so an exemption it owned would be dead weight on a repo that runs no Biome. A separate `.ignore` file cannot carry it either: Biome reads `.ignore` only when the repo has no `.gitignore`, and this recipe's own block guarantees one. A tracked file listed in `.gitignore` is still tracked by git — only Biome's scan skips it.
@@ -71,7 +77,7 @@ verify:
 ## Idempotency
 
 - `biome.json` is a `create`: byte-identical on re-run, so it is a no-op. A local edit shows as drift and is reported, not overwritten.
-- `package.json`, `.husky/pre-commit` and `.gitignore` are `merge`s: re-running replaces this recipe's marker block and re-adds only missing keys.
+- `package.json`, `.husky/pre-commit`, `.husky/pre-push` and `.gitignore` are `merge`s: re-running replaces this recipe's marker block and re-adds only missing keys.
 - The sweep is idempotent by construction: a second run finds nothing to fix. The hook is safe to run repeatedly: `--no-errors-on-unmatched` exits 0 when nothing is staged.
 
 ## Undo
@@ -79,5 +85,6 @@ verify:
 - Delete `biome.json` (and the member `biome.json` in a workspace).
 - Remove the `@biomejs/biome` devDependency and the `format:check` script from `package.json` — only where this recipe added them.
 - Remove the `code-quality:biome-assist-npm` block from `.husky/pre-commit`; delete the file if the block is all it holds.
+- Remove the `code-quality:biome-assist-npm` block from `.husky/pre-push`; delete the file if the block is all it holds.
 - Remove the `code-quality:biome-assist-npm` block from `.gitignore`; delete the file if the block is all it holds.
 - Run the project's install to drop the package. The sweep is not reversible: the formatted files stay formatted.

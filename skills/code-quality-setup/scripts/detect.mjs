@@ -102,6 +102,33 @@ function loadRecipes(dir, { optional = false, source = "library" } = {}) {
           );
         }
       }
+      // A marker `merge` template MUST carry its own marker pair (RECIPE-CONTRACT.md → files:
+      // "Every merged block is attributable to its recipe"). The detector reads frontmatter and
+      // normally never opens a template; this is the one template rule it enforces, because a
+      // marker merge whose marker is missing — or names another recipe — writes an unowned block
+      // into a shared file, which is the failure the marker exists to prevent.
+      //
+      // The discriminator is the plan's own `mergeKind`: a merge is a marker merge unless the
+      // target is a `.json` file, where `merge` means "add the fragment's leaves" and the template
+      // is a structural fragment with no marker. A template that is absent is not this check's
+      // business (the plan reports it), and a per-practice entry names no literal file.
+      for (const f of fm.files ?? []) {
+        if (f.action !== "merge") continue;
+        if (!f.template || f.template.includes("{{practice.id}}")) continue;
+        if ((f.path ?? "").endsWith(".json")) continue;
+        let template;
+        try {
+          template = readFileSync(join(dir, f.template), "utf8");
+        } catch {
+          continue;
+        }
+        for (const edge of ["start", "end"]) {
+          const marker = `code-quality:${fm.id}:${edge}`;
+          if (!template.includes(marker)) {
+            throw new Error(`${label}: merge template "${f.template}" has no "${marker}" marker`);
+          }
+        }
+      }
       const body = text.slice(text.indexOf("\n---", 3) + 4);
       return {
         commands: fm.commands ?? [],
@@ -408,6 +435,7 @@ function resolveTsconfigFile(file, base, seen) {
   const cfg = readJson(file);
   if (!cfg) {
     return {
+      compilerOptions: {},
       configFile: rel,
       solutionStyle: false,
       strict: null,
@@ -434,6 +462,9 @@ function resolveTsconfigFile(file, base, seen) {
   const solutionStyle =
     Object.keys(own).length === 0 && Array.isArray(cfg.references) && cfg.references.length > 0;
   return {
+    // The effective compiler options, own over inherited: the `{ tsconfig: <option> }` predicate
+    // reads one of them, and `strict` implies the strict-mode family (see `tsconfigOption`).
+    compilerOptions: { ...(inherited?.compilerOptions ?? {}), ...own },
     configFile: rel,
     solutionStyle,
     strict: typeof own.strict === "boolean" ? own.strict : (inherited?.strict ?? null),
@@ -480,6 +511,45 @@ function aggregateStrictness(rootTsconfig, packages) {
   if (stated.length === 0) return { source: null, value: "unknown" };
   if (stated.every(Boolean)) return { source: "members", value: true };
   if (stated.every((s) => !s)) return { source: "members", value: false };
+  return { source: "members", value: "mixed" };
+}
+
+// The strict-mode family: `strict: true` turns each of these on, so a predicate that names one of
+// them holds when the chain states `strict` rather than the option itself.
+const STRICT_FAMILY = new Set([
+  "alwaysStrict",
+  "noImplicitAny",
+  "noImplicitThis",
+  "strictBindCallApply",
+  "strictFunctionTypes",
+  "strictNullChecks",
+  "strictPropertyInitialization",
+  "useUnknownInCatchVariables",
+]);
+
+// The effective value of one compiler option, as the chain states it: the option itself when the
+// chain states it, otherwise `strict` for a member of the strict-mode family. `null` when nothing
+// in the chain states either — the same "nothing stated" answer `strict` gets, because reporting
+// that as `false` would be a lie.
+function tsconfigOption(tsconfig, option) {
+  if (!tsconfig) return null;
+  const options = tsconfig.compilerOptions ?? {};
+  if (typeof options[option] === "boolean") return options[option];
+  if (STRICT_FAMILY.has(option) && typeof options.strict === "boolean") return options.strict;
+  return null;
+}
+
+// A solution-style root states no options of its own, so the project's answer comes from the
+// packages that do state one — the same aggregation `aggregateStrictness` makes for `strict`.
+function aggregateOption(rootTsconfig, packages, option) {
+  const root = tsconfigOption(rootTsconfig, option);
+  if (root !== null) return { source: rootTsconfig.configFile, value: root };
+  const stated = packages
+    .map((p) => tsconfigOption(p.typescript, option))
+    .filter((v) => v !== null);
+  if (stated.length === 0) return { source: null, value: null };
+  if (stated.every(Boolean)) return { source: "members", value: true };
+  if (stated.every((v) => !v)) return { source: "members", value: false };
   return { source: "members", value: "mixed" };
 }
 
@@ -715,6 +785,23 @@ function predicateHolds(pred, ctx) {
     return {
       detail: ok ? "the project has a test file" : "the project has no test file",
       pass: ok,
+    };
+  }
+  if ("tsconfig" in pred) {
+    // The flow reader quotes bare tokens, so a flow `{ tsconfig: strictNullChecks }` arrives as the
+    // string "strictNullChecks". The option is read from the root chain, falling back to the
+    // members that state one, and `strict: true` implies the strict-mode family.
+    const option = pred.tsconfig;
+    if (typeof option !== "string" || option === "")
+      return { detail: `unreadable predicate ${JSON.stringify(pred)}`, pass: false };
+    const rootTsconfig = ctx.packages[0]?.typescript ?? null;
+    const { source, value } = aggregateOption(rootTsconfig, ctx.packages, option);
+    return {
+      detail:
+        value === null
+          ? `no tsconfig in the chain states ${option}`
+          : `tsconfig ${option} is ${value}${source ? ` (${source})` : ""}`,
+      pass: value === true,
     };
   }
   if ("recipe" in pred) {

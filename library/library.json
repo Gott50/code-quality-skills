@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "recipes": [
     {
       "id": "agent-guidance",
@@ -23,6 +23,13 @@
           "template": "templates/agent-guidance/AGENTS.md"
         },
         {
+          "path": "AGENTS.md",
+          "action": "merge",
+          "scope": "member",
+          "memberMode": "standalone",
+          "template": "templates/agent-guidance/AGENTS.member.md"
+        },
+        {
           "path": "docs/code-quality.md",
           "action": "create",
           "scope": "root",
@@ -35,6 +42,10 @@
         {
           "run": "test -f docs/code-quality.md && grep -q \"code-quality:agent-guidance:start\" AGENTS.md",
           "scope": "root"
+        },
+        {
+          "run": "grep -q \"code-quality:agent-guidance:start\" AGENTS.md",
+          "scope": "each-member"
         }
       ]
     },
@@ -93,6 +104,12 @@
           "action": "merge",
           "scope": "root",
           "template": "templates/biome-assist/pre-commit.block"
+        },
+        {
+          "path": ".husky/pre-push",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/biome-assist/pre-push.block"
         },
         {
           "path": ".gitignore",
@@ -183,6 +200,12 @@
           "action": "merge",
           "scope": "root",
           "template": "templates/biome-assist-npm/pre-commit.block"
+        },
+        {
+          "path": ".husky/pre-push",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/biome-assist-npm/pre-push.block"
         },
         {
           "path": ".gitignore",
@@ -282,6 +305,12 @@
           "action": "merge",
           "scope": "root",
           "template": "templates/bun-test-coverage/pre-commit.block"
+        },
+        {
+          "path": ".husky/pre-push",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/bun-test-coverage/pre-push.block"
         },
         {
           "path": ".gitignore",
@@ -600,19 +629,28 @@
         {
           "id": "fallow-audit",
           "run": "bun run fallow:audit",
-          "description": "dead code and complexity introduced by the changeset — new findings only, known ones floored by the committed dead-code and health baselines; duplication and styling are reported but advisory (verdict-neutral)",
+          "description": "dead code and complexity introduced by the changeset — new findings only, known ones floored by the committed dead-code and health baselines, and the committed baselines are shrink-only; duplication and styling are reported but advisory (verdict-neutral)",
           "floor": "fallow-dead-code"
         },
         {
           "id": "fallow-health",
           "run": "bun run fallow:ratchet",
-          "description": "maintainability and CRAP ratchet — new complexity findings fail, known ones pass",
+          "description": "maintainability and CRAP ratchet — new complexity findings fail, known ones pass, and a stale health-baseline entry fails",
           "floor": "fallow-health"
+        },
+        {
+          "id": "fallow-dead-code-staleness",
+          "run": "bun run fallow:dead-code",
+          "description": "whole-project dead-code staleness — a committed dead-code-baseline entry that matches nothing fails"
         }
       ],
       "verify": [
         {
           "gate": "fallow-audit",
+          "scope": "root"
+        },
+        {
+          "gate": "fallow-dead-code-staleness",
           "scope": "root"
         }
       ]
@@ -674,19 +712,28 @@
         {
           "id": "fallow-audit",
           "run": "npm run fallow:audit",
-          "description": "dead code and complexity introduced by the changeset — new findings only, known ones floored by the committed dead-code and health baselines; duplication and styling are reported but advisory (verdict-neutral)",
+          "description": "dead code and complexity introduced by the changeset — new findings only, known ones floored by the committed dead-code and health baselines, and the committed baselines are shrink-only; duplication and styling are reported but advisory (verdict-neutral)",
           "floor": "fallow-dead-code"
         },
         {
           "id": "fallow-health",
           "run": "npm run fallow:ratchet",
-          "description": "maintainability and CRAP ratchet — new complexity findings fail, known ones pass",
+          "description": "maintainability and CRAP ratchet — new complexity findings fail, known ones pass, and a stale health-baseline entry fails",
           "floor": "fallow-health"
+        },
+        {
+          "id": "fallow-dead-code-staleness",
+          "run": "npm run fallow:dead-code",
+          "description": "whole-project dead-code staleness — a committed dead-code-baseline entry that matches nothing fails"
         }
       ],
       "verify": [
         {
           "gate": "fallow-audit",
+          "scope": "root"
+        },
+        {
+          "gate": "fallow-dead-code-staleness",
           "scope": "root"
         }
       ]
@@ -904,6 +951,12 @@
           "action": "merge",
           "scope": "root",
           "template": "templates/oxlint-anti-slop/pre-commit.block"
+        },
+        {
+          "path": ".husky/pre-push",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/oxlint-anti-slop/pre-push.block"
         }
       ],
       "commands": [
@@ -911,6 +964,11 @@
           "run": "bun install",
           "scope": "root",
           "showInPlan": false
+        },
+        {
+          "run": "bunx oxlint --fix .",
+          "scope": "root",
+          "showInPlan": true
         }
       ],
       "gates": [
@@ -1135,6 +1193,12 @@
           "action": "merge",
           "scope": "root",
           "template": "templates/oxlint-anti-slop-npm/pre-commit.block"
+        },
+        {
+          "path": ".husky/pre-push",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/oxlint-anti-slop-npm/pre-push.block"
         }
       ],
       "commands": [
@@ -1142,6 +1206,11 @@
           "run": "sh -c 'if test -f pnpm-lock.yaml; then pnpm install; else npm install; fi'",
           "scope": "root",
           "showInPlan": false
+        },
+        {
+          "run": "npx oxlint --fix .",
+          "scope": "root",
+          "showInPlan": true
         }
       ],
       "gates": [
@@ -1155,6 +1224,145 @@
       "verify": [
         {
           "gate": "lint",
+          "scope": "root"
+        }
+      ]
+    },
+    {
+      "id": "oxlint-type-aware",
+      "title": "Type-aware linting with oxlint and tsgolint",
+      "purpose": "Turn on oxlint's type-aware rules — floating promises, unsafe any, unnecessary conditions — behind a wall of zero.",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "packageManager": [
+          "bun"
+        ],
+        "workspace": "any",
+        "requires": [
+          {
+            "file": "package.json"
+          },
+          {
+            "recipe": "oxlint-anti-slop"
+          },
+          {
+            "tsconfig": "strictNullChecks"
+          }
+        ]
+      },
+      "conflicts": {},
+      "cost": "fast",
+      "priority": 46,
+      "files": [
+        {
+          "path": "oxlint.type-aware.config.ts",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/oxlint-type-aware/oxlint.type-aware.config.ts"
+        },
+        {
+          "path": "scripts/lint-type-aware-gate.mjs",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/oxlint-type-aware/scripts/lint-type-aware-gate.mjs"
+        },
+        {
+          "path": "package.json",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/oxlint-type-aware/package.json"
+        }
+      ],
+      "commands": [
+        {
+          "run": "bun install",
+          "scope": "root",
+          "showInPlan": false
+        }
+      ],
+      "gates": [
+        {
+          "id": "lint-type-aware",
+          "run": "bun run lint:type-aware",
+          "description": "oxlint with the type-aware rules — a wall at zero diagnostics"
+        }
+      ],
+      "verify": [
+        {
+          "gate": "lint-type-aware",
+          "scope": "root"
+        }
+      ]
+    },
+    {
+      "id": "oxlint-type-aware-npm",
+      "title": "Type-aware linting with oxlint and tsgolint (npm/pnpm)",
+      "purpose": "Turn on oxlint's type-aware rules — floating promises, unsafe any, unnecessary conditions — behind a wall of zero.",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "packageManager": [
+          "npm",
+          "pnpm"
+        ],
+        "workspace": "any",
+        "requires": [
+          {
+            "file": "package.json"
+          },
+          {
+            "recipe": "oxlint-anti-slop-npm"
+          },
+          {
+            "tsconfig": "strictNullChecks"
+          }
+        ]
+      },
+      "conflicts": {},
+      "cost": "fast",
+      "priority": 46,
+      "files": [
+        {
+          "path": "oxlint.type-aware.config.ts",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/oxlint-type-aware/oxlint.type-aware.config.ts"
+        },
+        {
+          "path": "scripts/lint-type-aware-gate.mjs",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/oxlint-type-aware/scripts/lint-type-aware-gate.mjs"
+        },
+        {
+          "path": "package.json",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/oxlint-type-aware-npm/package.json"
+        }
+      ],
+      "commands": [
+        {
+          "run": "sh -c 'if test -f pnpm-lock.yaml; then pnpm install; else npm install; fi'",
+          "scope": "root",
+          "showInPlan": false
+        }
+      ],
+      "gates": [
+        {
+          "id": "lint-type-aware",
+          "run": "npm run lint:type-aware",
+          "description": "oxlint with the type-aware rules — a wall at zero diagnostics"
+        }
+      ],
+      "verify": [
+        {
+          "gate": "lint-type-aware",
           "scope": "root"
         }
       ]
@@ -1549,6 +1757,12 @@
           "action": "merge",
           "scope": "root",
           "template": "templates/tsconfig-strict/pre-commit.block"
+        },
+        {
+          "path": ".husky/pre-push",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/tsconfig-strict/pre-push.block"
         }
       ],
       "commands": [
@@ -1632,6 +1846,12 @@
           "action": "merge",
           "scope": "root",
           "template": "templates/tsconfig-strict-npm/pre-commit.block"
+        },
+        {
+          "path": ".husky/pre-push",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/tsconfig-strict-npm/pre-push.block"
         }
       ],
       "commands": [
@@ -1722,6 +1942,12 @@
           "template": "templates/vitest-coverage/pre-commit.block"
         },
         {
+          "path": ".husky/pre-push",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/vitest-coverage/pre-push.block"
+        },
+        {
           "path": ".gitignore",
           "action": "merge",
           "scope": "root",
@@ -1761,6 +1987,114 @@
     }
   ],
   "practices": [
+    {
+      "id": "agents-md-budget",
+      "title": "Keep AGENTS.md within the harness's budget",
+      "when": {
+        "requires": [
+          {
+            "recipe": "agent-guidance"
+          }
+        ]
+      },
+      "source": "research/agent-conventions.md",
+      "enforcedBy": []
+    },
+    {
+      "id": "any-policy",
+      "title": "Confine `any` to the decoded boundary",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/lint-typecheck.md",
+      "enforcedBy": [
+        "oxlint-anti-slop",
+        "oxlint-anti-slop-npm",
+        "oxlint-type-aware",
+        "oxlint-type-aware-npm"
+      ]
+    },
+    {
+      "id": "baseline-vs-fix",
+      "title": "A baseline is a ratchet, not a wall — and not a place to hide new debt",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/dead-code-complexity.md",
+      "enforcedBy": [
+        "fallow-audit",
+        "fallow-audit-npm"
+      ]
+    },
+    {
+      "id": "ci-required-check",
+      "title": "Make the CI check a required status check",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/formatting.md",
+      "enforcedBy": [
+        "ci-workflow",
+        "ci-workflow-npm"
+      ]
+    },
+    {
+      "id": "complexity-triage",
+      "title": "The threshold reports, the rule gates — and a legacy hotspot gets a documented ceiling",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/dead-code-complexity.md",
+      "enforcedBy": [
+        "fallow-audit",
+        "fallow-audit-npm"
+      ]
+    },
+    {
+      "id": "context-pointer-wording",
+      "title": "Word the pointer so the agent reaches the material",
+      "when": {
+        "requires": [
+          {
+            "recipe": "agent-guidance"
+          }
+        ]
+      },
+      "source": "research/agent-conventions.md",
+      "enforcedBy": []
+    },
     {
       "id": "coverage-ignore-list",
       "title": "Ignore a file only when the runner cannot execute it",
@@ -1804,6 +2138,39 @@
       ]
     },
     {
+      "id": "dead-code-triage",
+      "title": "Triage dead code in fix order, and keep an export only through an auditable mechanism",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/dead-code-complexity.md",
+      "enforcedBy": [
+        "fallow-audit",
+        "fallow-audit-npm"
+      ]
+    },
+    {
+      "id": "environment-is-a-source-of-truth",
+      "title": "Do not cache what the environment already says",
+      "when": {
+        "requires": [
+          {
+            "recipe": "agent-guidance"
+          }
+        ]
+      },
+      "source": "research/agent-conventions.md",
+      "enforcedBy": []
+    },
+    {
       "id": "equivalent-mutants",
       "title": "An equivalent mutant is a decision, not a survivor",
       "when": {
@@ -1818,6 +2185,316 @@
         ]
       },
       "source": "research/mutation.md",
+      "enforcedBy": [
+        "stryker-mutation",
+        "stryker-mutation-vitest"
+      ]
+    },
+    {
+      "id": "format-on-write-vs-check",
+      "title": "Format on write locally, check only in CI",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/formatting.md",
+      "enforcedBy": [
+        "biome-assist",
+        "biome-assist-npm",
+        "eslint-prettier"
+      ]
+    },
+    {
+      "id": "generated-files",
+      "title": "Exclude generated files from the formatter's file set",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/formatting.md",
+      "enforcedBy": [
+        "biome-assist",
+        "biome-assist-npm"
+      ]
+    },
+    {
+      "id": "harness-discovery-paths",
+      "title": "Put the doc where the harness looks",
+      "when": {
+        "requires": [
+          {
+            "recipe": "agent-guidance"
+          }
+        ]
+      },
+      "source": "research/agent-conventions.md",
+      "enforcedBy": []
+    },
+    {
+      "id": "hook-auto-stage",
+      "title": "Decide whether the hook fixes and re-stages, or fails",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/ci-hooks.md",
+      "enforcedBy": [
+        "biome-assist",
+        "biome-assist-npm"
+      ]
+    },
+    {
+      "id": "hook-cost-split",
+      "title": "Put a gate in pre-commit only if it is fast",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/ci-hooks.md",
+      "enforcedBy": [
+        "biome-assist",
+        "biome-assist-npm",
+        "oxlint-anti-slop",
+        "oxlint-anti-slop-npm",
+        "tsconfig-strict",
+        "tsconfig-strict-npm",
+        "bun-test-coverage",
+        "vitest-coverage"
+      ]
+    },
+    {
+      "id": "hook-parallelism",
+      "title": "Run the hook's gates serially unless they are independent",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/ci-hooks.md",
+      "enforcedBy": [
+        "repo-hygiene",
+        "repo-hygiene-npm"
+      ]
+    },
+    {
+      "id": "hook-skippability",
+      "title": "Treat every client-side hook as skippable",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/ci-hooks.md",
+      "enforcedBy": [
+        "repo-hygiene",
+        "repo-hygiene-npm"
+      ]
+    },
+    {
+      "id": "instruction-no-op-test",
+      "title": "Delete an instruction the model already obeys",
+      "when": {
+        "requires": [
+          {
+            "recipe": "agent-guidance"
+          }
+        ]
+      },
+      "source": "research/agent-conventions.md",
+      "enforcedBy": []
+    },
+    {
+      "id": "lint-autofix",
+      "title": "Auto-fix what the tool can fix",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/lint-typecheck.md",
+      "enforcedBy": [
+        "oxlint-anti-slop",
+        "oxlint-anti-slop-npm",
+        "biome-assist",
+        "biome-assist-npm"
+      ]
+    },
+    {
+      "id": "lint-debt",
+      "title": "Fix, suppress, or record — never ignore",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/lint-typecheck.md",
+      "enforcedBy": [
+        "oxlint-anti-slop",
+        "oxlint-anti-slop-npm",
+        "tsconfig-strict",
+        "tsconfig-strict-npm"
+      ]
+    },
+    {
+      "id": "lint-rule-selection",
+      "title": "Enable a rule only when its report is actionable",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/lint-typecheck.md",
+      "enforcedBy": [
+        "oxlint-anti-slop",
+        "oxlint-anti-slop-npm"
+      ]
+    },
+    {
+      "id": "lint-severity",
+      "title": "Severity is a switch, not a dial",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/lint-typecheck.md",
+      "enforcedBy": [
+        "oxlint-anti-slop",
+        "oxlint-anti-slop-npm"
+      ]
+    },
+    {
+      "id": "lint-suppressions",
+      "title": "A suppression explains itself",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/lint-typecheck.md",
+      "enforcedBy": [
+        "oxlint-anti-slop",
+        "oxlint-anti-slop-npm"
+      ]
+    },
+    {
+      "id": "lint-test-exemptions",
+      "title": "Relax in tests only what tests make meaningless",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/lint-typecheck.md",
+      "enforcedBy": [
+        "oxlint-anti-slop",
+        "oxlint-anti-slop-npm"
+      ]
+    },
+    {
+      "id": "merge-marker-comment-syntax",
+      "title": "A marker comment must be valid in its target language",
+      "when": {
+        "requires": [
+          {
+            "recipe": "agent-guidance"
+          }
+        ]
+      },
+      "source": "research/agent-conventions.md",
+      "enforcedBy": []
+    },
+    {
+      "id": "mutation-cadence",
+      "title": "Run mutation on pull requests, not on every push",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "testFile": "true"
+          }
+        ]
+      },
+      "source": "research/ci-hooks.md",
       "enforcedBy": [
         "stryker-mutation",
         "stryker-mutation-vitest"
@@ -1938,6 +2615,47 @@
       ]
     },
     {
+      "id": "one-time-sweep",
+      "title": "Sweep the whole repo once, at the gate's scope",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/formatting.md",
+      "enforcedBy": [
+        "biome-assist",
+        "biome-assist-npm"
+      ]
+    },
+    {
+      "id": "staged-vs-repo-wide",
+      "title": "Staged-only locally, repo-wide in the gate",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/formatting.md",
+      "enforcedBy": [
+        "biome-assist",
+        "biome-assist-npm",
+        "eslint-prettier"
+      ]
+    },
+    {
       "id": "surviving-mutant",
       "title": "A survivor is a test that did not fail",
       "when": {
@@ -2013,6 +2731,86 @@
       "enforcedBy": [
         "oxlint-anti-slop",
         "oxlint-anti-slop-npm"
+      ]
+    },
+    {
+      "id": "tsconfig-strictness",
+      "title": "`strict` is the floor; go past it deliberately",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/lint-typecheck.md",
+      "enforcedBy": [
+        "tsconfig-strict",
+        "tsconfig-strict-npm"
+      ]
+    },
+    {
+      "id": "type-assertions",
+      "title": "An assertion states the invariant it relies on",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/lint-typecheck.md",
+      "enforcedBy": [
+        "oxlint-anti-slop",
+        "oxlint-anti-slop-npm"
+      ]
+    },
+    {
+      "id": "type-aware-linting",
+      "title": "Decide whether to pay for type-aware linting",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/lint-typecheck.md",
+      "enforcedBy": [
+        "oxlint-type-aware",
+        "oxlint-type-aware-npm"
+      ]
+    },
+    {
+      "id": "verify-before-delete",
+      "title": "Verify a dead-code finding before you delete the code it names",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/dead-code-complexity.md",
+      "enforcedBy": [
+        "fallow-audit",
+        "fallow-audit-npm"
       ]
     }
   ]

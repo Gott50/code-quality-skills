@@ -48,7 +48,9 @@ function readFloor(path) {
 
 const floor = readFloor(baselinePath);
 
-const run = spawnSync("oxlint", ["--format", "json"], { encoding: "utf8" });
+const run = spawnSync("oxlint", ["--report-unused-disable-directives", "--format", "json"], {
+  encoding: "utf8",
+});
 if (run.error) {
   console.error(`lint-gate: oxlint could not be run: ${run.error}`);
   process.exit(1);

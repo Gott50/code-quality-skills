@@ -4,9 +4,13 @@
     "gate": "new-only"
   },
   "entry": ["stryker.conf.mjs"],
+  "failOnParseError": true,
   "ignoreDependencies": ["@oxlint/plugins"],
   "ignorePatterns": ["scripts/**", "tools/**"],
+  "minimumVersion": "3.33.1",
   "rules": {
+    "require-suppression-reason": "error",
+    "stale-suppressions": "error",
     "unlisted-dependencies": "error",
     "unresolved-imports": "error",
     "unused-exports": "error",

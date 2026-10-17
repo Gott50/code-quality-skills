@@ -73,8 +73,9 @@ jobs:
           echo "refs/heads/head ${{ github.event.pull_request.head.sha }} refs/heads/base ${{ github.event.pull_request.base.sha }}" | bun scripts/mutation-gate.ts
 
   # Fallow health report against real Istanbul coverage — a quality signal, not
-  # a gate. Non-blocking (continue-on-error) so a health regression never fails
-  # the build.
+  # a gate. `fail-on-issues: false` keeps a health regression from failing the
+  # build; `fail-on-empty-analysis: true` still fails a run that analyzed no
+  # source file, because every count is zero there for the wrong reason.
   fallow-coverage:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -89,6 +90,14 @@ jobs:
           bun-version-file: .bun-version
       - name: Install dependencies
         run: bun ci
-      - name: Produce coverage + run fallow health
-        run: bun run fallow:coverage
+      - name: Produce coverage
+        run: bun run test && bun scripts/lcov-to-istanbul.ts --lcov coverage/lcov.info --out coverage/coverage-final.json
         continue-on-error: true
+      - name: Fallow health report
+        uses: fallow-rs/fallow@v3
+        with:
+          command: health
+          coverage: coverage/coverage-final.json
+          score: true
+          fail-on-issues: false
+          fail-on-empty-analysis: true

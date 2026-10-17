@@ -1,0 +1,6 @@
+# code-quality:tsconfig-strict-npm:start
+# The typecheck gate again, so a commit made with --no-verify still meets it
+# before it leaves the machine. stdin carries the pushed refs for the mutation
+# gate, so it is closed here rather than consumed.
+npm run typecheck </dev/null || exit 1
+# code-quality:tsconfig-strict-npm:end

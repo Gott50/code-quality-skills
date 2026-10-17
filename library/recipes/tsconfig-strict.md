@@ -35,6 +35,10 @@ files:
     action: merge
     scope: root
     template: templates/tsconfig-strict/pre-commit.block
+  - path: .husky/pre-push
+    action: merge
+    scope: root
+    template: templates/tsconfig-strict/pre-push.block
 commands:
   - run: bun install
     scope: root
@@ -51,12 +55,12 @@ verify:
 
 ## Apply
 
-1. **`tsconfig.json`** — merge from `templates/tsconfig-strict/tsconfig.json`. The merge is recursive, so the fragment's `compilerOptions` leaves are added to whatever the project already declares and nothing else is touched. The options are the proven set: `strict`, `noUncheckedIndexedAccess`, `noUnusedLocals`, `noUnusedParameters`, `exactOptionalPropertyTypes`, `verbatimModuleSyntax`, `noFallthroughCasesInSwitch`, `forceConsistentCasingInFileNames`, `moduleDetection: force`, `moduleResolution: bundler`, `allowImportingTsExtensions`, `noEmit`, `skipLibCheck`, `target`/`lib` ES2022, and `types: ["bun"]`. `noUnusedLocals` and `noUnusedParameters` reject an in-file unused local or parameter; the compiler's own `_`-prefix exemption is the escape hatch for a binding that must stay.
+1. **`tsconfig.json`** — merge from `templates/tsconfig-strict/tsconfig.json`. The merge is recursive, so the fragment's `compilerOptions` leaves are added to whatever the project already declares and nothing else is touched. The options are the proven set: `strict`, `noUncheckedIndexedAccess`, `noUnusedLocals`, `noUnusedParameters`, `allowUnreachableCode: false`, `exactOptionalPropertyTypes`, `verbatimModuleSyntax`, `noFallthroughCasesInSwitch`, `forceConsistentCasingInFileNames`, `moduleDetection: force`, `moduleResolution: bundler`, `allowImportingTsExtensions`, `noEmit`, `skipLibCheck`, `target`/`lib` ES2022, and `types: ["bun"]`. `noUnusedLocals` and `noUnusedParameters` reject an in-file unused local or parameter; the compiler's own `_`-prefix exemption is the escape hatch for a binding that must stay. `allowUnreachableCode: false` is the one dead-code class that is safe as a wall: the compiler's scope is stated and narrow — a statement after a `return`/`throw`/`break` in the same block, provably unreachable from JavaScript syntax alone — so it cannot fire on a type-analysis guess, and it is the only dead-code check the typecheck gate carries.
 2. **Workspace member `tsconfig.json`** — create from `templates/tsconfig-strict/tsconfig.member.json`. A stub that extends the root base through `{{root}}`, the member's path back to the workspace root (`../..` for `packages/a`, `../../..` for `packages/nested/b`), so the `extends` resolves at any depth. It declares its own `exclude` because a member inherits the root's `exclude` resolved relative to the root, which would leave the member's own `node_modules` unexcluded; a member that has its own `tools/` adds it to that list. It declares `include: ["**/*"]` because `files`/`include`/`exclude` are inherited through `extends` resolved relative to the config that declared them: a member inheriting a solution-style root (`files: []` + `references`) would otherwise compile nothing and pass the typecheck gate vacuously. Skipped in a single-package repo, where the root entry writes the same path.
 3. **Workspace member `package.json`** — merge from `templates/tsconfig-strict/package.member.json`: add the `typecheck` script. `bun run` resolves a script from the nearest `package.json` only — it does not walk up past a member's own manifest — so without this script the per-member verify dies with `Script not found: typecheck`. The member needs no devDependencies of its own: `typescript` is hoisted to the root `node_modules`, and `bun run` puts the root `.bin` on the script's `PATH`. Skipped in a single-package repo, where the root entry writes the same path.
 4. **`scripts/typecheck-gate.mjs`** — create from `templates/tsconfig-strict/scripts/typecheck-gate.mjs`, **root-shared**: one copy at the workspace root, and each member's `typecheck` script names it through `{{root}}` (step 3). The typecheck floor: the gate runs `tsc --noEmit --pretty false`, counts the diagnostics (the `: error TS\d+` lines — the same count `score.mjs` reads), and fails when the count exceeds `gates.typecheck.global` from `.code-quality-baseline.json` (written by the skill's `score.mjs --raise`). With no baseline the floor is 0 — any type error fails, the greenfield wall — so a repo that never raised one is gated exactly as before. It is plain `.mjs` so the same script serves every package manager; only the `typecheck` script's runner differs (`bun` here, `node` in the npm variant).
 5. **`package.json`** — merge from `templates/tsconfig-strict/package.json`: add the `typescript` and `@types/bun` devDependencies and the `typecheck` script, `bun scripts/typecheck-gate.mjs`.
-6. **`.husky/pre-commit`** — merge from `templates/tsconfig-strict/pre-commit.block`, inside this recipe's marker pair.
+6. **`.husky/pre-commit`** — merge from `templates/tsconfig-strict/pre-commit.block`, inside this recipe's marker pair. The same gate is merged into **`.husky/pre-push`** from `templates/tsconfig-strict/pre-push.block`, inside the same marker pair: a commit made with `--no-verify` skips the pre-commit hook, so the push re-runs the typecheck gate before the change leaves the machine. The pre-push block closes stdin, which carries the pushed refs the mutation gate reads.
 7. **`bun install`** — installs the two devDependencies.
 
 Two things the fragment deliberately does not name, and why:
@@ -71,7 +75,7 @@ Two things the fragment deliberately does not name, and why:
 - `tsconfig.json` is a recursive `merge`: re-running re-adds only missing leaves and reports a changed leaf as a collision. A hand-edited option is never silently overwritten.
 - The member `tsconfig.json` is a `create`: byte-identical on re-run, so it is a no-op; a local edit shows as drift and is reported, not overwritten.
 - The member `package.json` is a `merge`: re-running re-adds only missing keys and reports a changed value as a collision.
-- `package.json` and `.husky/pre-commit` are `merge`s: re-running replaces this recipe's marker block and re-adds only missing keys.
+- `package.json`, `.husky/pre-commit` and `.husky/pre-push` are `merge`s: re-running replaces this recipe's marker block and re-adds only missing keys.
 
 ## Undo
 
@@ -81,4 +85,5 @@ Two things the fragment deliberately does not name, and why:
 - Remove the `typecheck` script from the member `package.json` in a workspace — only where this recipe added it.
 - Remove the `typescript` and `@types/bun` devDependencies and the `typecheck` script from `package.json` — only where this recipe added them.
 - Remove the `code-quality:tsconfig-strict` block from `.husky/pre-commit`; delete the file if the block is all it holds.
+- Remove the `code-quality:tsconfig-strict` block from `.husky/pre-push`; delete the file if the block is all it holds.
 - `bun install` to drop the packages.
