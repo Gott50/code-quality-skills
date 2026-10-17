@@ -1,0 +1,5 @@
+# code-quality:secret-scan:start
+# Scan the staged diff for credentials before they enter a commit. The scanner is
+# pinned in scripts/secret-scan.sh, which fetches the binary on first use.
+sh scripts/secret-scan.sh --staged || exit 1
+# code-quality:secret-scan:end
