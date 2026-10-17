@@ -1,0 +1,36 @@
+name: semgrep
+
+# The pattern-level security scan — injection and unsafe APIs — over the whole
+# repo. Credential detection is the secret-scan workflow's job, not this one's:
+# the same finding failing two gates costs the second one its authority.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  semgrep:
+    runs-on: ubuntu-latest
+    # The official image, pinned to the same version the local launcher runs, so
+    # the two halves cannot disagree about a finding. The image carries semgrep
+    # and its ruleset engine; the ruleset itself is the repo's own file.
+    container:
+      image: semgrep/semgrep:1.181.0
+    timeout-minutes: 15
+    steps:
+      - name: checkout
+        uses: actions/checkout@v7
+
+      # `--error` makes a finding fail the job; `--metrics=off` keeps the scan
+      # from reporting to semgrep.dev. The ruleset is vendored, so the job needs
+      # no registry access and no SEMGREP_APP_TOKEN.
+      - name: semgrep
+        run: semgrep scan --config .semgrep/rules.yml --error --metrics=off

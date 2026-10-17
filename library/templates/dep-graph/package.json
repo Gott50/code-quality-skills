@@ -1,0 +1,10 @@
+{
+  "devDependencies": {
+    "dependency-cruiser": "16.10.4",
+    "typescript": "^5.6.0"
+  },
+  "scripts": {
+    "dep-graph": "sh scripts/dep-graph.sh",
+    "dep-graph:baseline": "node_modules/.bin/depcruise --config .dependency-cruiser.cjs --output-type baseline . > .dependency-cruiser-known-violations.json"
+  }
+}
