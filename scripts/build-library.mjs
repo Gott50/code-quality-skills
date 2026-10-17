@@ -26,7 +26,7 @@ import { join, resolve, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseFrontmatter } from "../skills/code-quality-setup/scripts/frontmatter.mjs";
 
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const LIBRARY_DIR = join(REPO_ROOT, "library");
 const RECIPES_DIR = join(LIBRARY_DIR, "recipes");
