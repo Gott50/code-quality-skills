@@ -2,7 +2,7 @@
 // gaps.mjs — the code-quality-author gap analysis.
 //
 // Zero dependencies, node builtins only. Spawns the sibling `code-quality-setup` skill's detector
-// and reads its report, then ranks the two kinds of gap the authoring skill acts on:
+// and reads its report, then ranks the three kinds of gap the authoring skill acts on:
 //
 //   1. uncovered-category — a tooling category the project already uses that no selected recipe
 //      addresses. Coverage is per (category, tool): a detected tool is addressed when a selected
@@ -13,6 +13,10 @@
 //   2. one-predicate-away — a recipe that fails exactly one `requires` predicate, so a single
 //      project change would make it applicable. A failing `language`/`packageManager`/`workspace`/
 //      `excludes` reason is not a gap: the project cannot satisfy it.
+//   3. missing-practice — a selected recipe that installs a gate (`gates[]` non-empty) but that no
+//      selected practice names in `enforcedBy`. The gate is installed; the project gets no practice
+//      for the judgement half the gate cannot fail on. A recipe with no gate is not a gap: it
+//      enforces nothing machine-checkable, so `enforcedBy` has nothing to name.
 //
 // The detector is spawned, never imported: the skills CLI copies one skill directory per install,
 // so the sibling sits next to this one at runtime (the same convention `code-quality-improve` uses
@@ -135,6 +139,43 @@ function onePredicateAway(report) {
   return gaps;
 }
 
+// (c) missing-practice — a selected recipe that installs a gate but that no selected practice names
+// in `enforcedBy`. The gate is installed; the project gets no practice for the judgement half the
+// gate cannot fail on. A recipe with no gate is skipped: it enforces nothing machine-checkable, so
+// `enforcedBy` has nothing to name (its prose, if any, rides it through `when.requires`).
+// `namedBy` lists the practices that do name the recipe — all unselected, since a selected one
+// would have covered it — so the author can tell "the library has prose, but not for this stack"
+// (write a variant) from "the library has none" (write it fresh).
+function missingPractices(report) {
+  const practices = (report.practices ?? []).filter((p) => p.error === null);
+  const named = new Set();
+  for (const p of practices) {
+    if (!p.selected) continue;
+    for (const id of p.enforcedBy ?? []) named.add(id);
+  }
+  const gaps = [];
+  for (const r of report.recipes ?? []) {
+    if (r.error !== null || !r.selected) continue;
+    const gates = (r.gates ?? []).map((g) => g.id).sort();
+    if (gates.length === 0) continue;
+    if (named.has(r.id)) continue;
+    const namedBy = [];
+    for (const p of practices) {
+      if ((p.enforcedBy ?? []).includes(r.id)) namedBy.push(p.id);
+    }
+    namedBy.sort();
+    gaps.push({
+      gates,
+      kind: "missing-practice",
+      namedBy,
+      purpose: r.purpose,
+      recipe: r.id,
+      title: r.title,
+    });
+  }
+  return gaps;
+}
+
 // Descending affected-package count, then category name.
 function byCategory(a, b) {
   if (b.packages.length !== a.packages.length) return b.packages.length - a.packages.length;
@@ -146,12 +187,14 @@ function byRecipe(a, b) {
   return a.recipe < b.recipe ? -1 : a.recipe > b.recipe ? 1 : 0;
 }
 
-// Every (a) gap leads every (b) gap; within (a) by descending affected-package count then category
-// name; within (b) by recipe id. `rank` is 1..n over the whole list.
+// Every (a) gap leads every (b) gap, which leads every (c) gap; within (a) by descending
+// affected-package count then category name; within (b) and (c) by recipe id. `rank` is 1..n over
+// the whole list.
 function rankGaps(report, selectedRecipes) {
   const categories = uncoveredCategories(report, selectedRecipes).sort(byCategory);
   const oneAway = onePredicateAway(report).sort(byRecipe);
-  return [...categories, ...oneAway].map((gap, i) => ({ rank: i + 1, ...gap }));
+  const missing = missingPractices(report).sort(byRecipe);
+  return [...categories, ...oneAway, ...missing].map((gap, i) => ({ rank: i + 1, ...gap }));
 }
 
 // ---------------------------------------------------------------------------
@@ -190,6 +233,9 @@ function printPlain(doc) {
   const lines = doc.gaps.map((g) => {
     if (g.kind === "uncovered-category") {
       return `  ${g.rank}. uncovered-category: ${g.category} — ${g.tools.join(", ")} (${g.packages.join(", ")})`;
+    }
+    if (g.kind === "missing-practice") {
+      return `  ${g.rank}. missing-practice: ${g.recipe} — gate ${g.gates.join(", ")}`;
     }
     return `  ${g.rank}. one-predicate-away: ${g.recipe} — ${g.failing.predicate}`;
   });

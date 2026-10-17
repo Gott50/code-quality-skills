@@ -1,5 +1,5 @@
 interface:
   display_name: "Code Quality Author"
-  short_description: "Author a code-quality recipe into a project's local library"
+  short_description: "Author a code-quality recipe or practice into a project's local library"
 policy:
   allow_implicit_invocation: false

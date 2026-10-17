@@ -41,11 +41,11 @@ The agent prints the ranking, asks once, and makes one change per pass. The rais
 
 `code-quality-author` ships two dependency-free scripts (node builtins only) and one reference:
 
-- `scripts/gaps.mjs` — spawns the setup skill's detector and prints the ranked gaps the shared library leaves in the project: a tooling category no selected recipe covers, then a recipe one `when` predicate away.
-- `scripts/check-local.mjs` — validates `.code-quality/` against the recipe contract and the template formatting.
-- `references/authoring.md` — the local layout, the two gap kinds, and the fields that matter when authoring.
+- `scripts/gaps.mjs` — spawns the setup skill's detector and prints the ranked gaps the shared library leaves in the project: a tooling category no selected recipe covers, then a recipe one `when` predicate away, then a recipe that installs a gate no selected practice explains.
+- `scripts/check-local.mjs` — validates `.code-quality/` against the recipe contract, the template formatting, and the practice contract.
+- `references/authoring.md` — the local layout, the three gap kinds, and the fields that matter when authoring a recipe or a practice.
 
-The agent prints the gaps, asks once, and authors one recipe per pass. Authoring ends by installing the recipe: the project is the fixture, so a written-but-unapplied recipe is unproven.
+The agent prints the gaps, asks once, and authors one artifact per pass. Authoring ends by installing it: the project is the fixture, so a written-but-unapplied recipe is unproven.
 
 ## Recipes
 
@@ -95,7 +95,7 @@ skills/code-quality-improve/ the installable improvement skill
 skills/code-quality-author/  the installable authoring skill
   SKILL.md                   the entry point
   scripts/gaps.mjs           the ranked gaps the shared library leaves
-  scripts/check-local.mjs    the local library's contract and formatting check
+  scripts/check-local.mjs    the local layer's contract and formatting check
   references/authoring.md    the local layout and the fields that matter when authoring
 fixtures/                    throwaway projects the detector and recipes are verified against
 .agents/skills/              vendored third-party skills (mattpocock/skills)

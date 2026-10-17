@@ -37,7 +37,7 @@ stderr and exits 1.
 never re-derives them. `gaps` is the ranked list; every entry carries a `rank` (1..n over the whole
 list) and a `kind`.
 
-## The two gap kinds
+## The three gap kinds
 
 ### `uncovered-category`
 
@@ -104,21 +104,56 @@ A recipe is skipped when it fails **two or more** checks, or when its single fai
 `language` / `packageManager` / `workspace` / `excludes` reason — the project cannot satisfy those,
 so they are not a gap.
 
+### `missing-practice`
+
+A **selected** recipe that installs a gate (`gates[]` non-empty) but that no **selected** practice
+names in `enforcedBy`. The gate is installed; the project gets no practice for the judgement half
+the gate cannot fail on.
+
+```jsonc
+{
+  "rank": 4,
+  "kind": "missing-practice",
+  "recipe": "my-gate",
+  "title": "My gate — a project-local check",
+  "purpose": "Run a project-local check that no library recipe covers.",
+  "gates": ["my-gate"],
+  "namedBy": []
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `recipe` | the recipe id |
+| `title`, `purpose` | carried from the detector's matrix entry |
+| `gates` | the gate ids the recipe installs, sorted |
+| `namedBy` | the ids of the practices that name the recipe in `enforcedBy`, sorted — all unselected, since a selected one would have covered it |
+
+**The coverage rule.** A recipe is covered when at least one **selected** practice names it in
+`enforcedBy` — the field that links a practice to the recipe whose machine-checkable half it
+explains. A recipe with **no gate** is never a gap: it enforces nothing machine-checkable, so
+`enforcedBy` has nothing to name (its prose, if any, rides it through `when.requires`). A practice
+that names the recipe but is **not selected** does not cover it — the project gets the gate without
+the prose — and lands in `namedBy`, which tells the author whether to write a fresh practice
+(`namedBy` empty) or a variant whose `when` matches this stack (`namedBy` non-empty).
+
 ## Ranking
 
-Every `uncovered-category` gap leads every `one-predicate-away` gap. Within `uncovered-category`,
-descending number of affected packages, then category name. Within `one-predicate-away`, recipe id.
-`rank` is assigned 1..n over the whole list.
+Every `uncovered-category` gap leads every `one-predicate-away` gap, which leads every
+`missing-practice` gap. Within `uncovered-category`, descending number of affected packages, then
+category name. Within `one-predicate-away` and `missing-practice`, recipe id. `rank` is assigned
+1..n over the whole list.
 
 ## Plain output
 
 Without `--json`, one line per gap:
 
 ```
-gaps: 3
+gaps: 4
   1. uncovered-category: gitHooks — husky (.)
   2. uncovered-category: formatter — dprint (.)
   3. one-predicate-away: ci-drift — requires {"file":".agents/skills/code-quality-setup/scripts/plan.mjs"}
+  4. missing-practice: my-gate — gate my-gate
 ```
 
 An empty list prints `no gaps`.
@@ -128,4 +163,5 @@ An empty list prints `no gaps`.
 - No writes, no package manager, no network beyond the detector's own filesystem reads.
 - No authoring: it ranks the gaps and stops. The skill presents them and the user picks.
 - No local-layer awareness: the detector already merges `.code-quality/` into its matrix, so a local
-  recipe that covers a category counts as selected.
+  recipe that covers a category counts as selected, and a local practice that names a recipe counts
+  as covering it.
