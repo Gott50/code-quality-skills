@@ -140,9 +140,6 @@ commands:
   - run: sh -c 'if test -f pnpm-lock.yaml; then pnpm install; else npm install; fi'
     scope: root
     showInPlan: false
-  - run: npx oxlint --fix .
-    scope: root
-    showInPlan: true
 gates:
   - id: lint
     run: npm run lint
@@ -163,7 +160,7 @@ verify:
 
    The same gate is merged into **`.husky/pre-push`** from `templates/oxlint-anti-slop-npm/pre-push.block`, inside the same marker pair: a commit made with `--no-verify` skips the pre-commit hook, so the push re-runs the lint gate (`npm run lint`) before the change leaves the machine. The pre-push block closes stdin, which carries the pushed refs the mutation gate reads.
 6. **The install** — `sh -c 'if test -f pnpm-lock.yaml; then pnpm install; else npm install; fi'`, installing the two devDependencies.
-7. **The one-time `--fix` sweep** — `npx oxlint --fix .`. It is a `commands` entry, so it runs in the commands phase — after **every** selected recipe's files are written, not only this one's (RECIPE-CONTRACT.md → Apply order) — and writes no file of its own: it rewrites the source files oxlint can fix in place, and the `lint` gate then counts the remainder.
+7. **No `--fix` sweep.** A `commands` entry would run in the commands phase *after* `biome-assist-npm`'s one-time formatter sweep (priority 50 against this recipe's 45), and a fix that changes layout would leave the file unformatted for `format:check` to fail on — the exact fragility RECIPE-CONTRACT.md → Apply order exists to prevent. The routing's "a fixable rule must be auto-fixed" is served by the pre-commit hook instead, which runs on the staged files at commit time. With this config the only fixable rule is `typescript/ban-ts-comment` (it rewrites `// @ts-ignore` to `// @ts-expect-error`); `no-unused-vars` and the anti-slop rules carry no fixer.
 
 Two gotchas the config carries, unchanged from the Bun recipe: **`node_modules/**` is in `ignorePatterns` on purpose** (oxlint lints `node_modules` unless a `.gitignore` excludes it, and a repo that has not run `biome-assist-npm` has no such entry yet), and **`tools/oxlint/anti-slop/**` is in `ignorePatterns`** (the vendored plugin is not the project's code).
 

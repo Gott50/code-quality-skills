@@ -964,11 +964,6 @@
           "run": "bun install",
           "scope": "root",
           "showInPlan": false
-        },
-        {
-          "run": "bunx oxlint --fix .",
-          "scope": "root",
-          "showInPlan": true
         }
       ],
       "gates": [
@@ -1206,11 +1201,6 @@
           "run": "sh -c 'if test -f pnpm-lock.yaml; then pnpm install; else npm install; fi'",
           "scope": "root",
           "showInPlan": false
-        },
-        {
-          "run": "npx oxlint --fix .",
-          "scope": "root",
-          "showInPlan": true
         }
       ],
       "gates": [
