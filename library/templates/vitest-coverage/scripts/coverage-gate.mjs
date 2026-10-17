@@ -349,18 +349,25 @@ if (failing.length > 0) {
 // The changed-lines rule (the PR rule): every line the diff against the base
 // ref adds or modifies must be executed. It layers on top of the per-file floor
 // rather than replacing it, so a change to an uncovered line of a grandfathered
-// file fails here even though the file meets its recorded floor. A file the
-// diff touches that the coverage report does not list has no executed line, so
-// every changed line in it is uncovered.
+// file fails here even though the file meets its recorded floor.
+//
+// The rule is scoped to the files the coverage report instruments, and to the
+// lines it records: a test file, a config, or a script the report does not list
+// has no executed line to check, and a brace or a blank line carries no
+// statement. Only a recorded line whose hit count is zero is a failure, so the
+// rule fires on a line the report knows about and that the tests did not run.
 const baseRef = resolveBaseRef();
 const uncovered = [];
 if (baseRef !== undefined) {
   const changed = changedLines(baseRef);
   const byAbs = new Map(Object.values(byFile).map((r) => [resolve(r.sf), r]));
   let checked = 0;
+  let files = 0;
   for (const [abs, lineSet] of changed) {
     const rec = byAbs.get(abs);
-    const missed = [...lineSet].filter((n) => (rec?.lines.get(n) ?? 0) === 0).sort((a, b) => a - b);
+    if (rec === undefined) continue;
+    files += 1;
+    const missed = [...lineSet].filter((n) => rec.lines.get(n) === 0).sort((a, b) => a - b);
     checked += lineSet.size;
     if (missed.length > 0) {
       uncovered.push(
@@ -369,7 +376,7 @@ if (baseRef !== undefined) {
     }
   }
   console.log(
-    `coverage-gate: changed-lines ${baseRef} | ${checked} changed line(s) across ${changed.size} file(s)`,
+    `coverage-gate: changed-lines ${baseRef} | ${checked} changed line(s) across ${files} instrumented file(s)`,
   );
 }
 

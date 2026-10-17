@@ -32,6 +32,7 @@ export default defineConfig({
   ],
   rules: {
     "anti-slop/max-expects-per-test": "error",
+    "anti-slop/no-assertion-over-parsed-data": "error",
     "anti-slop/no-chained-type-assertions": "error",
     "anti-slop/no-conditional-empty-object-spread": "error",
     "anti-slop/no-conditional-expect": "error",

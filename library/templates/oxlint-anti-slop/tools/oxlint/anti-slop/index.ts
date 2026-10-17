@@ -1,6 +1,7 @@
 import { eslintCompatPlugin } from "@oxlint/plugins";
 
 import { maxExpectsPerTestRule } from "./rules/max-expects-per-test.ts";
+import { noAssertionOverParsedDataRule } from "./rules/no-assertion-over-parsed-data.ts";
 import { noChainedTypeAssertionsRule } from "./rules/no-chained-type-assertions.ts";
 import { noConditionalEmptyObjectSpreadRule } from "./rules/no-conditional-empty-object-spread.ts";
 import { noConditionalExpectRule } from "./rules/no-conditional-expect.ts";
@@ -27,6 +28,7 @@ const antiSlopPlugin = eslintCompatPlugin({
   meta: { name: "anti-slop" },
   rules: {
     "max-expects-per-test": maxExpectsPerTestRule,
+    "no-assertion-over-parsed-data": noAssertionOverParsedDataRule,
     "no-chained-type-assertions": noChainedTypeAssertionsRule,
     "no-conditional-empty-object-spread": noConditionalEmptyObjectSpreadRule,
     "no-conditional-expect": noConditionalExpectRule,

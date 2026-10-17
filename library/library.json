@@ -859,6 +859,12 @@
           "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/max-expects-per-test.ts"
         },
         {
+          "path": "tools/oxlint/anti-slop/rules/no-assertion-over-parsed-data.ts",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/no-assertion-over-parsed-data.ts"
+        },
+        {
           "path": "tools/oxlint/anti-slop/rules/no-chained-type-assertions.ts",
           "action": "create",
           "scope": "root",
@@ -1094,6 +1100,12 @@
           "action": "create",
           "scope": "root",
           "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/max-expects-per-test.ts"
+        },
+        {
+          "path": "tools/oxlint/anti-slop/rules/no-assertion-over-parsed-data.ts",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/no-assertion-over-parsed-data.ts"
         },
         {
           "path": "tools/oxlint/anti-slop/rules/no-chained-type-assertions.ts",
