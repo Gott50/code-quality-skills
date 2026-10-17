@@ -2479,6 +2479,19 @@
       "enforcedBy": []
     },
     {
+      "id": "ai-generated-code-review",
+      "title": "Test AI-generated code more thoroughly, not less",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": []
+    },
+    {
       "id": "any-policy",
       "title": "Confine `any` to the decoded boundary",
       "when": {
@@ -2541,6 +2554,22 @@
       ]
     },
     {
+      "id": "comments",
+      "title": "Say why, not what",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": [
+        "oxlint-anti-slop",
+        "oxlint-anti-slop-npm"
+      ]
+    },
+    {
       "id": "complexity-triage",
       "title": "The threshold reports, the rule gates — and a legacy hotspot gets a documented ceiling",
       "when": {
@@ -2559,6 +2588,19 @@
         "fallow-audit",
         "fallow-audit-npm"
       ]
+    },
+    {
+      "id": "config-validation",
+      "title": "Validate config at startup, and never commit environment-specific values",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": []
     },
     {
       "id": "context-pointer-wording",
@@ -2636,6 +2678,51 @@
       ]
     },
     {
+      "id": "decode-at-the-boundary",
+      "title": "Decode external data at the boundary, then trust the type",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": [
+        "oxlint-anti-slop",
+        "oxlint-anti-slop-npm"
+      ]
+    },
+    {
+      "id": "deep-modules",
+      "title": "A deep module hides real work behind a simple interface",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": [
+        "fallow-audit",
+        "fallow-audit-npm"
+      ]
+    },
+    {
+      "id": "define-errors-out-of-existence",
+      "title": "Reshape the interface instead of adding a handler",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": []
+    },
+    {
       "id": "environment-is-a-source-of-truth",
       "title": "Do not cache what the environment already says",
       "when": {
@@ -2669,6 +2756,32 @@
       ]
     },
     {
+      "id": "error-taxonomy",
+      "title": "Classify an error before you write a handler",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": []
+    },
+    {
+      "id": "flaky-test-triage",
+      "title": "Quarantine, root-cause, eliminate — never retry",
+      "when": {
+        "requires": [
+          {
+            "testFile": "true"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": []
+    },
+    {
       "id": "format-on-write-vs-check",
       "title": "Format on write locally, check only in CI",
       "when": {
@@ -2683,6 +2796,23 @@
         ]
       },
       "source": "research/formatting.md",
+      "enforcedBy": [
+        "biome-assist",
+        "biome-assist-npm",
+        "eslint-prettier"
+      ]
+    },
+    {
+      "id": "format-only-commits",
+      "title": "Keep a reformat out of a logic commit",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
       "enforcedBy": [
         "biome-assist",
         "biome-assist-npm",
@@ -3059,6 +3189,22 @@
       ]
     },
     {
+      "id": "naming",
+      "title": "A name says what the thing is, not that it exists",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": [
+        "oxlint-anti-slop",
+        "oxlint-anti-slop-npm"
+      ]
+    },
+    {
       "id": "never-failing-tests",
       "title": "A test that never fails is not a test",
       "when": {
@@ -3074,6 +3220,22 @@
         "stryker-mutation-vitest",
         "bun-test-coverage",
         "vitest-coverage"
+      ]
+    },
+    {
+      "id": "one-canonical-lint-config",
+      "title": "One canonical lint config",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": [
+        "oxlint-anti-slop",
+        "oxlint-anti-slop-npm"
       ]
     },
     {
@@ -3113,6 +3275,48 @@
       ]
     },
     {
+      "id": "property-testing",
+      "title": "Write a property where an example cannot pin the rule down",
+      "when": {
+        "requires": [
+          {
+            "testFile": "true"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": []
+    },
+    {
+      "id": "release-discipline",
+      "title": "Never release without CI green on the release commit",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": [
+        "release-automation",
+        "release-automation-npm"
+      ]
+    },
+    {
+      "id": "snapshot-review",
+      "title": "Review a snapshot diff before you update it",
+      "when": {
+        "requires": [
+          {
+            "testFile": "true"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": []
+    },
+    {
       "id": "staged-vs-repo-wide",
       "title": "Staged-only locally, repo-wide in the gate",
       "when": {
@@ -3132,6 +3336,19 @@
         "biome-assist-npm",
         "eslint-prettier"
       ]
+    },
+    {
+      "id": "structured-logging",
+      "title": "Log key-value events, never PII",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": []
     },
     {
       "id": "surviving-mutant",
@@ -3193,6 +3410,19 @@
         ]
       },
       "source": "research/testing.md",
+      "enforcedBy": []
+    },
+    {
+      "id": "test-isolation",
+      "title": "A test starts from a known state, not from the previous test",
+      "when": {
+        "requires": [
+          {
+            "testFile": "true"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
       "enforcedBy": []
     },
     {
