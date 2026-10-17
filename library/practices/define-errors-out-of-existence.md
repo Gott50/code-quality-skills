@@ -26,5 +26,3 @@ The trade is effort against repetition: a redesign costs once, and a handler cos
 site and every future one. Prefer the encoding — a branded type for a positive integer, a
 non-empty list, an optional value where absence is normal — and keep the thrown error for what
 genuinely cannot be prevented.
-
-The judgement is recorded in [the best-practices coverage note](../../research/best-practices-coverage.md).

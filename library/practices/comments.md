@@ -24,5 +24,3 @@ When a comment is needed because the code is confusing, treat that as the code's
 itself: a well-named function or a reshaped interface often removes the need for the comment
 entirely. Where a suppression must stand — a lint directive, a type assertion — the comment states
 the reason, which is also what the lint layer requires of the directives the library installs.
-
-The judgement is recorded in [the best-practices coverage note](../../research/best-practices-coverage.md).

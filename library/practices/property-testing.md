@@ -24,5 +24,3 @@ keep the shrunk input as an ordinary example test so the regression is checked o
 Use a property where the property is a real invariant and an example where the expected value is
 the requirement. A property over a rule nobody has stated is a generator searching an unconstrained
 space, and the failure it finds is a spec question rather than a bug.
-
-The judgement is recorded in [the best-practices coverage note](../../research/best-practices-coverage.md).

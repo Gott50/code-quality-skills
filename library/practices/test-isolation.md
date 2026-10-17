@@ -23,5 +23,3 @@ Parallelism is the test of the discipline: a suite that only passes with `--runI
 ordering dependency that is invisible on one worker. If the runner supports concurrency, the
 isolation has to hold under it, because running the same suite with a different worker count is a
 supported configuration and not a special case.
-
-The judgement is recorded in [the best-practices coverage note](../../research/best-practices-coverage.md).

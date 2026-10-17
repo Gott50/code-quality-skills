@@ -24,5 +24,3 @@ Never log PII, credentials, or full payloads. A log is copied to a third party, 
 by people who are not cleared for the data; redacting a field at write time is cheap, and removing
 it from an aggregator after the fact is not. Log decisions, state changes, and errors — the
 identity of a record by its id, not the record itself.
-
-The judgement is recorded in [the best-practices coverage note](../../research/best-practices-coverage.md).

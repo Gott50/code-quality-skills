@@ -26,5 +26,3 @@ internally is better than many callers that each handle it. This is also where t
 complexity gates are the only machine-checkable proxy — they can flag the module that grew, but the
 judgement that the interface should have hidden the growth is a design decision, and it is this
 one.
-
-The judgement is recorded in [the best-practices coverage note](../../research/best-practices-coverage.md).

@@ -5,12 +5,8 @@ import { defineConfig } from "vitest/config";
 
 // The recorded global coverage floor: `gates.coverage.global.statements` from
 // the committed baseline `.code-quality-baseline.json` (written by the skill's
-// `score.mjs --raise`), as a whole percentage rounded DOWN so the threshold
-// is never stricter than the recorded floor. The caller checks the baseline
-// exists; a baseline whose coverage gate was never raised, or an unreadable
-// one, means 100: the greenfield wall.
-// The recorded fraction as a whole percentage, rounded down so the threshold
-// is never stricter than the floor it reads; 100 when the block is absent or
+// `score.mjs --raise`), as a whole percentage rounded DOWN so the threshold is
+// never stricter than the recorded floor; 100 when the block is absent or
 // malformed (the greenfield wall).
 function floorPercent(fraction: { found?: number; hit?: number } | undefined): number {
   if (!Number.isInteger(fraction?.hit) || !Number.isInteger(fraction?.found)) return 100;

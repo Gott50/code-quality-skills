@@ -29,5 +29,3 @@ with backoff; fail fast on what is not; and let an unknown error default to the 
 — treat it as permanent and surface it — until observability says otherwise. An error that is
 caught to be rethrown unchanged adds nothing and hides the catch site; an error that is caught and
 swallowed silently is the case the taxonomy exists to prevent.
-
-The judgement is recorded in [the best-practices coverage note](../../research/best-practices-coverage.md).

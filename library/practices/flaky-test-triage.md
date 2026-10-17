@@ -24,5 +24,3 @@ Then remove the source of non-determinism rather than the assertion that noticed
 clock, seed the randomness, reset the state between tests, stub at the boundary. A test whose
 flakiness cannot be reproduced deterministically has not been diagnosed; it has been made rare, and
 the next CI run is the one that tells you.
-
-The judgement is recorded in [the best-practices coverage note](../../research/best-practices-coverage.md).

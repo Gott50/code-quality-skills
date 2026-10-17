@@ -32,7 +32,7 @@ gates:
 verify:
   - run: node scripts/dep-audit-gate.mjs --check
     scope: root
-  - run: bun -e "const y = Bun.YAML.parse(await Bun.file('.github/workflows/dep-audit.yml').text()); const j = y.jobs['dep-audit']; if (Object.keys(y.jobs).join() !== 'dep-audit') process.exit(1); if (!j) process.exit(1); if (j.steps.map((s) => s.name).join() !== 'checkout,setup-node,dep-audit') process.exit(1); if (j.steps[0].uses !== 'actions/checkout@v7') process.exit(1); if (j.steps[1].uses !== 'actions/setup-node@v7' || String(j.steps[1].with['node-version']) !== '22') process.exit(1); if (j.steps[2].run !== 'node scripts/dep-audit-gate.mjs') process.exit(1)"
+  - run: node -e 'const fs=require("node:fs"),L=fs.readFileSync(".github/workflows/dep-audit.yml","utf8").split("\n"),die=(m)=>{console.error(m);process.exit(1)};const jobs=(()=>{const i=L.findIndex((l)=>/^jobs:$/.test(l));if(i<0)die("no jobs");const o=[];for(let k=i+1;k<L.length;k++){const m=/^  (\S+):$/.exec(L[k]);if(m)o.push(m[1]);else if(/^\S/.test(L[k]))break;}return o;})();if(jobs.join()!=="dep-audit")die("jobs: "+jobs.join());const job=(n)=>{const i=L.findIndex((l)=>l==="  "+n+":");if(i<0)die("no "+n+" job");let e=L.length;for(let k=i+1;k<L.length;k++){if(/^ {0,2}\S/.test(L[k])){e=k;break;}}return L.slice(i+1,e).filter((l)=>!/^\s*#/.test(l)).join("\n");};const b=job("dep-audit");const steps=[...b.matchAll(/^\s*- name: (.+)$/gm)].map((m)=>m[1]);if(steps.join()!=="checkout,setup-node,dep-audit")die("steps: "+steps.join());if(!/uses: actions\/checkout@v7/.test(b))die("no checkout pin");if(!/uses: actions\/setup-node@v7/.test(b))die("no setup-node pin");if(!/node-version: 22/.test(b))die("no node-version");if(!/run: node scripts\/dep-audit-gate\.mjs/.test(b))die("no gate step");'
     scope: root
 ---
 

@@ -25,5 +25,3 @@ Rename when your understanding changes, and do it as part of the change that imp
 name that has drifted is worse than a generic one — it is confidently wrong. Consistency is
 enforced by whatever naming rules the project turns on in its linter; the choice of which rules is
 the project's, and the discipline of naming for the reader is the part no rule can decide.
-
-The judgement is recorded in [the best-practices coverage note](../../research/best-practices-coverage.md).

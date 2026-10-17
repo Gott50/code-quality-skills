@@ -26,5 +26,3 @@ Validation is also what makes a config change reviewable: an unknown key, a valu
 type, a missing required one is a rejected start rather than a surprise at runtime. Where a project
 supports several environments, the validation runs over each of their configs in CI, so the config
 that is not the one you deploy with is still checked.
-
-The judgement is recorded in [the best-practices coverage note](../../research/best-practices-coverage.md).

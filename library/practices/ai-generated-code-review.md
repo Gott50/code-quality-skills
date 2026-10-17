@@ -26,5 +26,3 @@ verification it skipped has to be made up by tests and review. Use generation fo
 scaffolding, tests and exploration, where a mistake is cheap and visible; keep the design,
 security and domain decisions — the parts where a wrong answer is expensive and invisible — under
 human judgement. The test suite is the second opinion that generated code does not come with.
-
-The judgement is recorded in [the best-practices coverage note](../../research/best-practices-coverage.md).

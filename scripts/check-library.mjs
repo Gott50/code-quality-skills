@@ -10,7 +10,7 @@
 //   2. recipe contract — every library/recipes/*.md parses and satisfies
 //      RECIPE-CONTRACT.md: `id` equals the filename stem and is kebab-case;
 //      every files[].template exists under library/; every gates[].floor is
-//      one of the six known gates.
+//      one of the seven known gates.
 //   3. practice contract — every library/practices/*.md parses and satisfies
 //      RECIPE-CONTRACT.md: `id` equals the filename stem, is kebab-case, and
 //      does not collide with a recipe id; `source` resolves to an existing

@@ -21,8 +21,9 @@ const SCHEMA_VERSION = 1;
 const SKILL_VERSION = "1";
 const BASELINE_NAME = ".code-quality-baseline.json";
 
-// The artifact each gate writes, relative to the project root. The first three are the paths the
-// recipes already fix; the last four are captured stdout (those tools write no file of their own).
+// The artifact each gate writes, relative to the project root. `dep-audit`, `istanbul`, `lcov` and
+// `mutation` are files a tool writes itself; `fallowDeadCode`, `fallowHealth`, `oxlint` and `tsc`
+// are captured stdout (those tools write no file of their own).
 export const ARTIFACTS = {
   "dep-audit": "reports/dep-audit.json",
   fallowDeadCode: "reports/fallow-dead-code.json",

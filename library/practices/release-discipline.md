@@ -27,5 +27,3 @@ it later means rewriting history, and a release that has to guess at the change 
 will eventually guess wrong. Releasing without a changelog, or with an unreadable generated one,
 is the same failure from the other side — the consumers of a breaking change learn about it after
 their build breaks.
-
-The judgement is recorded in [the best-practices coverage note](../../research/best-practices-coverage.md).

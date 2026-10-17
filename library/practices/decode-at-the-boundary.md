@@ -26,5 +26,3 @@ Where the shape is known, model it — a discriminated union, a branded type, a 
 in its constructor — and use `unknown` at the edge until the decode succeeds. An assertion without
 a validator is the one habit this rule exists to break, and where an assertion genuinely survives,
 it says in a comment what guarantees it.
-
-The judgement is recorded in [the best-practices coverage note](../../research/best-practices-coverage.md).

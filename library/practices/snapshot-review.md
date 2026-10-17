@@ -25,5 +25,3 @@ payloads, CLI output — and test the behaviour with ordinary assertions where a
 matters. A snapshot over an unstable structure fails on every formatting change, and the churn
 trains the reviewer to accept the diff without reading it, which is the failure mode the practice
 exists to prevent.
-
-The judgement is recorded in [the best-practices coverage note](../../research/best-practices-coverage.md).

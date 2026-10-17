@@ -22,6 +22,6 @@ The check that is required must be the one that runs the gates. A required check
 - `.github/workflows/dep-audit.yml` — the advisory ratchet (`dep-audit`).
 - `.github/workflows/semgrep.yml` — the pattern-level security scan (`semgrep`).
 - `.github/workflows/license-check.yml` — the license allowlist and SBOM (`license-check`).
-- `.github/workflows/release.yml` — the release derivation (`release-automation` / `release-automation-npm`).
+- `.github/workflows/release.yml` — the release derivation (`release-automation` / `release-automation-npm`). Deliberately **not** required: it triggers on `push` to `main` and `workflow_dispatch` only, never on a PR, so it cannot be a required PR check.
 
 A new workflow file that this list does not name is a gate nobody enforces. When a recipe adds one, add it here in the same change.

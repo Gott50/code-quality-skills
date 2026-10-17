@@ -25,5 +25,3 @@ The same holds for a second linter added beside the first. If both are installed
 config names what each owns and why the second is not redundant; a second linter that re-reports
 the first one's findings does not add coverage, it adds a second place to look when the first one
 fails.
-
-The judgement is recorded in [the best-practices coverage note](../../research/best-practices-coverage.md).

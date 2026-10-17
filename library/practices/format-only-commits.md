@@ -24,5 +24,3 @@ formatter was not run where it should have been.
 When a logic change and its reformat genuinely must ride together — a rename that changes line
 lengths, say — say so in the message. The rule is about the diff a reader can trust, and a stated
 reason is what makes the two readable together.
-
-The judgement is recorded in [the best-practices coverage note](../../research/best-practices-coverage.md).
