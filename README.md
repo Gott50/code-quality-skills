@@ -64,9 +64,17 @@ Each recipe is one file at `library/recipes/<id>.md`: machine-checkable frontmat
 | `ci-workflow` / `ci-workflow-npm` | the fast gates on every PR, mutation on PRs |
 | `ci-drift` | the skill's drift report as one sticky, non-blocking PR comment |
 | `eslint-prettier` | an existing ESLint + Prettier setup as the lint and format gates |
+| `secret-scan` | gitleaks over the staged diff in pre-commit, and over the full history in CI |
+| `dep-audit` | a lockfile advisory scan with a committed count floor, plus the Renovate config |
+| `semgrep` | pattern-level security findings — injection, unsafe APIs — beside the fast linter |
+| `dep-graph` | no dependency cycles, no deep import into another package's internals |
+| `license-check` | a dependency license allowlist and an SBOM step in CI |
+| `release-automation` / `-npm` | the commit-msg check, the changelog and the version derivation |
 | `agent-guidance` | a lean `AGENTS.md` section pointing at `docs/code-quality.md` |
 
 The unsuffixed recipes target Bun; the `-npm` variants target npm and pnpm. `eslint-prettier` is the npm/pnpm alternative to `biome-assist-npm` for a project that already runs ESLint + Prettier.
+
+Four recipes the best-practices triage routes are not built yet — `jest-coverage`, `stryker-mutation-jest`, `a11y` and `bundle-budget` — because no fixture can prove them: none declares `jest`, none declares a UI framework, and none produces a bundle to measure. The unblocking step is a fixture, not a new seam; [`research/best-practices-coverage.md`](research/best-practices-coverage.md) records the routing.
 
 ## Update and drift
 
