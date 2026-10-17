@@ -14,7 +14,7 @@ unattended and is offered only to an editor. A rule that ships a fix is nearly f
 because the remedy is mechanical and the gate is a zero-diff check; a rule that ships only a
 suggestion demands a human edit per report.
 
-So run the fixer as part of the apply, not as a report. The safe tier is the one to run unattended;
+So run the fixer, not only the reporter. The safe tier is the one to run unattended;
 the suggestion tier changes program behaviour and belongs behind a deliberate decision; the
 dangerous tier belongs behind a review. Which tier a fix sits in is a property of the rule, not of
 the project — a fix that only rewrites syntax can run on every commit, while a fix that rewrites a

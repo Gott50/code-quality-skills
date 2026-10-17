@@ -1,6 +1,7 @@
 {
   "scripts": {
-    "lint": "bun scripts/lint-gate.mjs"
+    "lint": "bun scripts/lint-gate.mjs",
+    "lint:fix": "oxlint --fix ."
   },
   "devDependencies": {
     "@oxlint/plugins": "^1.87.0",
