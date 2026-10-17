@@ -1,0 +1,39 @@
+name: dep-audit
+
+# Runs the advisory ratchet on every PR and every push to main. The gate is the
+# same script the repo runs locally, so the count it compares is the count the
+# committed baseline records — a new advisory fails the PR that introduces it.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dep-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: checkout
+        uses: actions/checkout@v7
+
+      # The gate script is plain ESM over node builtins, so the job needs node
+      # and nothing else — no install step, and one file serves Bun, npm and
+      # pnpm alike.
+      - name: setup-node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # The gate fetches the pinned osv-scanner build itself (sha256-verified)
+      # and fails loudly when the advisory database is unreachable, so a green
+      # run always means the database was read.
+      - name: dep-audit
+        run: node scripts/dep-audit-gate.mjs
