@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // check-library.mjs — validate the recipe library at the repo root.
 //
-// Seven independent checks; the script exits non-zero if any fails:
+// Eight independent checks; the script exits non-zero if any fails:
 //
 //   1. index freshness — regenerate library/library.json exactly as
 //      scripts/build-library.mjs does and compare bytes. The generator is
@@ -40,6 +40,11 @@
 //      (`.husky/*`) is rendered and parsed with `sh -n`, because the consumer
 //      executes the rendered file on every commit and a syntax error there is a
 //      broken commit, not a cosmetic one.
+//   8. research note convention — every research/*.md except README.md and
+//      TEMPLATE.md carries the four frontmatter keys (topic/question/verdict/
+//      sources), `topic` equals the filename stem, `sources` is a non-empty
+//      list, and a `## Routing` section closes the note. The convention is
+//      documented in research/README.md and scaffolded by research/TEMPLATE.md.
 //
 // Zero dependencies beyond the shared frontmatter reader and the repo's own
 // biome devDependency; the lint check installs the oxlint devDependencies the
@@ -86,6 +91,10 @@ const SKILL_SCRIPT_DIRS = readdirSync(SKILLS_DIR, { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
   .map((entry) => join(SKILLS_DIR, entry.name, "scripts"))
   .filter((dir) => existsSync(dir));
+
+// The repo-root research notes. The convention is documented in research/README.md and scaffolded
+// by research/TEMPLATE.md; check 8 enforces it.
+const RESEARCH_DIR = join(REPO_ROOT, "research");
 
 // The six gates a `floor` may name (RECIPE-CONTRACT.md → `floor`).
 const FLOORS = new Set([
@@ -636,6 +645,70 @@ function checkShellTemplates() {
   return { checked: checked.length };
 }
 
+// --- 8. research note convention --------------------------------------------
+
+// The research-note convention (research/README.md): four frontmatter keys, `topic` equal to the
+// filename stem, a non-empty `sources` list, and a closing `## Routing` section. README.md and
+// TEMPLATE.md are the convention's own prose and scaffold, not notes, so they are skipped.
+const RESEARCH_SKIP = new Set(["README.md", "TEMPLATE.md"]);
+
+// The convention writes `question` and `verdict` as folded scalars (`>-`), which the shared
+// reader's contract forbids ("no multi-line strings"). Collapse each block scalar to a single-line
+// scalar so the shared reader can parse the block; the check needs the keys, `topic`, and
+// `sources`, not the folded prose.
+function collapseBlockScalars(block) {
+  const lines = block.split("\n");
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^([A-Za-z_][\w-]*):\s*[>|][+-]?\s*$/.exec(lines[i]);
+    if (!m) {
+      out.push(lines[i]);
+      continue;
+    }
+    out.push(`${m[1]}: ""`);
+    while (i + 1 < lines.length && (lines[i + 1].trim() === "" || /^\s/.test(lines[i + 1]))) i++;
+  }
+  return out.join("\n");
+}
+
+function checkResearch() {
+  if (!existsSync(RESEARCH_DIR)) return 0;
+  const files = readdirSync(RESEARCH_DIR)
+    .filter((f) => f.endsWith(".md") && !RESEARCH_SKIP.has(f))
+    .sort();
+  for (const file of files) {
+    const stem = basename(file, ".md");
+    const label = `research/${file}`;
+    const text = readFileSync(join(RESEARCH_DIR, file), "utf8");
+    const block = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
+    if (!block) {
+      fail(`${label}: no --- frontmatter block`);
+      continue;
+    }
+    let fm;
+    try {
+      fm = parseFrontmatter(`---\n${collapseBlockScalars(block[1])}\n---\n`, label);
+    } catch (err) {
+      fail(`${label}: ${err.message}`);
+      continue;
+    }
+    for (const key of ["topic", "question", "verdict", "sources"]) {
+      if (fm[key] === undefined) fail(`${label}: frontmatter is missing "${key}"`);
+    }
+    if (fm.topic !== stem) {
+      fail(`${label}: topic "${fm.topic}" must equal the filename stem "${stem}"`);
+    }
+    if (!Array.isArray(fm.sources) || fm.sources.length === 0) {
+      fail(`${label}: sources must be a non-empty list`);
+    }
+    const headings = text.split(/\r?\n/).filter((line) => /^## /.test(line));
+    if (headings[headings.length - 1] !== "## Routing") {
+      fail(`${label}: the note must close with a "## Routing" section`);
+    }
+  }
+  return files.length;
+}
+
 // --- run --------------------------------------------------------------------
 
 checkIndex();
@@ -645,6 +718,7 @@ const { checked, skipped } = checkTemplates();
 const lint = checkTemplateLint();
 const scripts = checkSkillScripts();
 const shell = checkShellTemplates();
+const research = checkResearch();
 
 if (errors.length > 0) {
   process.stderr.write(`check-library: FAILED (${errors.length})\n`);
@@ -653,5 +727,5 @@ if (errors.length > 0) {
 }
 
 process.stdout.write(
-  `check-library: ok — index fresh, ${recipeIds.length} recipes valid, ${practiceCount} practices valid, ${checked} templates formatted (${skipped.length} skipped), ${lint.checked} templates linted, ${scripts.checked} skill scripts formatted (${scripts.skipped.length} skipped), ${shell.checked} shell templates parsed\n`,
+  `check-library: ok — index fresh, ${recipeIds.length} recipes valid, ${practiceCount} practices valid, ${checked} templates formatted (${skipped.length} skipped), ${lint.checked} templates linted, ${scripts.checked} skill scripts formatted (${scripts.skipped.length} skipped), ${shell.checked} shell templates parsed, ${research} research notes valid\n`,
 );

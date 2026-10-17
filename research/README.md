@@ -5,7 +5,8 @@ what one best-practice question resolved to: the question, the verdict, the
 primary sources, and the findings that back the verdict. The eight existing
 notes are the worked examples — `testing.md`, `coverage.md`, `mutation.md`,
 `lint-typecheck.md`, `dead-code-complexity.md`, `ci-hooks.md`, `formatting.md`,
-`agent-conventions.md`.
+`agent-conventions.md`. `TEMPLATE.md` is the scaffold to copy for a new note;
+`scripts/check-library.mjs` (check 8) enforces the convention below.
 
 ## Naming
 
