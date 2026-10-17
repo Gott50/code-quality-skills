@@ -498,6 +498,66 @@
       ]
     },
     {
+      "id": "dep-audit",
+      "title": "Dependency audit — the advisory ratchet, and the Renovate config",
+      "purpose": "Fail a change that adds a dependency advisory, with a pinned lockfile scanner and a committed count floor.",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "conflicts": {},
+      "cost": "fast",
+      "priority": 15,
+      "files": [
+        {
+          "path": "osv-scanner.toml",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/dep-audit/osv-scanner.toml"
+        },
+        {
+          "path": "scripts/dep-audit-gate.mjs",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/dep-audit/scripts/dep-audit-gate.mjs"
+        },
+        {
+          "path": "renovate.json",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/dep-audit/renovate.json"
+        },
+        {
+          "path": ".github/workflows/dep-audit.yml",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/dep-audit/dep-audit.yml"
+        }
+      ],
+      "commands": [],
+      "gates": [
+        {
+          "id": "dep-audit",
+          "run": "node scripts/dep-audit-gate.mjs",
+          "description": "osv-scanner over the lockfiles — the advisory count must not exceed the floor recorded in .code-quality-baseline.json (0 with no baseline)",
+          "floor": "dep-audit"
+        }
+      ],
+      "verify": [
+        {
+          "run": "node scripts/dep-audit-gate.mjs --check",
+          "scope": "root"
+        },
+        {
+          "run": "bun -e \"const y = Bun.YAML.parse(await Bun.file('.github/workflows/dep-audit.yml').text()); const j = y.jobs['dep-audit']; if (Object.keys(y.jobs).join() !== 'dep-audit') process.exit(1); if (!j) process.exit(1); if (j.steps.map((s) => s.name).join() !== 'checkout,setup-node,dep-audit') process.exit(1); if (j.steps[0].uses !== 'actions/checkout@v7') process.exit(1); if (j.steps[1].uses !== 'actions/setup-node@v7' || String(j.steps[1].with['node-version']) !== '22') process.exit(1); if (j.steps[2].run !== 'node scripts/dep-audit-gate.mjs') process.exit(1)\"",
+          "scope": "root"
+        }
+      ]
+    },
+    {
       "id": "eslint-prettier",
       "title": "ESLint and Prettier as the lint and format gates (npm/pnpm)",
       "purpose": "Wire an existing ESLint + Prettier setup as the lint and format gates, for a project that already runs them.",
