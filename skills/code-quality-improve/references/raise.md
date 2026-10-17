@@ -18,6 +18,16 @@ gates — this skill invokes them, it does not reimplement the merge.
 `<skills root>/<name>/`, so it sits next to this one (`.agents/skills/code-quality-setup/`). The
 ranking prints the resolved command per target.
 
+## The practice behind the gate
+
+The ranking also prints, per target, the practice doc that covers its gate —
+`docs/code-quality/practices/<id>.md`, the path the setup skill's `practice-delivery` recipe writes
+the doc to. The gate names in the table above are the ones the pointer is keyed by: a recipe declares
+a gate when one of its `gates[]` entries names it in `floor`, and a practice covers a gate when its
+`enforcedBy` names such a recipe. Read the practice before raising the floor — it is the researched
+guidance behind the gate, and the raise only records the level the change measured. The full mapping
+is in [scripts/RANK-SCHEMA.md](../scripts/RANK-SCHEMA.md) → The practice behind a gate.
+
 ## The merge
 
 `--raise` **merges** with the recorded baseline; the floor never falls:

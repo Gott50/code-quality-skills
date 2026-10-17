@@ -1,11 +1,14 @@
 # `rank.mjs` — the ranking view
 
-`node scripts/rank.mjs [projectDir] [--json]` reads the artifacts the gates already produced and
-prints the ranked improvement targets: the coverage gaps, the mutation gaps, lint violations,
-typecheck errors and fallow's dead-code findings folded in as candidates, then fallow's own
-`--targets` ranking. Zero dependencies, node builtins only, no package manager invoked, **runs no
-gate**: the artifacts must already exist. Exit 0 on a report; exit 1 only when the target is not a
-directory.
+`node scripts/rank.mjs [projectDir] [--library <path>] [--json]` reads the artifacts the gates
+already produced and prints the ranked improvement targets: the coverage gaps, the mutation gaps,
+lint violations, typecheck errors and fallow's dead-code findings folded in as candidates, then
+fallow's own `--targets` ranking. Zero dependencies, node builtins only, no package manager invoked,
+**runs no gate**: the artifacts must already exist. Exit 0 on a report; exit 1 only when the target
+is not a directory.
+
+Each candidate also carries the practice doc that covers its gate, read from the library's
+`practices/` and `recipes/` frontmatter (see The practice behind a gate).
 
 The readers are this skill's own, not an import from the sibling `code-quality-setup` skill: the
 skills CLI copies one skill directory per install, so a relative import across skill directories
@@ -17,6 +20,7 @@ floor merge — the raise step invokes the sibling's `score.mjs --raise` (see Th
 | Option | Effect |
 |---|---|
 | `[projectDir]` | the project to rank (default `.`) |
+| `--library <path>` | the library directory to read `practices/` and `recipes/` from, for the practice pointer. Precedence: `--library`, else `$CODE_QUALITY_LIBRARY`, else the repo-layout default (`library/` two levels up from the skill dir). |
 | `--json` | print the machine-readable report (below) instead of the text report |
 
 ## Sources
@@ -38,6 +42,26 @@ capture command — never a crash. A malformed artifact is a gap too.
 
 bun's lcov is preferred when both coverage artifacts exist. The fallow targets are a captured
 stdout — fallow writes no file of its own — like the score view's captures.
+
+## The practice behind a gate
+
+Each candidate also carries the practice doc that covers its gate, read from the library's
+`practices/` and `recipes/` frontmatter. The library is `--library <path>`, else
+`$CODE_QUALITY_LIBRARY`, else the repo-layout default (`library/` two levels up from the skill dir)
+— the same resolution the setup skill's scripts use. With no library the pointer is omitted and
+nothing crashes; a practice or recipe file whose frontmatter does not parse is skipped, never fatal.
+
+A recipe **declares** a gate when one of its `gates[]` entries names it in `floor`. The six unified
+gates are exactly the `floor` vocabulary (`RECIPE-CONTRACT.md` → "`floor` — the gate's ratchet"), and
+a gate with no `floor` is a wall at a fixed level, not one of the ranked gates — so `eslint-prettier`'s
+`lint` gate, which declares no floor because the unified `lint` count is oxlint's diagnostic count,
+does not cover the `lint` candidate. A practice **covers** a gate when its `enforcedBy` names such a
+recipe. Several practices can cover one gate — a dozen ride the oxlint recipes' `lint` gate — so a
+candidate carries a sorted list.
+
+The pointer is the path the setup skill's `practice-delivery` recipe writes the doc to,
+`docs/code-quality/practices/<id>.md`, relative to the project root. The ranking prints it; it never
+opens the delivered doc and never checks the project has one.
 
 ## The ranking
 
@@ -123,20 +147,31 @@ Improvement targets — /tmp/proj
   dead-code       reports/fallow-dead-code.json — 1 issue(s) in 1 file(s)   floor 0   ⚠ above floor
 
   1. [coverage] src/user0.ts   functions 100.0% (1/1)  lines 50.0% (1/2)   uncovered 1   effort —  confidence —   ⚠ below floor
+     practice: docs/code-quality/practices/coverage-ignore-list.md
+     practice: docs/code-quality/practices/hook-cost-split.md
+     practice: docs/code-quality/practices/never-failing-tests.md
      raise: node .agents/skills/code-quality-setup/scripts/score.mjs . --raise
   2. [mutation] src/gate.ts:30   RuntimeError StringLiteral   effort —  confidence —
+     practice: docs/code-quality/practices/coverage-is-not-verification.md
      raise: node .agents/skills/code-quality-setup/scripts/score.mjs . --raise
   3. [lint] src/lintme.ts   2 diagnostic(s)   effort —  confidence —
+     practice: docs/code-quality/practices/any-policy.md
      raise: node .agents/skills/code-quality-setup/scripts/score.mjs . --raise
   4. [dead-code] src/legacy.ts   unused_exports — oldHelper   effort —  confidence —   ⚠ above floor
+     practice: docs/code-quality/practices/baseline-vs-fix.md
      raise: bun run fallow:raise
   5. [fallow] src/core.ts   priority 60  efficiency 20  effort high  confidence medium   fallow #1
      split_high_impact — Split high-impact file (5 LOC), 12 dependents amplify every change
      factors: complexity_density 2.8 > 0.3; fan_in 12 > 12; dead_code_ratio 0.75 > 0.5
      evidence: direct_callers 5
      actions: apply-refactoring; suppress-line
+     practice: docs/code-quality/practices/baseline-vs-fix.md
      raise: bun run fallow:raise
 ```
+
+A candidate prints one `practice:` line per covering practice, before its `raise:` line — the
+coverage target above shows all three of its gate's, the others one each for brevity. A candidate
+whose gate no practice covers prints none, and with no library resolved no candidate prints any.
 
 `— absent` marks a source whose artifact is missing; `— unreadable: …` marks a malformed one. When
 no target is found the report says `no targets — nothing to rank.` and the **gaps** section lists
@@ -188,6 +223,11 @@ indent, a trailing newline):
       "belowFloor": true,
       "effort": null,
       "confidence": null,
+      "practices": [
+        "docs/code-quality/practices/coverage-ignore-list.md",
+        "docs/code-quality/practices/hook-cost-split.md",
+        "docs/code-quality/practices/never-failing-tests.md"
+      ],
       "raise": "node .agents/skills/code-quality-setup/scripts/score.mjs . --raise"
     },
     {
@@ -202,9 +242,10 @@ indent, a trailing newline):
       "belowFloor": false,
       "effort": null,
       "confidence": null,
+      "practices": ["docs/code-quality/practices/coverage-is-not-verification.md"],
       "raise": "node .agents/skills/code-quality-setup/scripts/score.mjs . --raise"
     },
-    { "rank": 3, "source": "lint", "path": "src/lintme.ts", "gate": "lint", "detail": "2 diagnostic(s)", "count": 2, "effort": null, "confidence": null, "raise": "…" },
+    { "rank": 3, "source": "lint", "path": "src/lintme.ts", "gate": "lint", "detail": "2 diagnostic(s)", "count": 2, "effort": null, "confidence": null, "practices": ["docs/code-quality/practices/any-policy.md"], "raise": "…" },
     {
       "rank": 4,
       "source": "dead-code",
@@ -215,6 +256,7 @@ indent, a trailing newline):
       "aboveFloor": true,
       "effort": null,
       "confidence": null,
+      "practices": ["docs/code-quality/practices/baseline-vs-fix.md"],
       "raise": "bun run fallow:raise"
     },
     {
@@ -232,6 +274,7 @@ indent, a trailing newline):
       "factors": [{ "metric": "fan_in", "value": 12, "threshold": 12, "detail": "12 files depend on this" }],
       "evidence": { "direct_callers": [] },
       "actions": [{ "type": "apply-refactoring", "auto_fixable": false, "description": "…" }],
+      "practices": ["docs/code-quality/practices/baseline-vs-fix.md"],
       "raise": "bun run fallow:raise"
     }
   ]
@@ -240,12 +283,13 @@ indent, a trailing newline):
 
 A fallow target's `gate` is `fallow-dead-code` when its `category` is `remove_dead_code`, else
 `fallow-health`. Every target carries `effort` and `confidence` — `null` when the source has none
-(the folded-in candidates) — and the array is in the ranking order above. A fallow target also
-carries `fallowRank`, its 1-based position in fallow's own list. A coverage target carries `metrics`
-(per metric `{ hit, found }`), `uncovered` and `belowFloor`; a mutation target carries `line`,
-`status`, `mutatorName` and `belowFloor`; a lint or typecheck target carries `count`; a dead-code
-target carries `category` (the artifact's category key) and `aboveFloor` (its category is over its
-floor).
+(the folded-in candidates) — and the array is in the ranking order above. Every target also carries
+`practices`: the sorted pointer paths of the practice docs that cover its gate, `[]` when no library
+is resolved or no practice covers the gate. A fallow target also carries `fallowRank`, its 1-based
+position in fallow's own list. A coverage target carries `metrics` (per metric `{ hit, found }`),
+`uncovered` and `belowFloor`; a mutation target carries `line`, `status`, `mutatorName` and
+`belowFloor`; a lint or typecheck target carries `count`; a dead-code target carries `category` (the
+artifact's category key) and `aboveFloor` (its category is over its floor).
 
 ## Exit codes
 
@@ -258,4 +302,6 @@ floor).
 
 - No gate is run, no package manager, no network. The artifacts must already exist.
 - No floor is written — the raise step invokes the sibling `score.mjs --raise`.
+- No practice doc is read or written — the pointer is the path the setup skill's `practice-delivery`
+  recipe delivers to. Only the library's frontmatter is read.
 - No change is made — the skill makes the change, on approval.

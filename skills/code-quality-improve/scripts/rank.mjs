@@ -18,12 +18,16 @@
 // would not resolve in a consumer's project. The one thing this skill does NOT reimplement is the
 // floor merge — the raise step invokes the sibling's `score.mjs --raise` (see `raiseCommand`).
 //
-// Usage: node scripts/rank.mjs [projectDir] [--json]
+// Each candidate also carries the practice doc that covers its gate, read from the library's
+// `practices/` and `recipes/` frontmatter (`--library`, else $CODE_QUALITY_LIBRARY, else the
+// repo-layout default). With no library the pointer is omitted, never a crash.
+//
+// Usage: node scripts/rank.mjs [projectDir] [--library <path>] [--json]
 //
 // The output shape is specified in RANK-SCHEMA.md next to this file.
 
-import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const SCHEMA_VERSION = 2;
@@ -74,6 +78,13 @@ const SIBLING_SCORE = resolve(
   "scripts",
   "score.mjs",
 );
+
+// This skill's own directory, and the library directory the practice pointers are read from:
+// `--library <path>`, else $CODE_QUALITY_LIBRARY, else the repo-layout default (`library/` two
+// levels up from the skill dir) — the same resolution the setup skill's scripts use. Resolved to an
+// absolute path so a relative flag reads from the cwd.
+const SKILL_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const DEFAULT_LIBRARY_DIR = resolve(SKILL_DIR, "..", "..", "library");
 
 // ---------------------------------------------------------------------------
 // Artifact readers
@@ -322,6 +333,197 @@ function deadCodeFloorTotal(floor) {
 }
 
 // ---------------------------------------------------------------------------
+// The library — the practice behind a gate
+// ---------------------------------------------------------------------------
+
+// The path the setup skill's `practice-delivery` recipe writes a practice doc to, relative to the
+// project root. A candidate's pointer is this path with the practice's id.
+const PRACTICE_DOC_DIR = "docs/code-quality/practices";
+
+// The library directory to read practices and recipes from: `--library <path>`, else
+// $CODE_QUALITY_LIBRARY, else the repo-layout default. Resolved to an absolute path so a relative
+// flag reads from the cwd — the same resolution the setup skill's scripts use.
+function resolveLibraryDir(flag) {
+  return resolve(flag ?? process.env.CODE_QUALITY_LIBRARY ?? DEFAULT_LIBRARY_DIR);
+}
+
+// The strict-subset frontmatter reader (RECIPE-CONTRACT.md → "Reader rules"): scalars, block maps,
+// block sequences of maps, and flow lists/maps. The same subset the setup skill's `frontmatter.mjs`
+// parses, so a library the detector accepts is read here too. It is this skill's own copy, not an
+// import from the sibling — the skills CLI copies one skill directory per install, so a relative
+// import across skill directories would not resolve in a consumer's project (the same reason the
+// artifact readers above are this skill's own). It is a reader for that subset, not a YAML parser.
+
+// Flow-style values are JSON with the quotes left off. Quote the bare tokens, then JSON.parse.
+function parseFlow(src) {
+  const quoted = src
+    .replace(/([{,]\s*)([A-Za-z_][\w.-]*)\s*:/g, '$1"$2":')
+    .replace(/:\s*([^"'\s,[\]{}][^,}\]]*?)\s*(?=[,}])/g, (_m, w) => `: ${JSON.stringify(w)}`)
+    .replace(
+      /([[,]\s*)([^"'\s,[\]{}][^,}\]]*?)\s*(?=[,\]])/g,
+      (_m, p, w) => `${p}${JSON.stringify(w)}`,
+    );
+  try {
+    return JSON.parse(quoted);
+  } catch (err) {
+    throw new Error(`frontmatter: unreadable flow value ${JSON.stringify(src)} — ${err.message}`);
+  }
+}
+
+function parseScalar(raw) {
+  const s = raw.trim();
+  if (s === "") return null;
+  if (s === "true") return true;
+  if (s === "false") return false;
+  if (s === "null" || s === "~") return null;
+  if (/^-?\d+$/.test(s)) return Number(s);
+  if (s.startsWith("[") || s.startsWith("{")) return parseFlow(s);
+  return s;
+}
+
+function parseFrontmatter(text, label) {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
+  if (!m) throw new Error(`${label}: no --- frontmatter block`);
+  const lines = m[1].split(/\r?\n/);
+  const indentOf = (l) => l.match(/^ */)[0].length;
+  let i = 0;
+
+  const skipBlank = () => {
+    while (i < lines.length && lines[i].trim() === "") i++;
+  };
+
+  function parseNode(minIndent) {
+    skipBlank();
+    if (i >= lines.length) return null;
+    const ind = indentOf(lines[i]);
+    if (ind < minIndent) return null;
+    return /^\s*-\s/.test(lines[i]) ? parseSeq(ind) : parseMap(ind);
+  }
+
+  function parseSeq(indent) {
+    const out = [];
+    while (i < lines.length) {
+      const line = lines[i];
+      if (line.trim() === "") {
+        i++;
+        continue;
+      }
+      if (indentOf(line) !== indent || !/^\s*-\s/.test(line)) break;
+      const rest = line.slice(indent + 1).trim();
+      if (rest === "") {
+        i++;
+        out.push(parseNode(indent + 1));
+        continue;
+      }
+      if (/^[A-Za-z_][\w-]*\s*:/.test(rest)) {
+        // "- key: value" — the map's own lines sit two columns deeper.
+        lines[i] = " ".repeat(indent + 2) + rest;
+        out.push(parseMap(indent + 2));
+        continue;
+      }
+      out.push(parseScalar(rest));
+      i++;
+    }
+    return out;
+  }
+
+  function parseMap(indent) {
+    const out = {};
+    while (i < lines.length) {
+      const line = lines[i];
+      if (line.trim() === "") {
+        i++;
+        continue;
+      }
+      if (indentOf(line) !== indent) break;
+      const mm = /^([A-Za-z_][\w-]*)\s*:\s*(.*)$/.exec(line.trim());
+      if (!mm) throw new Error(`${label}: line outside the strict subset: ${JSON.stringify(line)}`);
+      const [, key, rawVal] = mm;
+      if (rawVal.trim() === "") {
+        i++;
+        out[key] = parseNode(indent + 1);
+      } else {
+        out[key] = parseScalar(rawVal);
+        i++;
+      }
+    }
+    return out;
+  }
+
+  const root = parseMap(0);
+  skipBlank();
+  if (i < lines.length) {
+    throw new Error(`${label}: line outside the strict subset: ${JSON.stringify(lines[i])}`);
+  }
+  return root;
+}
+
+// The frontmatter of every `<dir>/*.md`, as `{ fm, id }`. A missing directory is an empty list; a
+// file whose frontmatter does not parse is skipped, never fatal — the pointer is a convenience, and
+// a malformed library must not crash the ranking. The id is the frontmatter's, falling back to the
+// filename stem (the contract requires the two to be equal).
+function readFrontmatterDir(dir) {
+  if (!isDir(dir)) return [];
+  const out = [];
+  const files = readdirSync(dir)
+    .filter((f) => f.endsWith(".md"))
+    .sort();
+  for (const file of files) {
+    const stem = basename(file, ".md");
+    const label = `${basename(dir)}/${file}`;
+    try {
+      const fm = parseFrontmatter(readFileSync(join(dir, file), "utf8"), label);
+      out.push({ fm, id: typeof fm.id === "string" && fm.id ? fm.id : stem });
+    } catch {
+      // A malformed file is skipped: the ranking still prints, without that pointer.
+    }
+  }
+  return out;
+}
+
+// The library's practices and recipes, frontmatter only. `null` when the library directory is
+// absent — the pointer is then omitted, never a crash.
+function loadLibrary(dir) {
+  if (!isDir(dir)) return null;
+  return {
+    practices: readFrontmatterDir(join(dir, "practices")),
+    recipes: readFrontmatterDir(join(dir, "recipes")),
+  };
+}
+
+// gate → the practice doc pointers that cover it. A recipe declares a gate when one of its
+// `gates[]` entries names it in `floor`: the six unified gates are exactly the `floor` vocabulary
+// (RECIPE-CONTRACT.md → "`floor` — the gate's ratchet"), and a gate with no `floor` is a wall at a
+// fixed level, not one of the ranked gates. A practice covers a gate when its `enforcedBy` names
+// such a recipe. Several practices can cover one gate — a dozen ride the oxlint recipes' `lint`
+// gate — so the value is a sorted list of pointers.
+function practicePointers(library) {
+  const byGate = new Map();
+  if (!library) return byGate;
+  const recipesByGate = new Map();
+  for (const { fm, id } of library.recipes) {
+    for (const gate of Array.isArray(fm.gates) ? fm.gates : []) {
+      const floor = gate?.floor;
+      if (typeof floor !== "string") continue;
+      if (!recipesByGate.has(floor)) recipesByGate.set(floor, new Set());
+      recipesByGate.get(floor).add(id);
+    }
+  }
+  for (const { fm, id } of library.practices) {
+    for (const recipe of Array.isArray(fm.enforcedBy) ? fm.enforcedBy : []) {
+      for (const [gate, recipes] of recipesByGate) {
+        if (!recipes.has(recipe)) continue;
+        if (!byGate.has(gate)) byGate.set(gate, new Set());
+        byGate.get(gate).add(`${PRACTICE_DOC_DIR}/${id}.md`);
+      }
+    }
+  }
+  const sorted = new Map();
+  for (const [gate, pointers] of byGate) sorted.set(gate, [...pointers].sort());
+  return sorted;
+}
+
+// ---------------------------------------------------------------------------
 // Collection
 // ---------------------------------------------------------------------------
 
@@ -361,8 +563,9 @@ function compareTargets(a, b) {
 }
 
 // Read every artifact that exists and build the ranked target list. A missing artifact is a gap
-// (with its capture command), never a crash; a malformed one is a gap too.
-export function collect(root, bases) {
+// (with its capture command), never a crash; a malformed one is a gap too. `library` is the loaded
+// library (or `null`); it only adds each target's practice pointers.
+export function collect(root, bases, library = null) {
   const sources = {};
   const gaps = [];
   const targets = [];
@@ -748,9 +951,12 @@ export function collect(root, bases) {
 
   // The rank: effort tier first (cheap first), then the source's own order — see compareTargets.
   targets.sort(compareTargets);
+  const pointers = practicePointers(library);
   targets.forEach((t, i) => {
     t.rank = i + 1;
     t.raise = raiseCommand(t.gate, root);
+    // The practice docs that cover this candidate's gate — `[]` with no library, or no match.
+    t.practices = pointers.get(t.gate) ?? [];
   });
 
   return { gaps, sources, targets };
@@ -901,6 +1107,7 @@ function targetLines(t) {
   } else {
     lines.push(`  ${t.rank}. [${t.source}] ${t.path}   ${t.detail}   ${effortConfidence(t)}`);
   }
+  for (const p of t.practices ?? []) lines.push(`     practice: ${p}`);
   lines.push(`     raise: ${t.raise}`);
   return lines;
 }
@@ -996,15 +1203,24 @@ function canonicalJson(value) {
 function main() {
   const args = process.argv.slice(2);
   const json = args.includes("--json");
-  const target = args.find((a) => !a.startsWith("--")) ?? ".";
+  const libIdx = args.indexOf("--library");
+  let libraryFlag = null;
+  if (libIdx !== -1) {
+    libraryFlag = args[libIdx + 1];
+    if (libraryFlag === undefined) throw new Error("--library needs a path");
+  }
+  // Drop `--library` and its value so the value is never mistaken for the project dir.
+  const rest = libIdx === -1 ? args : args.filter((_, i) => i !== libIdx && i !== libIdx + 1);
+  const target = rest.find((a) => !a.startsWith("--")) ?? ".";
   const root = resolve(target);
   if (!isDir(root)) {
     process.stderr.write(`rank: not a directory: ${target}\n`);
     process.exit(1);
   }
 
+  const library = loadLibrary(resolveLibraryDir(libraryFlag));
   const bases = [root, safeRealpath(root)];
-  const { sources, gaps, targets } = collect(root, bases);
+  const { sources, gaps, targets } = collect(root, bases, library);
   const report = { gaps, root, schemaVersion: SCHEMA_VERSION, sources, targets };
 
   process.stdout.write(json ? canonicalJson(report) : `${renderText(report)}\n`);
