@@ -498,6 +498,61 @@
       ]
     },
     {
+      "id": "dep-graph",
+      "title": "Dependency graph — no cycles, no deep imports",
+      "purpose": "Fail on a dependency cycle and on a relative import into another workspace member's internals, with the repo's existing violations recorded in the tool's own baseline.",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "conflicts": {},
+      "cost": "fast",
+      "priority": 15,
+      "files": [
+        {
+          "path": ".dependency-cruiser.cjs",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/dep-graph/.dependency-cruiser.cjs"
+        },
+        {
+          "path": "scripts/dep-graph.sh",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/dep-graph/scripts/dep-graph.sh"
+        },
+        {
+          "path": "package.json",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/dep-graph/package.json"
+        }
+      ],
+      "commands": [
+        {
+          "run": "sh -c 'if test -f bun.lock -o -f bun.lockb; then bun install; elif test -f pnpm-lock.yaml; then pnpm install --no-frozen-lockfile; else npm install; fi'",
+          "scope": "root",
+          "showInPlan": false
+        }
+      ],
+      "gates": [
+        {
+          "id": "dep-graph",
+          "run": "sh scripts/dep-graph.sh",
+          "description": "dependency-cruiser over the workspace — a cycle, or a relative import into another member's src/, fails; the violations recorded in .dependency-cruiser-known-violations.json pass"
+        }
+      ],
+      "verify": [
+        {
+          "gate": "dep-graph",
+          "scope": "root"
+        }
+      ]
+    },
+    {
       "id": "eslint-prettier",
       "title": "ESLint and Prettier as the lint and format gates (npm/pnpm)",
       "purpose": "Wire an existing ESLint + Prettier setup as the lint and format gates, for a project that already runs them.",
@@ -734,6 +789,65 @@
         },
         {
           "gate": "fallow-dead-code-staleness",
+          "scope": "root"
+        }
+      ]
+    },
+    {
+      "id": "license-check",
+      "title": "License allowlist — a wall, plus an SBOM in CI",
+      "purpose": "Fail on a dependency whose license is outside the allowlist, and publish the repo's dependency inventory as an SPDX build artifact.",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "conflicts": {},
+      "cost": "fast",
+      "priority": 15,
+      "files": [
+        {
+          "path": "scripts/license-check.sh",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/license-check/scripts/license-check.sh"
+        },
+        {
+          "path": "package.json",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/license-check/package.json"
+        },
+        {
+          "path": ".github/workflows/license-check.yml",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/license-check/license-check.yml"
+        }
+      ],
+      "commands": [
+        {
+          "run": "sh -c 'if test -f bun.lock -o -f bun.lockb; then bun install; elif test -f pnpm-lock.yaml; then pnpm install --no-frozen-lockfile; else npm install; fi'",
+          "scope": "root",
+          "showInPlan": false
+        }
+      ],
+      "gates": [
+        {
+          "id": "license-check",
+          "run": "sh scripts/license-check.sh",
+          "description": "every installed dependency's license must be on the allowlist in scripts/license-check.sh — a wall, with no floor"
+        }
+      ],
+      "verify": [
+        {
+          "gate": "license-check",
+          "scope": "root"
+        },
+        {
+          "run": "bun -e \"const y = Bun.YAML.parse(await Bun.file('.github/workflows/license-check.yml').text()); if (Object.keys(y.jobs).join() !== 'license-check') process.exit(1); const j = y.jobs['license-check']; if (j.steps.map((s) => s.name).join() !== 'checkout,setup-node,setup-bun,install,license-check,sbom') process.exit(1); if (j.steps[0].uses !== 'actions/checkout@v7') process.exit(1); if (j.steps[1].uses !== 'actions/setup-node@v7') process.exit(1); if (j.steps[2].uses !== 'oven-sh/setup-bun@v2') process.exit(1); if (!j.steps[4].run.includes('sh scripts/license-check.sh')) process.exit(1); if (j.steps[5].uses !== 'anchore/sbom-action@v0') process.exit(1); if (j.steps[5].with.format !== 'spdx-json') process.exit(1); if (j.steps[5].if !== 'always()') process.exit(1)\"",
           "scope": "root"
         }
       ]
@@ -1555,6 +1669,59 @@
         },
         {
           "run": "bun -e \"const y = Bun.YAML.parse(await Bun.file('.github/workflows/secret-scan.yml').text()); const j = y.jobs['secret-scan']; if (Object.keys(y.jobs).join() !== 'secret-scan') process.exit(1); if (!j) process.exit(1); if (j.steps.map((s) => s.name).join() !== 'checkout,gitleaks') process.exit(1); if (j.steps[0].uses !== 'actions/checkout@v7' || Number(j.steps[0].with['fetch-depth']) !== 0) process.exit(1); if (j.steps[1].uses !== 'gitleaks/gitleaks-action@v3' || String(j.steps[1].env.GITLEAKS_VERSION) !== '8.30.1') process.exit(1)\"",
+          "scope": "root"
+        }
+      ]
+    },
+    {
+      "id": "semgrep",
+      "title": "Semgrep — pattern-level security findings, in CI and on demand",
+      "purpose": "Fail on injection and unsafe-API patterns with a vendored semgrep ruleset, in its own CI workflow and through a launcher that needs no project install.",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "conflicts": {},
+      "cost": "fast",
+      "priority": 15,
+      "files": [
+        {
+          "path": ".semgrep/rules.yml",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/semgrep/rules.yml"
+        },
+        {
+          "path": "scripts/semgrep.sh",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/semgrep/scripts/semgrep.sh"
+        },
+        {
+          "path": ".github/workflows/semgrep.yml",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/semgrep/semgrep.yml"
+        }
+      ],
+      "commands": [],
+      "gates": [
+        {
+          "id": "semgrep",
+          "run": "sh scripts/semgrep.sh",
+          "description": "semgrep over the repo with the vendored ruleset — injection and unsafe APIs; credential detection belongs to the secret-scan gate"
+        }
+      ],
+      "verify": [
+        {
+          "run": "bun -e \"const y = Bun.YAML.parse(await Bun.file('.semgrep/rules.yml').text()); const ids = y.rules.map((r) => r.id).join(); if (ids !== 'no-eval,no-shell-string-in-child-process,no-sql-string-interpolation,no-unsafe-html-assignment,no-weak-hash,no-disabled-tls-verification') process.exit(1); const patterns = JSON.stringify(y.rules.map(({ message, metadata, ...rest }) => rest)); if (/secret|token|api[_-]?key|password|credential|private[_-]?key|entropy/i.test(patterns)) process.exit(1)\"",
+          "scope": "root"
+        },
+        {
+          "run": "bun -e \"const y = Bun.YAML.parse(await Bun.file('.github/workflows/semgrep.yml').text()); if (Object.keys(y.jobs).join() !== 'semgrep') process.exit(1); const j = y.jobs.semgrep; if (j.steps.map((s) => s.name).join() !== 'checkout,semgrep') process.exit(1); if (j.steps[0].uses !== 'actions/checkout@v7') process.exit(1); if (j.container.image !== 'semgrep/semgrep:1.181.0') process.exit(1); if (!j.steps[1].run.includes('--config .semgrep/rules.yml') || !j.steps[1].run.includes('--error')) process.exit(1)\"",
           "scope": "root"
         }
       ]

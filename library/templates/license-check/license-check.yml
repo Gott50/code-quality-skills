@@ -1,0 +1,57 @@
+name: license-check
+
+# The license allowlist wall, plus the repo's dependency inventory as a build
+# artifact. The wall is the same script the local gate runs; the SBOM is the
+# inventory a consumer of the repo can read without cloning it.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  license-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: checkout
+        uses: actions/checkout@v7
+
+      - name: setup-node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # The recipe is package-manager-agnostic, so the job installs with the
+      # manager the lockfile names — the same evidence the detector uses. Bun is
+      # set up unconditionally because the runner does not carry it; pnpm comes
+      # from corepack, which node ships.
+      - name: setup-bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: install
+        run: sh -c 'if test -f bun.lock -o -f bun.lockb; then bun install --frozen-lockfile; elif test -f pnpm-lock.yaml; then corepack enable && pnpm install --frozen-lockfile; else npm ci; fi'
+
+      # The wall: a dependency whose license is outside the allowlist fails the
+      # job. The allowlist lives in scripts/license-check.sh.
+      - name: license-check
+        run: sh scripts/license-check.sh
+
+      # The inventory, not a gate: `if: always()` keeps the SBOM a build
+      # artifact even when the wall above fails, because the inventory is what
+      # you need in order to fix the failure. Syft reads the lockfile and the
+      # installed tree, so it needs no extra install step.
+      - name: sbom
+        if: always()
+        uses: anchore/sbom-action@v0
+        with:
+          format: spdx-json
+          output-file: sbom.spdx.json
+          artifact-name: sbom.spdx.json

@@ -1,0 +1,122 @@
+# semgrep — the pattern-level security ruleset the `semgrep` recipe installs.
+#
+# Scope: injection and unsafe APIs. Credential detection is deliberately NOT
+# here — the `secret-scan` recipe owns it (gitleaks over the staged diff and the
+# history), and a finding that fails two gates costs the second one its
+# authority. No rule below matches a credential, a token, a key or a password.
+#
+# The ruleset is vendored rather than fetched from the semgrep registry
+# (`p/security-audit`, `--config auto`): a registry pack is resolved at scan
+# time, so the gate would not be reproducible, would not run offline, and the
+# "no credential rule" property would not be inspectable in the repo.
+rules:
+  - id: no-eval
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      eval() and new Function() execute a string as code. Use a parser, a lookup
+      table or a switch instead; if the string is attacker-influenced this is
+      remote code execution.
+    metadata:
+      category: security
+      cwe: "CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code"
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+
+  - id: no-shell-string-in-child-process
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      A shell command built by interpolation or concatenation lets the
+      interpolated value run as a command. Pass an argument array to
+      execFile/spawn instead, or validate the value against an allowlist.
+    metadata:
+      category: security
+      cwe: "CWE-78: Improper Neutralization of Special Elements used in an OS Command"
+    patterns:
+      - pattern: $FUNC($CMD, ...)
+      - metavariable-regex:
+          metavariable: $FUNC
+          regex: ^(child_process\.)?(exec|execSync)$
+      - metavariable-pattern:
+          metavariable: $CMD
+          patterns:
+            - pattern-either:
+                - pattern: '`...${...}...`'
+                - pattern: $A + $B
+
+  - id: no-sql-string-interpolation
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      A SQL statement built by interpolation or concatenation carries the
+      interpolated value into the query. Use a parameterized query — the driver
+      binds the value, the database never parses it as SQL.
+    metadata:
+      category: security
+      cwe: "CWE-89: Improper Neutralization of Special Elements used in an SQL Command"
+    patterns:
+      - pattern: $DB.$METHOD($SQL, ...)
+      - metavariable-regex:
+          metavariable: $METHOD
+          regex: ^(query|execute|raw|prepare)$
+      - metavariable-pattern:
+          metavariable: $SQL
+          patterns:
+            - pattern-either:
+                - pattern: '`...${...}...`'
+                - pattern: $A + $B
+
+  - id: no-unsafe-html-assignment
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      Assigning a non-literal to innerHTML/outerHTML parses it as HTML, so an
+      interpolated value becomes markup and script. Use textContent, or sanitize
+      the value with a maintained sanitizer before it reaches the DOM.
+    metadata:
+      category: security
+      cwe: "CWE-79: Improper Neutralization of Input During Web Page Generation"
+    patterns:
+      - pattern-either:
+          - pattern: $EL.innerHTML = $VALUE
+          - pattern: $EL.outerHTML = $VALUE
+          - pattern: $EL.insertAdjacentHTML($POS, $VALUE)
+      - metavariable-pattern:
+          metavariable: $VALUE
+          patterns:
+            - pattern-either:
+                - pattern: '`...${...}...`'
+                - pattern: $A + $B
+
+  - id: no-weak-hash
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      MD5 and SHA-1 are collision-broken and must not be used for signatures,
+      integrity or password hashing. Use SHA-256 or better, and a password
+      hashing function (scrypt, bcrypt, argon2) for passwords.
+    metadata:
+      category: security
+      cwe: "CWE-327: Use of a Broken or Risky Cryptographic Algorithm"
+    pattern-either:
+      - pattern: $CRYPTO.createHash("md5", ...)
+      - pattern: $CRYPTO.createHash("sha1", ...)
+      - pattern: $CRYPTO.createHash("md5")
+      - pattern: $CRYPTO.createHash("sha1")
+
+  - id: no-disabled-tls-verification
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      Disabling certificate verification turns TLS into an encrypted channel to
+      an unauthenticated peer. Fix the certificate chain instead of turning the
+      check off.
+    metadata:
+      category: security
+      cwe: "CWE-295: Improper Certificate Validation"
+    pattern-either:
+      - pattern: $OPTS.rejectUnauthorized = false
+      - pattern: "{ ..., rejectUnauthorized: false, ... }"
+      - pattern: process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
