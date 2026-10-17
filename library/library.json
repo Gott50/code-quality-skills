@@ -1502,6 +1502,64 @@
       ]
     },
     {
+      "id": "secret-scan",
+      "title": "Credential scan — gitleaks over the staged diff, and in CI",
+      "purpose": "Refuse a commit that stages a credential, and fail a PR that pushes one, with a pinned gitleaks.",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "conflicts": {},
+      "cost": "fast",
+      "priority": 15,
+      "files": [
+        {
+          "path": "scripts/secret-scan.sh",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/secret-scan/scripts/secret-scan.sh"
+        },
+        {
+          "path": ".husky/pre-commit",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/secret-scan/pre-commit.block"
+        },
+        {
+          "path": ".github/workflows/secret-scan.yml",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/secret-scan/secret-scan.yml"
+        }
+      ],
+      "commands": [
+        {
+          "run": "sh scripts/secret-scan.sh --install",
+          "scope": "root"
+        }
+      ],
+      "gates": [
+        {
+          "id": "secret-scan",
+          "run": "sh scripts/secret-scan.sh --staged",
+          "description": "gitleaks over the staged diff — the same scan the pre-commit hook runs"
+        }
+      ],
+      "verify": [
+        {
+          "gate": "secret-scan",
+          "scope": "root"
+        },
+        {
+          "run": "bun -e \"const y = Bun.YAML.parse(await Bun.file('.github/workflows/secret-scan.yml').text()); const j = y.jobs['secret-scan']; if (Object.keys(y.jobs).join() !== 'secret-scan') process.exit(1); if (!j) process.exit(1); if (j.steps.map((s) => s.name).join() !== 'checkout,gitleaks') process.exit(1); if (j.steps[0].uses !== 'actions/checkout@v7' || Number(j.steps[0].with['fetch-depth']) !== 0) process.exit(1); if (j.steps[1].uses !== 'gitleaks/gitleaks-action@v3' || String(j.steps[1].env.GITLEAKS_VERSION) !== '8.30.1') process.exit(1)\"",
+          "scope": "root"
+        }
+      ]
+    },
+    {
       "id": "stryker-mutation",
       "title": "Stryker mutation gate on pre-push",
       "purpose": "Gate pushes on full mutation coverage of the changed source files, with incremental caching.",
