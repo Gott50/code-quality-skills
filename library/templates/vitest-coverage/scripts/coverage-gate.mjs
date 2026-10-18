@@ -1,45 +1,28 @@
 /**
- * Coverage gate — enforces the per-file coverage floor recorded in the
- * committed baseline. The Vitest twin of the Bun recipe's
- * `scripts/coverage-gate.ts`: the same floors, read from Istanbul's
- * `coverage/coverage-final.json` (statements and functions) instead of bun's
- * lcov.
+ * Coverage gate — the per-file floor from the committed baseline, and (with
+ * `--changed-lines <ref>` / `$CODE_QUALITY_BASE_REF`) the coverage of the lines
+ * a change touches. The Vitest twin of the Bun recipe's `coverage-gate.ts`: the
+ * same floors, read from Istanbul's `coverage/coverage-final.json` (statements
+ * and functions) instead of bun's lcov.
  *
- * The floor for a file the baseline records is its exact `{hit, found}`
- * fraction per metric under `gates.coverage.files` — `statements` from the
- * `s` map, `functions` from the `f` map — compared by cross-multiplication so
- * no float rounding creeps in; a file the baseline does not record gets the
- * `gates.coverage.global` fractions. Each metric is enforced against its own
- * floor: a file at 4/10 statements and 0/1 functions passes only when both
- * floors are met. The global fraction over the whole project is `score.mjs`'s
- * comparison, not this gate's: a workspace member's own run aggregates the
- * member alone, and holding it to the workspace-wide fraction would fail a
- * member that is exactly at its recorded floor. With no baseline — or a
- * baseline whose coverage gate was never raised — every floor is 100%, the
- * greenfield wall, so a repo that never raised one is gated exactly as
- * before.
+ * The floor for a file the baseline records is its exact `{hit, found}` fraction
+ * per metric under `gates.coverage.files` — `statements` from the `s` map,
+ * `functions` from the `f` map — compared by cross-multiplication; a file it
+ * does not record gets the `gates.coverage.global` fractions. With no baseline
+ * every floor is 100%, the greenfield wall.
  *
- * An artifact that is absent, or that lists no file, is a failure — the
- * reporter did not write — unless the project has no test file at all, in
- * which case there is nothing to measure and the gate exits 0. That is what
- * keeps the gate green on day one in a repo with no tests (`vitest run
- * --passWithNoTests`); a missing artifact with test files present still exits 1.
+ * An artifact that is absent, or that lists no file, is a failure — the reporter
+ * did not write — unless the project has no test file at all, in which case
+ * there is nothing to measure and the gate exits 0.
  *
  * Usage (the `test` script runs it after `vitest run --coverage`):
  *   node scripts/coverage-gate.mjs --coverage coverage/coverage-final.json --baseline .code-quality-baseline.json
  *   node scripts/coverage-gate.mjs --changed-lines origin/main
  *
- * Defaults: --coverage ./coverage/coverage-final.json,
- *           --baseline ./.code-quality-baseline.json.
- * `--changed-lines <ref>` adds the PR rule: every line the diff against `<ref>`
- * adds or modifies must be executed. The per-file floor still governs the whole
- * file, so a change to an uncovered line of a grandfathered file fails the
- * changed-lines rule even though the file meets its floor. `$CODE_QUALITY_BASE_REF`
- * supplies the ref when the flag is absent, so the CI workflow sets it on the
- * test step without the `test` script carrying a flag a local run cannot resolve.
- *
- * Exit 0 when every file meets its floor and every changed line is covered;
- * exit 1 with a report otherwise.
+ * Defaults: --coverage ./coverage/coverage-final.json, --baseline ./.code-quality-baseline.json.
+ * `--changed-lines` adds the PR rule — every instrumented line the diff adds or
+ * modifies must be executed — on top of the per-file floor. Exit 0 when every
+ * file meets its floor and every changed line is covered; exit 1 otherwise.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -105,6 +88,14 @@ function changedLines(ref) {
 
 /** Vitest's default test-file pattern: `**\/*.{test,spec}.?(c|m)[jt]s?(x)`. */
 const TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
+
+/** A source file the gate expects the coverage report to instrument. */
+const SOURCE_FILE = /\.[cm]?[jt]sx?$/;
+
+/** A changed file this rule judges: project source, not a test. */
+function isProjectSource(path) {
+  return SOURCE_FILE.test(path) && !TEST_FILE.test(path);
+}
 
 // Whether the project has any test file, by vitest's own default include. Only
 // consulted when the artifact is absent or lists no file. Dot-directories are
@@ -365,7 +356,19 @@ if (baseRef !== undefined) {
   let files = 0;
   for (const [abs, lineSet] of changed) {
     const rec = byAbs.get(abs);
-    if (rec === undefined) continue;
+    // A source file the report does not list is one the run never loaded. The
+    // recipe sets `coverage.include`, so Istanbul lists a new un-imported source
+    // file at 0% and this branch is a belt-and-braces guard; it still fails a
+    // changed source file the report omits rather than passing it silently.
+    if (rec === undefined) {
+      if (!isProjectSource(abs)) continue;
+      files += 1;
+      checked += lineSet.size;
+      uncovered.push(
+        `${relative(process.cwd(), abs) || abs}\n    ${lineSet.size} uncovered changed line(s) (the file is not in the coverage report — no test loads it): ${[...lineSet].sort((a, b) => a - b).join(", ")}`,
+      );
+      continue;
+    }
     files += 1;
     const missed = [...lineSet].filter((n) => rec.lines.get(n) === 0).sort((a, b) => a - b);
     checked += lineSet.size;
