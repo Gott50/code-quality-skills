@@ -275,6 +275,12 @@
           "template": "templates/bun-test-coverage/scripts/coverage-gate.ts"
         },
         {
+          "path": "scripts/changed-lines.ts",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/bun-test-coverage/scripts/changed-lines.ts"
+        },
+        {
           "path": "scripts/coverage-ignore-audit.ts",
           "action": "create",
           "scope": "root",
@@ -2394,6 +2400,12 @@
           "action": "create",
           "scope": "root",
           "template": "templates/vitest-coverage/scripts/coverage-gate.mjs"
+        },
+        {
+          "path": "scripts/changed-lines.mjs",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/vitest-coverage/scripts/changed-lines.mjs"
         },
         {
           "path": "scripts/coverage-ignore-audit.mjs",

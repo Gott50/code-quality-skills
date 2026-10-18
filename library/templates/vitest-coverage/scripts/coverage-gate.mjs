@@ -24,22 +24,14 @@
  * modifies must be executed — on top of the per-file floor. Exit 0 when every
  * file meets its floor and every changed line is covered; exit 1 otherwise.
  */
-import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
+
+import { checkChangedLines, resolveBaseRef, TEST_FILE } from "./changed-lines.mjs";
 
 function parseArg(name) {
   const i = process.argv.indexOf(name);
   return i >= 0 ? process.argv[i + 1] : undefined;
-}
-
-// A ref is usable when it is a non-empty string: a workflow that interpolates an
-// absent context (`${{ github.event.pull_request.base.sha }}` on a push) sets the
-// variable to the empty string, and `git diff ""` is an error rather than a
-// no-op.
-function resolveBaseRef() {
-  const ref = parseArg("--changed-lines") ?? process.env.CODE_QUALITY_BASE_REF;
-  return ref !== undefined && ref !== "" ? ref : undefined;
 }
 
 /** The greenfield floor: 100% on both metrics. */
@@ -47,55 +39,6 @@ const FULL = { functions: { found: 1, hit: 1 }, statements: { found: 1, hit: 1 }
 
 const coveragePath = parseArg("--coverage") ?? "coverage/coverage-final.json";
 const baselinePath = parseArg("--baseline") ?? ".code-quality-baseline.json";
-
-/**
- * The lines a diff against `ref` adds or modifies, per file. The `git diff`
- * paths are repo-root-relative; the Istanbul keys are absolute, so both sides
- * are resolved to an absolute path before matching.
- *
- * A diff that cannot be computed is a failure, not a silent pass: a gate that
- * cannot see the change must not report it covered.
- */
-function changedLines(ref) {
-  let out;
-  try {
-    out = execFileSync("git", ["diff", "--unified=0", "--no-color", ref, "--"], {
-      encoding: "utf8",
-      maxBuffer: 64 * 1024 * 1024,
-    });
-  } catch (err) {
-    console.error(`coverage-gate: git diff against ${ref} failed: ${err}`);
-    process.exit(1);
-  }
-  const changed = new Map();
-  let file = null;
-  for (const line of out.split("\n")) {
-    if (line.startsWith("+++ ")) {
-      const path = line.slice(4).trim();
-      file = path === "/dev/null" ? null : path.replace(/^b\//, "");
-      continue;
-    }
-    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
-    if (!hunk || file === null) continue;
-    const start = Number(hunk[1]);
-    const count = hunk[2] === undefined ? 1 : Number(hunk[2]);
-    const lines = changed.get(resolve(file)) ?? new Set();
-    for (let i = 0; i < count; i++) lines.add(start + i);
-    changed.set(resolve(file), lines);
-  }
-  return changed;
-}
-
-/** Vitest's default test-file pattern: `**\/*.{test,spec}.?(c|m)[jt]s?(x)`. */
-const TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
-
-/** A source file the gate expects the coverage report to instrument. */
-const SOURCE_FILE = /\.[cm]?[jt]sx?$/;
-
-/** A changed file this rule judges: project source, not a test. */
-function isProjectSource(path) {
-  return SOURCE_FILE.test(path) && !TEST_FILE.test(path);
-}
 
 // Whether the project has any test file, by vitest's own default include. Only
 // consulted when the artifact is absent or lists no file. Dot-directories are
@@ -337,55 +280,18 @@ if (failing.length > 0) {
   process.exit(1);
 }
 
-// The changed-lines rule (the PR rule): every line the diff against the base
-// ref adds or modifies must be executed. It layers on top of the per-file floor
-// rather than replacing it, so a change to an uncovered line of a grandfathered
-// file fails here even though the file meets its recorded floor.
-//
-// The rule is scoped to the files the coverage report instruments, and to the
-// lines it records: a test file, a config, or a script the report does not list
-// has no executed line to check, and a brace or a blank line carries no
-// statement. Only a recorded line whose hit count is zero is a failure, so the
-// rule fires on a line the report knows about and that the tests did not run.
 const baseRef = resolveBaseRef();
-const uncovered = [];
-if (baseRef !== undefined) {
-  const changed = changedLines(baseRef);
-  const byAbs = new Map(Object.values(byFile).map((r) => [resolve(r.sf), r]));
-  let checked = 0;
-  let files = 0;
-  for (const [abs, lineSet] of changed) {
-    const rec = byAbs.get(abs);
-    // A source file the report does not list is one the run never loaded. The
-    // recipe sets `coverage.include`, so Istanbul lists a new un-imported source
-    // file at 0% and this branch is a belt-and-braces guard; it still fails a
-    // changed source file the report omits rather than passing it silently.
-    if (rec === undefined) {
-      if (!isProjectSource(abs)) continue;
-      files += 1;
-      checked += lineSet.size;
-      uncovered.push(
-        `${relative(process.cwd(), abs) || abs}\n    ${lineSet.size} uncovered changed line(s) (the file is not in the coverage report — no test loads it): ${[...lineSet].sort((a, b) => a - b).join(", ")}`,
-      );
-      continue;
-    }
-    files += 1;
-    const missed = [...lineSet].filter((n) => rec.lines.get(n) === 0).sort((a, b) => a - b);
-    checked += lineSet.size;
-    if (missed.length > 0) {
-      uncovered.push(
-        `${relative(process.cwd(), abs) || abs}\n    ${missed.length} uncovered changed line(s): ${missed.join(", ")}`,
-      );
-    }
-  }
+const changedResult =
+  baseRef === undefined ? null : checkChangedLines(baseRef, Object.values(byFile));
+if (changedResult !== null) {
   console.log(
-    `coverage-gate: changed-lines ${baseRef} | ${checked} changed line(s) across ${files} instrumented file(s)`,
+    `coverage-gate: changed-lines ${baseRef} | ${changedResult.checked} changed line(s) across ${changedResult.files} instrumented file(s)`,
   );
 }
 
-if (uncovered.length > 0) {
-  console.error(`\n${uncovered.length} file(s) with uncovered changed lines:\n`);
-  console.error(uncovered.join("\n\n"));
+if (changedResult !== null && changedResult.uncovered.length > 0) {
+  console.error(`\n${changedResult.uncovered.length} file(s) with uncovered changed lines:\n`);
+  console.error(changedResult.uncovered.join("\n\n"));
   process.exit(1);
 }
 

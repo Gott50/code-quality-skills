@@ -26,59 +26,13 @@
  * modifies must be executed — on top of the per-file floor. Exit 0 when every
  * file meets its floor and every changed line is covered; exit 1 otherwise.
  */
-import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { checkChangedLines, resolveBaseRef, TEST_FILE } from "./changed-lines.ts";
 
 function parseArg(name: string): string | undefined {
   const i = process.argv.indexOf(name);
   return i >= 0 ? process.argv[i + 1] : undefined;
-}
-
-// A ref is usable when it is a non-empty string: a workflow that interpolates an
-// absent context (`${{ github.event.pull_request.base.sha }}` on a push) sets the
-// variable to the empty string, and `git diff ""` is an error rather than a
-// no-op.
-function resolveBaseRef(): string | undefined {
-  const ref = parseArg("--changed-lines") ?? process.env.CODE_QUALITY_BASE_REF;
-  return ref !== undefined && ref !== "" ? ref : undefined;
-}
-
-/**
- * The lines a diff against `ref` adds or modifies, per file. The `git diff`
- * paths are repo-root-relative and the lcov `SF:` paths cwd-relative, so both
- * are resolved to an absolute path before matching. A diff that cannot be
- * computed is a failure, not a silent pass: a gate that cannot see the change
- * must not report it covered.
- */
-function changedLines(ref: string): Map<string, Set<number>> {
-  let out: string;
-  try {
-    out = execFileSync("git", ["diff", "--unified=0", "--no-color", ref, "--"], {
-      encoding: "utf8",
-      maxBuffer: 64 * 1024 * 1024,
-    });
-  } catch (err) {
-    console.error(`coverage-gate: git diff against ${ref} failed: ${err}`);
-    process.exit(1);
-  }
-  const changed = new Map<string, Set<number>>();
-  let file: string | null = null;
-  for (const line of out.split("\n")) {
-    if (line.startsWith("+++ ")) {
-      const path = line.slice(4).trim();
-      file = path === "/dev/null" ? null : path.replace(/^b\//, "");
-      continue;
-    }
-    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
-    if (!hunk || file === null) continue;
-    const start = Number(hunk[1]);
-    const count = hunk[2] === undefined ? 1 : Number(hunk[2]);
-    const lines = changed.get(resolve(file)) ?? new Set<number>();
-    for (let i = 0; i < count; i++) lines.add(start + i);
-    changed.set(resolve(file), lines);
-  }
-  return changed;
 }
 
 /** An exact fraction, as the baseline records it — never a rounded ratio. */
@@ -126,17 +80,6 @@ const FULL: CoverageFrac = { functions: { found: 1, hit: 1 }, lines: { found: 1,
 
 const lcovPath = parseArg("--lcov") ?? "coverage/lcov.info";
 const baselinePath = parseArg("--baseline") ?? ".code-quality-baseline.json";
-
-/** bun's test-file patterns: `*.test.*`, `*.spec.*`, `*_test.*`, `*_spec.*` (js/ts/jsx/tsx/mjs/mts/cjs/cts). */
-const TEST_FILE = /(?:\.|_)(?:test|spec)\.[cm]?[jt]sx?$/;
-
-/** A source file the gate expects the coverage report to instrument. */
-const SOURCE_FILE = /\.[cm]?[jt]sx?$/;
-
-/** A changed file this rule judges: project source, not a test. */
-function isProjectSource(path: string): boolean {
-  return SOURCE_FILE.test(path) && !TEST_FILE.test(path);
-}
 
 // Whether the project has any test file, by bun's own discovery patterns. Only
 // consulted when the artifact is absent or lists no file. Dot-directories are
@@ -337,45 +280,12 @@ console.log(
     `across ${Object.keys(byFile).length} files`,
 );
 
-// The changed-lines rule (the PR rule): every instrumented line the diff against
-// the base ref adds or modifies must be executed, on top of the per-file floor —
-// a file above its floor must not spend the slack on new untested lines. Only a
-// line the report records with zero hits fails, so a brace or a comment is not a
-// finding; a changed source file the report omits is a finding on every line.
 const baseRef = resolveBaseRef();
-const uncovered: string[] = [];
-if (baseRef !== undefined) {
-  const changed = changedLines(baseRef);
-  const byAbs = new Map(Object.values(byFile).map((r) => [resolve(r.sf), r]));
-  let checked = 0;
-  let files = 0;
-  for (const [abs, lineSet] of changed) {
-    const rec = byAbs.get(abs);
-    // A source file the report does not list is a file the run never loaded — an
-    // un-imported module. bun has no `include` glob, so it cannot report the file
-    // at 0% the way Istanbul does (research/coverage.md), and every changed line
-    // in it is uncovered. A changed test file, or a non-source file, is not this
-    // rule's business.
-    if (rec === undefined) {
-      if (!isProjectSource(abs)) continue;
-      files += 1;
-      checked += lineSet.size;
-      uncovered.push(
-        `${relative(process.cwd(), abs) || abs}\n    ${lineSet.size} uncovered changed line(s) (the file is not in the coverage report — no test loads it): ${[...lineSet].sort((a, b) => a - b).join(", ")}`,
-      );
-      continue;
-    }
-    files += 1;
-    const missed = [...lineSet].filter((n) => rec.lines.get(n) === 0).sort((a, b) => a - b);
-    checked += lineSet.size;
-    if (missed.length > 0) {
-      uncovered.push(
-        `${relative(process.cwd(), abs) || abs}\n    ${missed.length} uncovered changed line(s): ${missed.join(", ")}`,
-      );
-    }
-  }
+const changedResult =
+  baseRef === undefined ? null : checkChangedLines(baseRef, Object.values(byFile));
+if (changedResult !== null) {
   console.log(
-    `coverage-gate: changed-lines ${baseRef} | ${checked} changed line(s) across ${files} instrumented file(s)`,
+    `coverage-gate: changed-lines ${baseRef} | ${changedResult.checked} changed line(s) across ${changedResult.files} instrumented file(s)`,
   );
 }
 
@@ -385,9 +295,9 @@ if (failing.length > 0) {
   process.exit(1);
 }
 
-if (uncovered.length > 0) {
-  console.error(`\n${uncovered.length} file(s) with uncovered changed lines:\n`);
-  console.error(uncovered.join("\n\n"));
+if (changedResult !== null && changedResult.uncovered.length > 0) {
+  console.error(`\n${changedResult.uncovered.length} file(s) with uncovered changed lines:\n`);
+  console.error(changedResult.uncovered.join("\n\n"));
   process.exit(1);
 }
 
