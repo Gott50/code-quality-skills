@@ -51,7 +51,7 @@ Each candidate also carries the practice doc that covers its gate, read from the
 — the same resolution the setup skill's scripts use. With no library the pointer is omitted and
 nothing crashes; a practice or recipe file whose frontmatter does not parse is skipped, never fatal.
 
-A recipe **declares** a gate when one of its `gates[]` entries names it in `floor`. The six unified
+A recipe **declares** a gate when one of its `gates[]` entries names it in `floor`. The seven unified
 gates are exactly the `floor` vocabulary (`RECIPE-CONTRACT.md` → "`floor` — the gate's ratchet"), and
 a gate with no `floor` is a wall at a fixed level, not one of the ranked gates — so `eslint-prettier`'s
 `lint` gate, which declares no floor because the unified `lint` count is oxlint's diagnostic count,

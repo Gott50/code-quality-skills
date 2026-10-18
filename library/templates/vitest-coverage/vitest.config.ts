@@ -5,22 +5,24 @@ import { defineConfig } from "vitest/config";
 
 // The recorded global coverage floor: `gates.coverage.global.statements` from
 // the committed baseline `.code-quality-baseline.json` (written by the skill's
-// `score.mjs --raise`), as a whole percentage rounded DOWN so the threshold
-// is never stricter than the recorded floor. The caller checks the baseline
-// exists; a baseline whose coverage gate was never raised, or an unreadable
-// one, means 100: the greenfield wall.
+// `score.mjs --raise`), as a whole percentage rounded DOWN so the threshold is
+// never stricter than the recorded floor; 100 when the block is absent or
+// malformed (the greenfield wall).
+function floorPercent(fraction: { found?: number; hit?: number } | undefined): number {
+  if (!Number.isInteger(fraction?.hit) || !Number.isInteger(fraction?.found)) return 100;
+  const { found, hit } = fraction;
+  if (found === undefined || hit === undefined || found <= 0) return 100;
+  return Math.floor((hit / found) * 100);
+}
+
 function recordedFloor(baselinePath: string): number {
   try {
-    // SAFETY: the baseline is JSON written by score.mjs; only the coverage
-    // gate's `global.statements` fraction is read — the metric this threshold
-    // floors (the per-file floors, on both metrics, are the gate script's).
-    const baseline = JSON.parse(readFileSync(baselinePath, "utf8")) as {
-      gates?: { coverage?: { global?: { statements?: { found?: number; hit?: number } } } };
-    };
-    const g = baseline.gates?.coverage?.global?.statements;
-    if (Number.isInteger(g?.hit) && Number.isInteger(g?.found) && g.found > 0) {
-      return Math.floor((g.hit / g.found) * 100);
-    }
+    // The parse is unannotated on purpose: `JSON.parse` returns `any`, so the
+    // baseline's `gates.coverage.global.statements` is read directly. An
+    // `as { … }` here would assert the shape instead of checking it, which the
+    // anti-slop rule flags; the `Number.isInteger` checks below are the decode.
+    const baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
+    return floorPercent(baseline?.gates?.coverage?.global?.statements);
   } catch {
     // an unreadable baseline is the greenfield wall, not a silent zero
   }

@@ -8,7 +8,7 @@
 //
 //   1. recipe contract — every `.code-quality/recipes/*.md` parses and satisfies
 //      RECIPE-CONTRACT.md: `id` equals the filename stem and is kebab-case; every
-//      files[].template exists under `.code-quality/`; every gates[].floor is one of the six
+//      files[].template exists under `.code-quality/`; every gates[].floor is one of the seven
 //      known gates.
 //   2. template formatting — every biome-parseable template under `.code-quality/templates/**` is
 //      `biome format`-clean after the {{root}} / {{plan.*}} placeholders are substituted with dummy
@@ -63,9 +63,12 @@ function libraryRecipeIds(libraryDir) {
     .map((f) => basename(f, ".md"));
 }
 
-// The six gates a `floor` may name (RECIPE-CONTRACT.md → `floor`).
+// The seven gates a `floor` may name (RECIPE-CONTRACT.md → `floor`). The same set
+// the library layer's check uses, so a local recipe is not rejected for a floor the
+// library accepts.
 const FLOORS = new Set([
   "coverage",
+  "dep-audit",
   "mutation",
   "lint",
   "typecheck",

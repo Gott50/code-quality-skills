@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "recipes": [
     {
       "id": "agent-guidance",
@@ -275,6 +275,12 @@
           "template": "templates/bun-test-coverage/scripts/coverage-gate.ts"
         },
         {
+          "path": "scripts/changed-lines.ts",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/bun-test-coverage/scripts/changed-lines.ts"
+        },
+        {
           "path": "scripts/coverage-ignore-audit.ts",
           "action": "create",
           "scope": "root",
@@ -439,6 +445,10 @@
         {
           "run": "bun -e \"const y = Bun.YAML.parse(await Bun.file('.github/workflows/ci.yml').text()); if (Object.keys(y.jobs).join() !== 'ci,mutation,fallow-coverage') process.exit(1)\"",
           "scope": "root"
+        },
+        {
+          "run": "node -e 'const fs=require(\"node:fs\"),s=fs.readFileSync(\".github/workflows/ci.yml\",\"utf8\"),L=s.split(\"\\n\"),die=(m)=>{console.error(m);process.exit(1)};const j=L.findIndex((l)=>/^  ci:$/.test(l));if(j<0)die(\"no ci job\");const n=L.findIndex((l,index)=>index>j&&/^  \\S+:$/.test(l));const block=L.slice(j+1,n<0?L.length:n).join(\"\\n\");if(!/actions\\/checkout@/.test(block))die(\"ci job has no checkout step\");if(!/CODE_QUALITY_BASE_REF: \\$\\{\\{ github\\.event\\.pull_request\\.base\\.sha \\}\\}/.test(block))die(\"the test step does not pass the PR base ref to the coverage gate\");if(!/fetch-depth: 0/.test(block))die(\"the ci checkout does not fetch the base ref\");'",
+          "scope": "root"
         }
       ]
     },
@@ -493,6 +503,125 @@
       "verify": [
         {
           "run": "test -f .github/workflows/ci.yml && grep -q \"node-version-file\" .github/workflows/ci.yml && grep -q \"npm run test\" .github/workflows/ci.yml",
+          "scope": "root"
+        },
+        {
+          "run": "node -e 'const fs=require(\"node:fs\"),s=fs.readFileSync(\".github/workflows/ci.yml\",\"utf8\"),L=s.split(\"\\n\"),die=(m)=>{console.error(m);process.exit(1)};const j=L.findIndex((l)=>/^  ci:$/.test(l));if(j<0)die(\"no ci job\");const n=L.findIndex((l,index)=>index>j&&/^  \\S+:$/.test(l));const block=L.slice(j+1,n<0?L.length:n).join(\"\\n\");if(!/actions\\/checkout@/.test(block))die(\"ci job has no checkout step\");if(!/CODE_QUALITY_BASE_REF: \\$\\{\\{ github\\.event\\.pull_request\\.base\\.sha \\}\\}/.test(block))die(\"the test step does not pass the PR base ref to the coverage gate\");if(!/fetch-depth: 0/.test(block))die(\"the ci checkout does not fetch the base ref\");'",
+          "scope": "root"
+        }
+      ]
+    },
+    {
+      "id": "dep-audit",
+      "title": "Dependency audit — the advisory ratchet, and the Renovate config",
+      "purpose": "Fail a change that adds a dependency advisory, with a pinned lockfile scanner and a committed count floor.",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "conflicts": {},
+      "cost": "fast",
+      "priority": 15,
+      "files": [
+        {
+          "path": "osv-scanner.toml",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/dep-audit/osv-scanner.toml"
+        },
+        {
+          "path": "scripts/dep-audit-gate.mjs",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/dep-audit/scripts/dep-audit-gate.mjs"
+        },
+        {
+          "path": "renovate.json",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/dep-audit/renovate.json"
+        },
+        {
+          "path": ".github/workflows/dep-audit.yml",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/dep-audit/dep-audit.yml"
+        }
+      ],
+      "commands": [],
+      "gates": [
+        {
+          "id": "dep-audit",
+          "run": "node scripts/dep-audit-gate.mjs",
+          "description": "osv-scanner over the lockfiles — the advisory count must not exceed the floor recorded in .code-quality-baseline.json (0 with no baseline)",
+          "floor": "dep-audit"
+        }
+      ],
+      "verify": [
+        {
+          "run": "node scripts/dep-audit-gate.mjs --check",
+          "scope": "root"
+        },
+        {
+          "run": "node -e 'const fs=require(\"node:fs\"),L=fs.readFileSync(\".github/workflows/dep-audit.yml\",\"utf8\").split(\"\\n\"),die=(m)=>{console.error(m);process.exit(1)};const jobs=(()=>{const i=L.findIndex((l)=>/^jobs:$/.test(l));if(i<0)die(\"no jobs\");const o=[];for(let k=i+1;k<L.length;k++){const m=/^  (\\S+):$/.exec(L[k]);if(m)o.push(m[1]);else if(/^\\S/.test(L[k]))break;}return o;})();if(jobs.join()!==\"dep-audit\")die(\"jobs: \"+jobs.join());const job=(n)=>{const i=L.findIndex((l)=>l===\"  \"+n+\":\");if(i<0)die(\"no \"+n+\" job\");let e=L.length;for(let k=i+1;k<L.length;k++){if(/^ {0,2}\\S/.test(L[k])){e=k;break;}}return L.slice(i+1,e).filter((l)=>!/^\\s*#/.test(l)).join(\"\\n\");};const b=job(\"dep-audit\");const steps=[...b.matchAll(/^\\s*- name: (.+)$/gm)].map((m)=>m[1]);if(steps.join()!==\"checkout,setup-node,dep-audit\")die(\"steps: \"+steps.join());if(!/uses: actions\\/checkout@v7/.test(b))die(\"no checkout pin\");if(!/uses: actions\\/setup-node@v7/.test(b))die(\"no setup-node pin\");if(!/node-version: 22/.test(b))die(\"no node-version\");if(!/run: node scripts\\/dep-audit-gate\\.mjs/.test(b))die(\"no gate step\");'",
+          "scope": "root"
+        }
+      ]
+    },
+    {
+      "id": "dep-graph",
+      "title": "Dependency graph — no cycles, no deep imports",
+      "purpose": "Fail on a dependency cycle and on a relative import into another workspace member's internals, with the repo's existing violations recorded in the tool's own baseline.",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "conflicts": {},
+      "cost": "fast",
+      "priority": 15,
+      "files": [
+        {
+          "path": ".dependency-cruiser.cjs",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/dep-graph/.dependency-cruiser.cjs"
+        },
+        {
+          "path": "scripts/dep-graph.sh",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/dep-graph/scripts/dep-graph.sh"
+        },
+        {
+          "path": "package.json",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/dep-graph/package.json"
+        }
+      ],
+      "commands": [
+        {
+          "run": "sh -c 'if test -f bun.lock -o -f bun.lockb; then bun install; elif test -f pnpm-lock.yaml; then pnpm install --no-frozen-lockfile; else npm install; fi'",
+          "scope": "root",
+          "showInPlan": false
+        }
+      ],
+      "gates": [
+        {
+          "id": "dep-graph",
+          "run": "sh scripts/dep-graph.sh",
+          "description": "dependency-cruiser over the workspace — a cycle, or a relative import into another member's src/, fails; the violations recorded in .dependency-cruiser-known-violations.json pass"
+        }
+      ],
+      "verify": [
+        {
+          "gate": "dep-graph",
           "scope": "root"
         }
       ]
@@ -739,6 +868,65 @@
       ]
     },
     {
+      "id": "license-check",
+      "title": "License allowlist — a wall, plus an SBOM in CI",
+      "purpose": "Fail on a dependency whose license is outside the allowlist, and publish the repo's dependency inventory as an SPDX build artifact.",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "conflicts": {},
+      "cost": "fast",
+      "priority": 15,
+      "files": [
+        {
+          "path": "scripts/license-check.sh",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/license-check/scripts/license-check.sh"
+        },
+        {
+          "path": "package.json",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/license-check/package.json"
+        },
+        {
+          "path": ".github/workflows/license-check.yml",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/license-check/license-check.yml"
+        }
+      ],
+      "commands": [
+        {
+          "run": "sh -c 'if test -f bun.lock -o -f bun.lockb; then bun install; elif test -f pnpm-lock.yaml; then pnpm install --no-frozen-lockfile; else npm install; fi'",
+          "scope": "root",
+          "showInPlan": false
+        }
+      ],
+      "gates": [
+        {
+          "id": "license-check",
+          "run": "sh scripts/license-check.sh",
+          "description": "every installed dependency's license must be on the allowlist in scripts/license-check.sh — a wall, with no floor"
+        }
+      ],
+      "verify": [
+        {
+          "gate": "license-check",
+          "scope": "root"
+        },
+        {
+          "run": "node -e 'const fs=require(\"node:fs\"),L=fs.readFileSync(\".github/workflows/license-check.yml\",\"utf8\").split(\"\\n\"),die=(m)=>{console.error(m);process.exit(1)};const jobs=(()=>{const i=L.findIndex((l)=>/^jobs:$/.test(l));if(i<0)die(\"no jobs\");const o=[];for(let k=i+1;k<L.length;k++){const m=/^  (\\S+):$/.exec(L[k]);if(m)o.push(m[1]);else if(/^\\S/.test(L[k]))break;}return o;})();if(jobs.join()!==\"license-check\")die(\"jobs: \"+jobs.join());const job=(n)=>{const i=L.findIndex((l)=>l===\"  \"+n+\":\");if(i<0)die(\"no \"+n+\" job\");let e=L.length;for(let k=i+1;k<L.length;k++){if(/^ {0,2}\\S/.test(L[k])){e=k;break;}}return L.slice(i+1,e).filter((l)=>!/^\\s*#/.test(l)).join(\"\\n\");};const b=job(\"license-check\");const steps=[...b.matchAll(/^\\s*- name: (.+)$/gm)].map((m)=>m[1]);if(steps.join()!==\"checkout,setup-node,setup-bun,install,license-check,sbom\")die(\"steps: \"+steps.join());if(!/uses: actions\\/checkout@v7/.test(b))die(\"no checkout pin\");if(!/uses: actions\\/setup-node@v7/.test(b))die(\"no setup-node pin\");if(!/uses: oven-sh\\/setup-bun@v2/.test(b))die(\"no setup-bun pin\");if(!/sh scripts\\/license-check\\.sh/.test(b))die(\"no license gate step\");if(!/uses: anchore\\/sbom-action@v0/.test(b))die(\"no sbom pin\");if(!/format: spdx-json/.test(b))die(\"no sbom format\");if(!/if: always\\(\\)/.test(b))die(\"no always() on the sbom step\");'",
+          "scope": "root"
+        }
+      ]
+    },
+    {
       "id": "oxlint-anti-slop",
       "title": "Lint with oxlint and the anti-slop plugin",
       "purpose": "Lint TypeScript with oxlint, including the vendored anti-slop rules that reject low-evidence patterns.",
@@ -789,6 +977,12 @@
           "action": "create",
           "scope": "root",
           "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/max-expects-per-test.ts"
+        },
+        {
+          "path": "tools/oxlint/anti-slop/rules/no-assertion-over-parsed-data.ts",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/no-assertion-over-parsed-data.ts"
         },
         {
           "path": "tools/oxlint/anti-slop/rules/no-chained-type-assertions.ts",
@@ -1026,6 +1220,12 @@
           "action": "create",
           "scope": "root",
           "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/max-expects-per-test.ts"
+        },
+        {
+          "path": "tools/oxlint/anti-slop/rules/no-assertion-over-parsed-data.ts",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/no-assertion-over-parsed-data.ts"
         },
         {
           "path": "tools/oxlint/anti-slop/rules/no-chained-type-assertions.ts",
@@ -1389,6 +1589,189 @@
       ]
     },
     {
+      "id": "release-automation",
+      "title": "Release automation — commit-msg check, changelog and version derivation",
+      "purpose": "Reject a commit message the changelog cannot read, then derive the changelog and the next version from the history on main.",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "packageManager": [
+          "bun"
+        ],
+        "workspace": "any",
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "conflicts": {},
+      "cost": "fast",
+      "priority": 25,
+      "files": [
+        {
+          "path": "scripts/commit-msg.sh",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/release-automation/scripts/commit-msg.sh"
+        },
+        {
+          "path": "commitlint.config.mjs",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/release-automation/commitlint.config.mjs"
+        },
+        {
+          "path": ".husky/commit-msg",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/release-automation/commit-msg.block"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/release-automation/release.yml"
+        },
+        {
+          "path": "release-please-config.json",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/release-automation/release-please-config.json"
+        },
+        {
+          "path": ".release-please-manifest.json",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/release-automation/.release-please-manifest.json"
+        },
+        {
+          "path": "package.json",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/release-automation/package.json"
+        }
+      ],
+      "commands": [
+        {
+          "run": "bun install",
+          "scope": "root",
+          "showInPlan": false
+        }
+      ],
+      "gates": [
+        {
+          "id": "commit-msg",
+          "run": "sh scripts/commit-msg.sh .git/COMMIT_EDITMSG",
+          "description": "commitlint over a commit message — the same check the commit-msg hook runs"
+        }
+      ],
+      "verify": [
+        {
+          "run": "sh -c 'printf \"added a thing\\n\" > /tmp/cq-commit-msg-bad.txt; if sh scripts/commit-msg.sh /tmp/cq-commit-msg-bad.txt; then echo \"malformed message was accepted\" >&2; exit 1; fi; printf \"feat: add a thing\\n\" > /tmp/cq-commit-msg-good.txt; sh scripts/commit-msg.sh /tmp/cq-commit-msg-good.txt'",
+          "scope": "root"
+        },
+        {
+          "run": "node -e 'const fs=require(\"node:fs\"),L=fs.readFileSync(\".github/workflows/release.yml\",\"utf8\").split(\"\\n\"),die=(m)=>{console.error(m);process.exit(1)};const jobs=(()=>{const i=L.findIndex((l)=>/^jobs:$/.test(l));if(i<0)die(\"no jobs\");const o=[];for(let k=i+1;k<L.length;k++){const m=/^  (\\S+):$/.exec(L[k]);if(m)o.push(m[1]);else if(/^\\S/.test(L[k]))break;}return o;})();if(jobs.join()!==\"release\")die(\"jobs: \"+jobs.join());const job=(n)=>{const i=L.findIndex((l)=>l===\"  \"+n+\":\");if(i<0)die(\"no \"+n+\" job\");let e=L.length;for(let k=i+1;k<L.length;k++){if(/^ {0,2}\\S/.test(L[k])){e=k;break;}}return L.slice(i+1,e).filter((l)=>!/^\\s*#/.test(l)).join(\"\\n\");};const b=job(\"release\");const steps=[...b.matchAll(/^\\s*- name: (.+)$/gm)].map((m)=>m[1]);if(steps.join()!==\"checkout,release-please\")die(\"steps: \"+steps.join());if(!/uses: actions\\/checkout@v7/.test(b))die(\"no checkout pin\");if(!/fetch-depth: 0/.test(b))die(\"no fetch-depth\");if(!/uses: googleapis\\/release-please-action@v4/.test(b))die(\"no release-please pin\");if(!/config-file: release-please-config\\.json/.test(b))die(\"no config-file\");if(!/manifest-file: \\.release-please-manifest\\.json/.test(b))die(\"no manifest-file\");'",
+          "scope": "root"
+        }
+      ]
+    },
+    {
+      "id": "release-automation-npm",
+      "title": "Release automation — commit-msg check, changelog and version derivation (npm/pnpm)",
+      "purpose": "Reject a commit message the changelog cannot read, then derive the changelog and the next version from the history on main.",
+      "when": {
+        "language": [
+          "typescript",
+          "javascript"
+        ],
+        "packageManager": [
+          "npm",
+          "pnpm"
+        ],
+        "workspace": "any",
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "conflicts": {},
+      "cost": "fast",
+      "priority": 25,
+      "files": [
+        {
+          "path": "scripts/commit-msg.sh",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/release-automation-npm/scripts/commit-msg.sh"
+        },
+        {
+          "path": "commitlint.config.mjs",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/release-automation/commitlint.config.mjs"
+        },
+        {
+          "path": ".husky/commit-msg",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/release-automation-npm/commit-msg.block"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/release-automation/release.yml"
+        },
+        {
+          "path": "release-please-config.json",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/release-automation/release-please-config.json"
+        },
+        {
+          "path": ".release-please-manifest.json",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/release-automation/.release-please-manifest.json"
+        },
+        {
+          "path": "package.json",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/release-automation-npm/package.json"
+        }
+      ],
+      "commands": [
+        {
+          "run": "sh -c 'if test -f pnpm-lock.yaml; then pnpm install; else npm install; fi'",
+          "scope": "root",
+          "showInPlan": false
+        }
+      ],
+      "gates": [
+        {
+          "id": "commit-msg",
+          "run": "sh scripts/commit-msg.sh .git/COMMIT_EDITMSG",
+          "description": "commitlint over a commit message — the same check the commit-msg hook runs"
+        }
+      ],
+      "verify": [
+        {
+          "run": "sh -c 'printf \"added a thing\\n\" > /tmp/cq-commit-msg-bad.txt; if sh scripts/commit-msg.sh /tmp/cq-commit-msg-bad.txt; then echo \"malformed message was accepted\" >&2; exit 1; fi; printf \"feat: add a thing\\n\" > /tmp/cq-commit-msg-good.txt; sh scripts/commit-msg.sh /tmp/cq-commit-msg-good.txt'",
+          "scope": "root"
+        },
+        {
+          "run": "node -e 'const fs=require(\"node:fs\"),L=fs.readFileSync(\".github/workflows/release.yml\",\"utf8\").split(\"\\n\"),die=(m)=>{console.error(m);process.exit(1)};const jobs=(()=>{const i=L.findIndex((l)=>/^jobs:$/.test(l));if(i<0)die(\"no jobs\");const o=[];for(let k=i+1;k<L.length;k++){const m=/^  (\\S+):$/.exec(L[k]);if(m)o.push(m[1]);else if(/^\\S/.test(L[k]))break;}return o;})();if(jobs.join()!==\"release\")die(\"jobs: \"+jobs.join());const job=(n)=>{const i=L.findIndex((l)=>l===\"  \"+n+\":\");if(i<0)die(\"no \"+n+\" job\");let e=L.length;for(let k=i+1;k<L.length;k++){if(/^ {0,2}\\S/.test(L[k])){e=k;break;}}return L.slice(i+1,e).filter((l)=>!/^\\s*#/.test(l)).join(\"\\n\");};const b=job(\"release\");const steps=[...b.matchAll(/^\\s*- name: (.+)$/gm)].map((m)=>m[1]);if(steps.join()!==\"checkout,release-please\")die(\"steps: \"+steps.join());if(!/uses: actions\\/checkout@v7/.test(b))die(\"no checkout pin\");if(!/fetch-depth: 0/.test(b))die(\"no fetch-depth\");if(!/uses: googleapis\\/release-please-action@v4/.test(b))die(\"no release-please pin\");if(!/config-file: release-please-config\\.json/.test(b))die(\"no config-file\");if(!/manifest-file: \\.release-please-manifest\\.json/.test(b))die(\"no manifest-file\");'",
+          "scope": "root"
+        }
+      ]
+    },
+    {
       "id": "repo-hygiene",
       "title": "Repo hygiene — runtime pin, ignore entries, and the husky prepare hook",
       "purpose": "Pin the Bun version, ignore build and env artifacts, and wire `prepare` so the git hooks install on every install.",
@@ -1497,6 +1880,117 @@
       "verify": [
         {
           "run": "test -f .node-version && grep -q \"code-quality:repo-hygiene-npm:start\" .gitignore && node -e \"const p=require('./package.json'); if (p.scripts?.prepare !== 'husky') process.exit(1)\"",
+          "scope": "root"
+        }
+      ]
+    },
+    {
+      "id": "secret-scan",
+      "title": "Credential scan — gitleaks over the staged diff, and in CI",
+      "purpose": "Refuse a commit that stages a credential, and fail a PR that pushes one, with a pinned gitleaks.",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "conflicts": {},
+      "cost": "fast",
+      "priority": 15,
+      "files": [
+        {
+          "path": "scripts/secret-scan.sh",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/secret-scan/scripts/secret-scan.sh"
+        },
+        {
+          "path": ".husky/pre-commit",
+          "action": "merge",
+          "scope": "root",
+          "template": "templates/secret-scan/pre-commit.block"
+        },
+        {
+          "path": ".github/workflows/secret-scan.yml",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/secret-scan/secret-scan.yml"
+        }
+      ],
+      "commands": [
+        {
+          "run": "sh scripts/secret-scan.sh --install",
+          "scope": "root"
+        }
+      ],
+      "gates": [
+        {
+          "id": "secret-scan",
+          "run": "sh scripts/secret-scan.sh --staged",
+          "description": "gitleaks over the staged diff — the same scan the pre-commit hook runs"
+        }
+      ],
+      "verify": [
+        {
+          "gate": "secret-scan",
+          "scope": "root"
+        },
+        {
+          "run": "node -e 'const fs=require(\"node:fs\"),L=fs.readFileSync(\".github/workflows/secret-scan.yml\",\"utf8\").split(\"\\n\"),die=(m)=>{console.error(m);process.exit(1)};const jobs=(()=>{const i=L.findIndex((l)=>/^jobs:$/.test(l));if(i<0)die(\"no jobs\");const o=[];for(let k=i+1;k<L.length;k++){const m=/^  (\\S+):$/.exec(L[k]);if(m)o.push(m[1]);else if(/^\\S/.test(L[k]))break;}return o;})();if(jobs.join()!==\"secret-scan\")die(\"jobs: \"+jobs.join());const job=(n)=>{const i=L.findIndex((l)=>l===\"  \"+n+\":\");if(i<0)die(\"no \"+n+\" job\");let e=L.length;for(let k=i+1;k<L.length;k++){if(/^ {0,2}\\S/.test(L[k])){e=k;break;}}return L.slice(i+1,e).filter((l)=>!/^\\s*#/.test(l)).join(\"\\n\");};const b=job(\"secret-scan\");const steps=[...b.matchAll(/^\\s*- name: (.+)$/gm)].map((m)=>m[1]);if(steps.join()!==\"checkout,gitleaks\")die(\"steps: \"+steps.join());if(!/uses: actions\\/checkout@v7/.test(b))die(\"no checkout pin\");if(!/fetch-depth: 0/.test(b))die(\"no fetch-depth\");if(!/uses: gitleaks\\/gitleaks-action@v3/.test(b))die(\"no gitleaks pin\");if(!/GITLEAKS_VERSION: 8\\.30\\.1/.test(b))die(\"no gitleaks version\");'",
+          "scope": "root"
+        }
+      ]
+    },
+    {
+      "id": "semgrep",
+      "title": "Semgrep — pattern-level security findings, in CI and on demand",
+      "purpose": "Fail on injection and unsafe-API patterns with a vendored semgrep ruleset, in its own CI workflow and through a launcher that needs no project install.",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "conflicts": {},
+      "cost": "fast",
+      "priority": 15,
+      "files": [
+        {
+          "path": ".semgrep/rules.yml",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/semgrep/rules.yml"
+        },
+        {
+          "path": "scripts/semgrep.sh",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/semgrep/scripts/semgrep.sh"
+        },
+        {
+          "path": ".github/workflows/semgrep.yml",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/semgrep/semgrep.yml"
+        }
+      ],
+      "commands": [],
+      "gates": [
+        {
+          "id": "semgrep",
+          "run": "sh scripts/semgrep.sh",
+          "description": "semgrep over the repo with the vendored ruleset — injection and unsafe APIs; credential detection belongs to the secret-scan gate"
+        }
+      ],
+      "verify": [
+        {
+          "run": "node -e 'const fs=require(\"node:fs\"),L=fs.readFileSync(\".semgrep/rules.yml\",\"utf8\").split(\"\\n\"),die=(m)=>{console.error(m);process.exit(1)};const ids=L.filter((l)=>/^  - id: /.test(l)).map((l)=>l.replace(/^  - id: /,\"\"));if(ids.join()!==\"no-eval,no-shell-string-in-child-process,no-sql-string-interpolation,no-unsafe-html-assignment,no-weak-hash,no-disabled-tls-verification\")die(\"ids: \"+ids.join());let inBlock=false;const body=[];for(const l of L){if(/^\\s*#/.test(l))continue;if(/^    (message|metadata):/.test(l)){inBlock=true;continue;}if(inBlock&&/^ {0,4}\\S/.test(l))inBlock=false;if(!inBlock)body.push(l);}if(/secret|token|api[_-]?key|password|credential|private[_-]?key|entropy/i.test(body.join(\"\\n\")))die(\"a rule pattern mentions a credential\");'",
+          "scope": "root"
+        },
+        {
+          "run": "node -e 'const fs=require(\"node:fs\"),L=fs.readFileSync(\".github/workflows/semgrep.yml\",\"utf8\").split(\"\\n\"),die=(m)=>{console.error(m);process.exit(1)};const jobs=(()=>{const i=L.findIndex((l)=>/^jobs:$/.test(l));if(i<0)die(\"no jobs\");const o=[];for(let k=i+1;k<L.length;k++){const m=/^  (\\S+):$/.exec(L[k]);if(m)o.push(m[1]);else if(/^\\S/.test(L[k]))break;}return o;})();if(jobs.join()!==\"semgrep\")die(\"jobs: \"+jobs.join());const job=(n)=>{const i=L.findIndex((l)=>l===\"  \"+n+\":\");if(i<0)die(\"no \"+n+\" job\");let e=L.length;for(let k=i+1;k<L.length;k++){if(/^ {0,2}\\S/.test(L[k])){e=k;break;}}return L.slice(i+1,e).filter((l)=>!/^\\s*#/.test(l)).join(\"\\n\");};const b=job(\"semgrep\");const steps=[...b.matchAll(/^\\s*- name: (.+)$/gm)].map((m)=>m[1]);if(steps.join()!==\"checkout,semgrep\")die(\"steps: \"+steps.join());if(!/uses: actions\\/checkout@v7/.test(b))die(\"no checkout pin\");if(!/image: semgrep\\/semgrep:1\\.181\\.0/.test(b))die(\"no pinned image\");if(!/--config \\.semgrep\\/rules\\.yml/.test(b))die(\"no ruleset config\");if(!/--error/.test(b))die(\"no --error\");'",
           "scope": "root"
         }
       ]
@@ -1908,6 +2402,12 @@
           "template": "templates/vitest-coverage/scripts/coverage-gate.mjs"
         },
         {
+          "path": "scripts/changed-lines.mjs",
+          "action": "create",
+          "scope": "root",
+          "template": "templates/vitest-coverage/scripts/changed-lines.mjs"
+        },
+        {
           "path": "scripts/coverage-ignore-audit.mjs",
           "action": "create",
           "scope": "root",
@@ -1991,6 +2491,19 @@
       "enforcedBy": []
     },
     {
+      "id": "ai-generated-code-review",
+      "title": "Test AI-generated code more thoroughly, not less",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": []
+    },
+    {
       "id": "any-policy",
       "title": "Confine `any` to the decoded boundary",
       "when": {
@@ -2053,6 +2566,22 @@
       ]
     },
     {
+      "id": "comments",
+      "title": "Say why, not what",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": [
+        "oxlint-anti-slop",
+        "oxlint-anti-slop-npm"
+      ]
+    },
+    {
       "id": "complexity-triage",
       "title": "The threshold reports, the rule gates — and a legacy hotspot gets a documented ceiling",
       "when": {
@@ -2071,6 +2600,19 @@
         "fallow-audit",
         "fallow-audit-npm"
       ]
+    },
+    {
+      "id": "config-validation",
+      "title": "Validate config at startup, and never commit environment-specific values",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": []
     },
     {
       "id": "context-pointer-wording",
@@ -2148,6 +2690,51 @@
       ]
     },
     {
+      "id": "decode-at-the-boundary",
+      "title": "Decode external data at the boundary, then trust the type",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": [
+        "oxlint-anti-slop",
+        "oxlint-anti-slop-npm"
+      ]
+    },
+    {
+      "id": "deep-modules",
+      "title": "A deep module hides real work behind a simple interface",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": [
+        "fallow-audit",
+        "fallow-audit-npm"
+      ]
+    },
+    {
+      "id": "define-errors-out-of-existence",
+      "title": "Reshape the interface instead of adding a handler",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": []
+    },
+    {
       "id": "environment-is-a-source-of-truth",
       "title": "Do not cache what the environment already says",
       "when": {
@@ -2181,6 +2768,32 @@
       ]
     },
     {
+      "id": "error-taxonomy",
+      "title": "Classify an error before you write a handler",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": []
+    },
+    {
+      "id": "flaky-test-triage",
+      "title": "Quarantine, root-cause, eliminate — never retry",
+      "when": {
+        "requires": [
+          {
+            "testFile": "true"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": []
+    },
+    {
       "id": "format-on-write-vs-check",
       "title": "Format on write locally, check only in CI",
       "when": {
@@ -2195,6 +2808,23 @@
         ]
       },
       "source": "research/formatting.md",
+      "enforcedBy": [
+        "biome-assist",
+        "biome-assist-npm",
+        "eslint-prettier"
+      ]
+    },
+    {
+      "id": "format-only-commits",
+      "title": "Keep a reformat out of a logic commit",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
       "enforcedBy": [
         "biome-assist",
         "biome-assist-npm",
@@ -2571,6 +3201,22 @@
       ]
     },
     {
+      "id": "naming",
+      "title": "A name says what the thing is, not that it exists",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": [
+        "oxlint-anti-slop",
+        "oxlint-anti-slop-npm"
+      ]
+    },
+    {
       "id": "never-failing-tests",
       "title": "A test that never fails is not a test",
       "when": {
@@ -2586,6 +3232,22 @@
         "stryker-mutation-vitest",
         "bun-test-coverage",
         "vitest-coverage"
+      ]
+    },
+    {
+      "id": "one-canonical-lint-config",
+      "title": "One canonical lint config",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": [
+        "oxlint-anti-slop",
+        "oxlint-anti-slop-npm"
       ]
     },
     {
@@ -2625,6 +3287,48 @@
       ]
     },
     {
+      "id": "property-testing",
+      "title": "Write a property where an example cannot pin the rule down",
+      "when": {
+        "requires": [
+          {
+            "testFile": "true"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": []
+    },
+    {
+      "id": "release-discipline",
+      "title": "Never release without CI green on the release commit",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": [
+        "release-automation",
+        "release-automation-npm"
+      ]
+    },
+    {
+      "id": "snapshot-review",
+      "title": "Review a snapshot diff before you update it",
+      "when": {
+        "requires": [
+          {
+            "testFile": "true"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": []
+    },
+    {
       "id": "staged-vs-repo-wide",
       "title": "Staged-only locally, repo-wide in the gate",
       "when": {
@@ -2644,6 +3348,19 @@
         "biome-assist-npm",
         "eslint-prettier"
       ]
+    },
+    {
+      "id": "structured-logging",
+      "title": "Log key-value events, never PII",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
+      "enforcedBy": []
     },
     {
       "id": "surviving-mutant",
@@ -2705,6 +3422,19 @@
         ]
       },
       "source": "research/testing.md",
+      "enforcedBy": []
+    },
+    {
+      "id": "test-isolation",
+      "title": "A test starts from a known state, not from the previous test",
+      "when": {
+        "requires": [
+          {
+            "testFile": "true"
+          }
+        ]
+      },
+      "source": "research/best-practices-coverage.md",
       "enforcedBy": []
     },
     {

@@ -1362,6 +1362,7 @@ function buildPlan(report, opts) {
 // reader prefers lcov, so the plan reports whichever exists.
 const FLOOR_ARTIFACT = {
   coverage: ["lcov", "istanbul"],
+  "dep-audit": ["dep-audit"],
   "fallow-dead-code": ["fallowDeadCode"],
   "fallow-health": ["fallowHealth"],
   lint: ["oxlint"],
@@ -1376,6 +1377,7 @@ const FLOOR_ARTIFACT = {
 // `fallow:audit`, which with no baseline still fails on the findings the changeset introduces.
 const WALL = {
   coverage: "100% (both metrics)",
+  "dep-audit": "0",
   "fallow-dead-code": "new-only (no baseline)",
   "fallow-health": "zero findings",
   lint: "0",
@@ -1466,7 +1468,7 @@ function levelText(gate, gates) {
     const g = gates[gate];
     return g ? fracText(g.global, "mutation") : null;
   }
-  if (gate === "lint" || gate === "typecheck") {
+  if (gate === "lint" || gate === "typecheck" || gate === "dep-audit") {
     const g = gates[gate];
     return g ? String(g.global) : null;
   }

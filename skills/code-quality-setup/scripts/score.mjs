@@ -21,9 +21,11 @@ const SCHEMA_VERSION = 1;
 const SKILL_VERSION = "1";
 const BASELINE_NAME = ".code-quality-baseline.json";
 
-// The artifact each gate writes, relative to the project root. The first three are the paths the
-// recipes already fix; the last four are captured stdout (those tools write no file of their own).
+// The artifact each gate writes, relative to the project root. `dep-audit`, `istanbul`, `lcov` and
+// `mutation` are files a tool writes itself; `fallowDeadCode`, `fallowHealth`, `oxlint` and `tsc`
+// are captured stdout (those tools write no file of their own).
 export const ARTIFACTS = {
+  "dep-audit": "reports/dep-audit.json",
   fallowDeadCode: "reports/fallow-dead-code.json",
   fallowHealth: "reports/fallow-health.json",
   istanbul: "coverage/coverage-final.json",
@@ -35,7 +37,7 @@ export const ARTIFACTS = {
 
 // The gates the unified baseline holds. fallow's floors stay in fallow's own baseline files
 // (health, dead-code, dupes — each its own format), so they are printed but never recorded here.
-const BASELINE_GATES = ["coverage", "mutation", "lint", "typecheck"];
+const BASELINE_GATES = ["coverage", "dep-audit", "mutation", "lint", "typecheck"];
 
 // ---------------------------------------------------------------------------
 // Artifact readers
@@ -126,6 +128,18 @@ export function countTscErrors(text) {
   return text.split("\n").filter((line) => /: error TS\d+/.test(line)).length;
 }
 
+// The dependency-audit scanner's JSON report: `findings` is one entry per advisory occurrence
+// (the same advisory against two lockfile entries is two findings, so a "fix one of them"
+// change moves the count). The level is the count — a ceiling, like lint and typecheck, not a
+// fraction. A report with no `findings` array is a malformed artifact and throws, so a gate
+// that cannot read its own report fails closed rather than reporting a clean zero.
+export function readDepAudit(doc) {
+  if (!Array.isArray(doc?.findings)) {
+    throw new Error("the dep-audit report carries no findings array");
+  }
+  return { global: doc.findings.length };
+}
+
 // ---------------------------------------------------------------------------
 // Measurement
 // ---------------------------------------------------------------------------
@@ -197,6 +211,12 @@ export function measure(root, bases) {
   if (existsSync(tscPath)) {
     const g = read("typecheck", () => ({ global: countTscErrors(readFileSync(tscPath, "utf8")) }));
     if (g) gates.typecheck = g;
+  }
+
+  const depAuditPath = join(root, ARTIFACTS["dep-audit"]);
+  if (existsSync(depAuditPath)) {
+    const g = read("dep-audit", () => readDepAudit(json(depAuditPath)));
+    if (g) gates["dep-audit"] = g;
   }
 
   const healthPath = join(root, ARTIFACTS.fallowHealth);
@@ -377,7 +397,7 @@ export function compare(gates, baseline) {
     }
   }
 
-  for (const gate of ["lint", "typecheck"]) {
+  for (const gate of ["dep-audit", "lint", "typecheck"]) {
     const floor = bg[gate];
     const cur = gates[gate];
     if (!floor || !cur) continue;
@@ -527,6 +547,7 @@ function renderText(score) {
   lines.push(`  ${"mutation".padEnd(16)}${fmtMutation(g.mutation)}`);
   lines.push(`  ${"lint".padEnd(16)}${fmtCount(g.lint)}`);
   lines.push(`  ${"typecheck".padEnd(16)}${fmtCount(g.typecheck)}`);
+  lines.push(`  ${"dep audit".padEnd(16)}${fmtCount(g["dep-audit"])}`);
   lines.push(`  ${"dead code".padEnd(16)}${fmtCount(g.fallowDeadCode)}`);
   lines.push("");
   if (score.baseline.present) {

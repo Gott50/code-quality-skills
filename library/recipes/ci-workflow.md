@@ -19,6 +19,8 @@ gates: []
 verify:
   - run: bun -e "const y = Bun.YAML.parse(await Bun.file('.github/workflows/ci.yml').text()); if (Object.keys(y.jobs).join() !== 'ci,mutation,fallow-coverage') process.exit(1)"
     scope: root
+  - run: node -e 'const fs=require("node:fs"),s=fs.readFileSync(".github/workflows/ci.yml","utf8"),L=s.split("\n"),die=(m)=>{console.error(m);process.exit(1)};const j=L.findIndex((l)=>/^  ci:$/.test(l));if(j<0)die("no ci job");const n=L.findIndex((l,index)=>index>j&&/^  \S+:$/.test(l));const block=L.slice(j+1,n<0?L.length:n).join("\n");if(!/actions\/checkout@/.test(block))die("ci job has no checkout step");if(!/CODE_QUALITY_BASE_REF: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/.test(block))die("the test step does not pass the PR base ref to the coverage gate");if(!/fetch-depth: 0/.test(block))die("the ci checkout does not fetch the base ref");'
+    scope: root
 ---
 
 ## Apply
@@ -31,6 +33,8 @@ verify:
    Triggers: `pull_request` (skipping markdown-only changes) and `push` to `main`. A `concurrency` group cancels superseded runs.
 
 The workflow reads `.bun-version` through `oven-sh/setup-bun`'s `bun-version-file`. That file is the repo-hygiene recipe's, not this one's: without it, `setup-bun` fails before any gate runs.
+
+The `ci` job's test step sets `CODE_QUALITY_BASE_REF` to `github.event.pull_request.base.sha`, which turns on the coverage gate's changed-lines mode: on a PR, the lines the change adds or modifies must be executed, while the per-file floor still governs the whole file. The job's checkout carries `fetch-depth: 0` because the base SHA is not in a depth-1 clone, and the gate fails closed on a diff it cannot compute — so a shallow checkout would fail every PR for the wrong reason. On a push the context is empty, the variable is the empty string, and the gate treats it as absent (the per-file floor is the whole rule). The recipe's second `verify` asserts both wirings against the generated workflow: the checkout fetches the base ref, and the test step passes it.
 
 This recipe requires the fast-gate recipes it wires — `biome-assist`, `oxlint-anti-slop`, `tsconfig-strict`, `bun-test-coverage` and `fallow-audit` — because the workflow calls their scripts by name. The detector reports a missing one as the failing reason rather than writing a workflow whose steps would fail on a missing script.
 

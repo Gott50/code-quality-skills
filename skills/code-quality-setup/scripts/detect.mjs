@@ -34,6 +34,7 @@ function resolveLibraryDir(flag) {
 // fallow's own two. A static string-keyed membership table.
 const FLOOR_GATES = {
   coverage: true,
+  "dep-audit": true,
   "fallow-dead-code": true,
   "fallow-health": true,
   lint: true,

@@ -1,41 +1,34 @@
 /**
- * Coverage gate — enforces the per-file coverage floor recorded in the
- * committed baseline.
+ * Coverage gate — the per-file floor from the committed baseline, and (with
+ * `--changed-lines <ref>` / `$CODE_QUALITY_BASE_REF`) the coverage of the lines
+ * a change touches.
  *
  * Reads bun's lcov output and `.code-quality-baseline.json` (written by the
- * skill's `score.mjs --raise`) and fails the build listing every file below
- * its floor on either line or function coverage.
+ * skill's `score.mjs --raise`) and fails listing every file below its floor on
+ * either line or function coverage. The floor for a file the baseline records is
+ * its exact `{hit, found}` fraction per metric under `gates.coverage.files` —
+ * `lines` from lcov `LH`/`LF`, `functions` from `FNH`/`FNF` — compared by
+ * cross-multiplication; a file it does not record gets the
+ * `gates.coverage.global` fractions. With no baseline every floor is 100%, the
+ * greenfield wall.
  *
- * The floor for a file the baseline records is its exact `{hit, found}`
- * fraction per metric under `gates.coverage.files` — `lines` from lcov
- * `LH`/`LF`, `functions` from `FNH`/`FNF` — compared by cross-multiplication
- * so no float rounding creeps in; a file the baseline does not record gets
- * the `gates.coverage.global` fractions. Each metric is enforced against its
- * own floor: a file at 4/10 lines and 0/1 functions passes only when both
- * floors are met. The global fraction over the whole project is `score.mjs`'s
- * comparison, not this gate's: a workspace member's own run aggregates the
- * member alone, and holding it to the workspace-wide fraction would fail a
- * member that is exactly at its recorded floor. With no baseline — or a
- * baseline whose coverage gate was never raised — every floor is 100%, the
- * greenfield wall, so a repo that never raised one is gated exactly as
- * before.
- *
- * An artifact that is absent, or that lists no file, is a failure — the
- * reporter did not write — unless the project has no test file at all, in
- * which case there is nothing to measure and the gate exits 0. That is what
- * keeps the gate green on day one in a repo with no tests (`bun test
- * --pass-with-no-tests`); a missing artifact with test files present still
- * exits 1.
+ * An artifact that is absent, or that lists no file, is a failure — the reporter
+ * did not write — unless the project has no test file at all, in which case
+ * there is nothing to measure and the gate exits 0.
  *
  * Usage:
  *   bun test --coverage --coverage-reporter=lcov --coverage-dir=coverage
  *   bun scripts/coverage-gate.ts --lcov coverage/lcov.info --baseline .code-quality-baseline.json
+ *   bun scripts/coverage-gate.ts --changed-lines origin/main
  *
  * Defaults: --lcov ./coverage/lcov.info, --baseline ./.code-quality-baseline.json.
- * Exit 0 when every file meets its floor; exit 1 with a report otherwise.
+ * `--changed-lines` adds the PR rule — every instrumented line the diff adds or
+ * modifies must be executed — on top of the per-file floor. Exit 0 when every
+ * file meets its floor and every changed line is covered; exit 1 otherwise.
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { checkChangedLines, resolveBaseRef, TEST_FILE } from "./changed-lines.ts";
 
 function parseArg(name: string): string | undefined {
   const i = process.argv.indexOf(name);
@@ -88,13 +81,9 @@ const FULL: CoverageFrac = { functions: { found: 1, hit: 1 }, lines: { found: 1,
 const lcovPath = parseArg("--lcov") ?? "coverage/lcov.info";
 const baselinePath = parseArg("--baseline") ?? ".code-quality-baseline.json";
 
-/** bun's test-file patterns: `*.test.*`, `*.spec.*`, `*_test.*`, `*_spec.*` (js/ts/jsx/tsx/mjs/mts/cjs/cts). */
-const TEST_FILE = /(?:\.|_)(?:test|spec)\.[cm]?[jt]sx?$/;
-
 // Whether the project has any test file, by bun's own discovery patterns. Only
 // consulted when the artifact is absent or lists no file. Dot-directories are
-// skipped: the installed skill itself lives in one (`.agents/skills/<name>/`),
-// and a test file inside it is not the project's.
+// skipped: the installed skill lives in one, and its test files are not ours.
 function hasTestFiles(dir: string): boolean {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
@@ -135,14 +124,15 @@ function isCoverageFrac(v: RawCoverageFrac | undefined): v is CoverageFrac {
 }
 
 // The baseline as parsed, or exit 1 when the file is unreadable: a floor file
-// that cannot be read must not silently become 100%.
+// that cannot be read must not silently become 100%. The parse is unannotated on
+// purpose — `JSON.parse` returns `any`, so the block is read through the
+// `Baseline` return type and every leaf is re-checked by `isCoverageFrac`; an
+// `as Baseline` would assert the shape instead of checking it.
 function readBaseline(path: string): Baseline {
   if (!existsSync(path)) return {};
   try {
-    // SAFETY: the baseline is JSON written by score.mjs; only the coverage
-    // gate's `global` fraction and `files` map are read, and every field is
-    // re-checked by `isCoverageFrac` before use.
-    return JSON.parse(readFileSync(path, "utf8")) as Baseline;
+    const doc = JSON.parse(readFileSync(path, "utf8"));
+    return { gates: { coverage: doc?.gates?.coverage } };
   } catch (err) {
     console.error(`coverage-gate: baseline ${path} is unreadable: ${err}`);
     process.exit(1);
@@ -186,6 +176,7 @@ const text = readFileSync(lcovPath, "utf-8");
 interface CovFile {
   fnf: number;
   fnh: number;
+  lines: Map<number, number>;
   lf: number;
   lh: number;
   sf: string;
@@ -205,11 +196,18 @@ for (const block of text.split(/(?=^SF:)/m)) {
     const l = lines.find((x) => x.startsWith(`${k}:`));
     return l ? Number(l.split(":")[1]) : 0;
   };
-  const rec = byFile[sf] ?? { fnf: 0, fnh: 0, lf: 0, lh: 0, sf };
+  const rec = byFile[sf] ?? { fnf: 0, fnh: 0, lines: new Map(), lf: 0, lh: 0, sf };
   rec.lf += num("LF");
   rec.lh += num("LH");
   rec.fnf += num("FNF");
   rec.fnh += num("FNH");
+  // `DA:<line>,<hits>` is the per-line record the changed-lines rule needs.
+  for (const l of lines) {
+    if (!l.startsWith("DA:")) continue;
+    const [lineNo, hits] = l.slice(3).split(",");
+    const n = Number(lineNo);
+    rec.lines.set(n, Math.max(rec.lines.get(n) ?? 0, Number(hits)));
+  }
   byFile[sf] = rec;
 }
 
@@ -282,10 +280,26 @@ console.log(
     `across ${Object.keys(byFile).length} files`,
 );
 
+const baseRef = resolveBaseRef();
+const changedResult =
+  baseRef === undefined ? null : checkChangedLines(baseRef, Object.values(byFile));
+if (changedResult !== null) {
+  console.log(
+    `coverage-gate: changed-lines ${baseRef} | ${changedResult.checked} changed line(s) across ${changedResult.files} instrumented file(s)`,
+  );
+}
+
 if (failing.length > 0) {
   console.error(`\n${failing.length} file(s) below their coverage floor:\n`);
   console.error(failing.join("\n\n"));
   process.exit(1);
 }
 
+if (changedResult !== null && changedResult.uncovered.length > 0) {
+  console.error(`\n${changedResult.uncovered.length} file(s) with uncovered changed lines:\n`);
+  console.error(changedResult.uncovered.join("\n\n"));
+  process.exit(1);
+}
+
 console.log("coverage-gate: PASS — every file meets its floor");
+if (baseRef !== undefined) console.log("coverage-gate: PASS — every changed line is covered");

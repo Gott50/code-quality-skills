@@ -492,7 +492,7 @@ function loadLibrary(dir) {
 }
 
 // gate → the practice doc pointers that cover it. A recipe declares a gate when one of its
-// `gates[]` entries names it in `floor`: the six unified gates are exactly the `floor` vocabulary
+// `gates[]` entries names it in `floor`: the seven unified gates are exactly the `floor` vocabulary
 // (RECIPE-CONTRACT.md → "`floor` — the gate's ratchet"), and a gate with no `floor` is a wall at a
 // fixed level, not one of the ranked gates. A practice covers a gate when its `enforcedBy` names
 // such a recipe. Several practices can cover one gate — a dozen ride the oxlint recipes' `lint`

@@ -22,6 +22,10 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The coverage gate's changed-lines mode diffs against the PR's base
+          # SHA, which a depth-1 clone does not contain.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v7
         with:
@@ -45,6 +49,12 @@ jobs:
       # committed baseline (100% when there is none).
       - name: Test with the coverage gate
         run: npm run test
+        env:
+          # The coverage gate's changed-lines mode: on a PR, the lines the
+          # change adds or modifies must be executed, while the per-file floor
+          # still governs the whole file. Empty on a push, where there is no
+          # base to diff against and the per-file floor is the whole rule.
+          CODE_QUALITY_BASE_REF: ${{ github.event.pull_request.base.sha }}
 
   # Mutation gate — enforces the per-file mutation floors from the committed
   # baseline (0 Timeout / 0 Survived / 0 NoCoverage when there is none) on

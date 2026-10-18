@@ -1,0 +1,21 @@
+# osv-scanner configuration — the advisory ignore list.
+#
+# The gate passes `--config=./osv-scanner.toml` explicitly, because a config
+# file applies only to lockfiles in its own directory and does not propagate to
+# child directories: without the flag a workspace member's lockfile would be
+# scanned with no config at all.
+#
+# An advisory the repo has decided to accept is recorded here with a reason and
+# an expiry, so the decision is visible in the diff and expires on its own. The
+# count floor in `.code-quality-baseline.json` is the other half of the ratchet:
+# it holds the advisories that are still open, while this list records the ones
+# that are closed. Ignoring an advisory also ignores its aliases.
+#
+# There is no severity-threshold key in this file — the scanner's config carries
+# only the ignore list and package overrides. A severity threshold is a
+# scan-time concern, not a config one.
+
+# [[IgnoredVulns]]
+# id = "GHSA-xxxx-xxxx-xxxx"
+# reason = "not reachable from our code paths"
+# ignoreUntil = 2027-01-01

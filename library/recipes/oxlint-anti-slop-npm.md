@@ -24,6 +24,10 @@ files:
     action: create
     scope: root
     template: templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/max-expects-per-test.ts
+  - path: tools/oxlint/anti-slop/rules/no-assertion-over-parsed-data.ts
+    action: create
+    scope: root
+    template: templates/oxlint-anti-slop/tools/oxlint/anti-slop/rules/no-assertion-over-parsed-data.ts
   - path: tools/oxlint/anti-slop/rules/no-chained-type-assertions.ts
     action: create
     scope: root
@@ -152,9 +156,10 @@ verify:
 
 ## Apply
 
-1. **`oxlint.config.ts`** — create from `templates/oxlint-anti-slop/oxlint.config.ts`, the same config the Bun recipe writes. oxlint has been Node-based since v1.17 (the npm bin is `#!/usr/bin/env node` and JS plugins load through `await import(url)`), so the config and the plugin are package-manager-neutral and the two recipes share one template. It registers the vendored plugin and turns on its 15 rules plus the size and complexity caps and the core `no-unused-vars` rule at `error`, plus the built-in `typescript/ban-ts-comment`, `typescript/no-explicit-any`, and `typescript/no-unsafe-function-type` rules; `no-unused-vars` catches the in-file unused bindings the compiler options miss (`.d.ts`, `.astro`, `.svelte`, `.vue`), so it pairs with `noUnusedLocals`/`noUnusedParameters` rather than replacing them. Test files are exempted from the line and statement caps through `overrides`.
-2. **`tools/oxlint/anti-slop/**`** — create the 19 vendored files. The plugin is self-contained: it imports only `@oxlint/plugins` and its own siblings. `effect/` is deliberately not vendored.
+1. **`oxlint.config.ts`** — create from `templates/oxlint-anti-slop/oxlint.config.ts`, the same config the Bun recipe writes. oxlint has been Node-based since v1.17 (the npm bin is `#!/usr/bin/env node` and JS plugins load through `await import(url)`), so the config and the plugin are package-manager-neutral and the two recipes share one template. It registers the vendored plugin and turns on its 22 rules plus the size and complexity caps and the core `no-unused-vars` rule at `error`, plus the built-in `typescript/ban-ts-comment`, `typescript/no-explicit-any`, and `typescript/no-unsafe-function-type` rules; `no-unused-vars` catches the in-file unused bindings the compiler options miss (`.d.ts`, `.astro`, `.svelte`, `.vue`), so it pairs with `noUnusedLocals`/`noUnusedParameters` rather than replacing them. Test files are exempted from the line and statement caps through `overrides`.
+2. **`tools/oxlint/anti-slop/**`** — create the 27 vendored files. The plugin is self-contained: it imports only `@oxlint/plugins` and its own siblings. `effect/` is deliberately not vendored.
 3. **`scripts/lint-gate.mjs`** — create from `templates/oxlint-anti-slop/scripts/lint-gate.mjs`, the same script the Bun recipe writes (root-scoped). The lint floor: the gate runs oxlint with `--report-unused-disable-directives --format json`, counts the diagnostics, and fails when the count exceeds `gates.lint.global` from `.code-quality-baseline.json` (written by the skill's `score.mjs --raise`). With no baseline the floor is 0 — any diagnostic fails, the greenfield wall. It is plain `.mjs`, so `node` runs it without a TypeScript loader.
+   One vendored rule is the gate for the decode-at-the-boundary practice: **`no-assertion-over-parsed-data`** flags a type assertion over data parsed from outside the program — `JSON.parse(...) as T`, `await response.json() as T` — because the assertion tells the compiler what the value is without checking it. The fix is a validator at the I/O boundary (`zod`, `valibot`), not a wider assertion; the judgement of where `any` is allowed and where a validator is required is the `decode-at-the-boundary` practice, which the `agent-guidance` recipe delivers alongside the gate.
 4. **`package.json`** — merge from `templates/oxlint-anti-slop-npm/package.json`: add the `oxlint` and `@oxlint/plugins` devDependencies and the `lint` script, `node scripts/lint-gate.mjs` — the npm twin of the Bun recipe's `bun scripts/lint-gate.mjs`, one script through two runners — plus the `lint:fix` script, `oxlint --fix .`. Existing keys are never overwritten; a differing value is a collision the plan must show.
 5. **`.husky/pre-commit`** — merge from `templates/oxlint-anti-slop-npm/pre-commit.block`, inside this recipe's marker pair. The block is the Bun recipe's with `bun run lint` → `npm run lint`; the hook is inert until `repo-hygiene-npm` wires `prepare`.
 

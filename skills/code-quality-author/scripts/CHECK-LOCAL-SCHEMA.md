@@ -41,7 +41,7 @@ document above with `recipes: 0` and `practices: 0`. Either directory alone is a
 1. **Recipe contract** — every `.code-quality/recipes/*.md` parses with the shared
    `parseFrontmatter`; `id` equals the filename stem and matches `^[a-z][a-z0-9-]*$`; every
    `files[].template` exists under `.code-quality/`; every `gates[].floor` (when defined) is one of
-   `coverage`, `mutation`, `lint`, `typecheck`, `fallow-health`, `fallow-dead-code`.
+   `coverage`, `dep-audit`, `mutation`, `lint`, `typecheck`, `fallow-health`, `fallow-dead-code`.
 2. **Template formatting** — every biome-parseable template under `.code-quality/templates/**` is
    `biome format`-clean after the `{{root}}` / `{{plan.*}}` placeholders are substituted with dummy
    values. The parseable extensions are `.json .jsonc .js .mjs .cjs .ts .mts .cts .jsx .tsx`;
@@ -71,7 +71,7 @@ On failure, one `  - <error>` line per error on stderr:
 
 ```
 check-local: FAILED (3)
-  - .code-quality/recipes/foo.md: gate "g" has floor "bogus" — not one of coverage, mutation, lint, typecheck, fallow-health, fallow-dead-code
+  - .code-quality/recipes/foo.md: gate "g" has floor "bogus" — not one of coverage, dep-audit, mutation, lint, typecheck, fallow-health, fallow-dead-code
   - .code-quality/practices/bar.md: enforcedBy "no-such-recipe" names no recipe
   - templates/foo/foo.json: not formatted — run `biome format --write`
 ```

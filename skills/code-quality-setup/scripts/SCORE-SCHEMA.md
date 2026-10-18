@@ -32,6 +32,7 @@ a capture.
 | mutation | `reports/mutation/report.json` | `stryker run` (the `jsonReporter` path) |
 | lint | `reports/oxlint.json` | `oxlint --format json > reports/oxlint.json` |
 | typecheck | `reports/tsc.log` | `tsc --noEmit --pretty false > reports/tsc.log` |
+| dep-audit | `reports/dep-audit.json` | `node scripts/dep-audit-gate.mjs` — the gate runs the scanner (osv-scanner) and writes the normalized report itself, one entry per advisory occurrence under a top-level `findings` array. The raw scanner JSON is not that shape (`osv-scanner` nests `results[].packages[].vulnerabilities[]`), so the gate, not the scanner, owns the artifact. |
 | fallow health | `reports/fallow-health.json` | `fallow health --format json --report-only > reports/fallow-health.json` |
 | fallow dead-code | `reports/fallow-dead-code.json` | `fallow dead-code --format json > reports/fallow-dead-code.json` |
 
@@ -47,6 +48,7 @@ score. When no artifact at all is found, the run exits 1 with a message.
 | mutation | per file `{ killed, total }`; global = the sum | `files[path].mutants[].status`; `killed` = `Killed`, `total` = every mutant in the file. The report carries no score. |
 | lint | one global count | `diagnostics.length` of `oxlint --format json` |
 | typecheck | one global count | the lines of `tsc --noEmit --pretty false` matching `: error TS\d+` |
+| dep-audit | one global count | `findings.length` of the scanner's JSON report — one entry per advisory occurrence. A report with no `findings` array is malformed (the gate fails closed rather than reporting a clean zero). |
 | fallow health | `health_score.score` (0–100) + `.grade`, with `summary.average_maintainability` and the worst `file_scores[].crap_max` | the only ready-made 0–100 level |
 | fallow dead-code | one global count | `total_issues` |
 
@@ -65,6 +67,7 @@ Quality score — /tmp/proj
   mutation        75.0%  (3/4)
   lint            3
   typecheck       2
+  dep audit       1
   dead code       4
 
   baseline        .code-quality-baseline.json (schemaVersion 1)
@@ -119,7 +122,8 @@ its own format, per [#77](https://github.com/Gott50/code-quality-skills/issues/7
       "files": { "src/x.ts": { "killed": 8, "total": 10 } }
     },
     "lint": { "global": 3 },
-    "typecheck": { "global": 0 }
+    "typecheck": { "global": 0 },
+    "dep-audit": { "global": 1 }
   }
 }
 ```
@@ -130,7 +134,7 @@ its own format, per [#77](https://github.com/Gott50/code-quality-skills/issues/7
 | `versions` | the declared version of each tool (below); `null` when the project does not declare it |
 | `gates.coverage` | `global` plus one entry per file, each a map of **metric → exact fraction** — never a rounded ratio. The metric names come from the source: `lines`/`functions` for bun's lcov, `statements`/`functions` for vitest's Istanbul |
 | `gates.mutation` | `global` plus one entry per file, as **exact fractions** — never a rounded ratio |
-| `gates.lint` / `gates.typecheck` | one global count |
+| `gates.lint` / `gates.typecheck` / `gates.dep-audit` | one global count |
 
 The coverage floor carries **both metrics** because both gates enforce both: `coverage-gate.ts`
 reads lcov `LH`/`LF` and `FNH`/`FNF`, `coverage-gate.mjs` reads Istanbul's `s` and `f` maps. A
@@ -160,7 +164,10 @@ bytes.
   (`killed/total >= the recorded fraction`, cross-multiplied so no float rounding creeps in). A
   **new** file must meet the recorded **global** floor. A **deleted** file is not a regression —
   its entry drops on the next raise. The global fraction must also hold.
-- **lint / typecheck** — one global count; the current count must be `<=` the recorded count.
+- **lint / typecheck / dep-audit** — one global count; the current count must be `<=` the recorded
+  count. `dep-audit` counts advisories the scanner reports, so the ceiling is "no more advisories
+  than the baseline records" — the ratchet the spec installs instead of a wall, because existing
+  advisories are the normal case.
 - **fallow health / dead-code** — printed, never compared here; fallow's own baseline files are the
   floor.
 
@@ -241,7 +248,7 @@ Per gate:
 |---|---|
 | coverage | per file and global, the **larger** of the current and recorded fractions **per metric** (cross-multiplied, the same comparison `atLeast` makes). A current fraction with nothing to measure (`found` 0) never lowers a recorded floor. The per-file entries come from the current measurement only: a recorded file the artifact no longer lists is a deleted file and its entry drops (#62); a new file is added at its current fraction |
 | mutation | per file and global, the **larger** of the current and recorded fractions (cross-multiplied, the same comparison `atLeast` makes). A current fraction with nothing to measure (`total` 0) never lowers a recorded floor. The per-file entries come from the current measurement only: a recorded file the artifact no longer lists is a deleted file and its entry drops (#62); a new file is added at its current fraction |
-| lint / typecheck | the **smaller** of the current and recorded counts (a count is a ceiling) |
+| lint / typecheck / dep-audit | the **smaller** of the current and recorded counts (a count is a ceiling) |
 | a recorded gate whose artifact is absent | **kept**, never dropped — dropping it would fall back to the greenfield wall, which is stricter, not a raise |
 | a gate with no recorded floor | the current level |
 

@@ -1,39 +1,33 @@
 /**
- * Coverage gate — enforces the per-file coverage floor recorded in the
- * committed baseline. The Vitest twin of the Bun recipe's
- * `scripts/coverage-gate.ts`: the same floors, read from Istanbul's
- * `coverage/coverage-final.json` (statements and functions) instead of bun's
- * lcov.
+ * Coverage gate — the per-file floor from the committed baseline, and (with
+ * `--changed-lines <ref>` / `$CODE_QUALITY_BASE_REF`) the coverage of the lines
+ * a change touches. The Vitest twin of the Bun recipe's `coverage-gate.ts`: the
+ * same floors, read from Istanbul's `coverage/coverage-final.json` (statements
+ * and functions) instead of bun's lcov.
  *
- * The floor for a file the baseline records is its exact `{hit, found}`
- * fraction per metric under `gates.coverage.files` — `statements` from the
- * `s` map, `functions` from the `f` map — compared by cross-multiplication so
- * no float rounding creeps in; a file the baseline does not record gets the
- * `gates.coverage.global` fractions. Each metric is enforced against its own
- * floor: a file at 4/10 statements and 0/1 functions passes only when both
- * floors are met. The global fraction over the whole project is `score.mjs`'s
- * comparison, not this gate's: a workspace member's own run aggregates the
- * member alone, and holding it to the workspace-wide fraction would fail a
- * member that is exactly at its recorded floor. With no baseline — or a
- * baseline whose coverage gate was never raised — every floor is 100%, the
- * greenfield wall, so a repo that never raised one is gated exactly as
- * before.
+ * The floor for a file the baseline records is its exact `{hit, found}` fraction
+ * per metric under `gates.coverage.files` — `statements` from the `s` map,
+ * `functions` from the `f` map — compared by cross-multiplication; a file it
+ * does not record gets the `gates.coverage.global` fractions. With no baseline
+ * every floor is 100%, the greenfield wall.
  *
- * An artifact that is absent, or that lists no file, is a failure — the
- * reporter did not write — unless the project has no test file at all, in
- * which case there is nothing to measure and the gate exits 0. That is what
- * keeps the gate green on day one in a repo with no tests (`vitest run
- * --passWithNoTests`); a missing artifact with test files present still exits 1.
+ * An artifact that is absent, or that lists no file, is a failure — the reporter
+ * did not write — unless the project has no test file at all, in which case
+ * there is nothing to measure and the gate exits 0.
  *
  * Usage (the `test` script runs it after `vitest run --coverage`):
  *   node scripts/coverage-gate.mjs --coverage coverage/coverage-final.json --baseline .code-quality-baseline.json
+ *   node scripts/coverage-gate.mjs --changed-lines origin/main
  *
- * Defaults: --coverage ./coverage/coverage-final.json,
- *           --baseline ./.code-quality-baseline.json.
- * Exit 0 when every file meets its floor; exit 1 with a report otherwise.
+ * Defaults: --coverage ./coverage/coverage-final.json, --baseline ./.code-quality-baseline.json.
+ * `--changed-lines` adds the PR rule — every instrumented line the diff adds or
+ * modifies must be executed — on top of the per-file floor. Exit 0 when every
+ * file meets its floor and every changed line is covered; exit 1 otherwise.
  */
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
+
+import { checkChangedLines, resolveBaseRef, TEST_FILE } from "./changed-lines.mjs";
 
 function parseArg(name) {
   const i = process.argv.indexOf(name);
@@ -45,9 +39,6 @@ const FULL = { functions: { found: 1, hit: 1 }, statements: { found: 1, hit: 1 }
 
 const coveragePath = parseArg("--coverage") ?? "coverage/coverage-final.json";
 const baselinePath = parseArg("--baseline") ?? ".code-quality-baseline.json";
-
-/** Vitest's default test-file pattern: `**\/*.{test,spec}.?(c|m)[jt]s?(x)`. */
-const TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
 
 // Whether the project has any test file, by vitest's own default include. Only
 // consulted when the artifact is absent or lists no file. Dot-directories are
@@ -153,6 +144,19 @@ function readFloors(path) {
 
 const floors = readFloors(baselinePath);
 
+// The statement hit count per source line: a line is covered when at least one
+// statement starting on it was hit. The changed-lines rule reads this; the
+// statement and function fractions below are the per-file floor's measure.
+function statementLines(map, s) {
+  const lines = new Map();
+  for (const [id, stmt] of Object.entries(map)) {
+    const line = stmt?.start?.line;
+    if (line === undefined) continue;
+    lines.set(line, Math.max(lines.get(line) ?? 0, Number(s[id] ?? 0)));
+  }
+  return lines;
+}
+
 // Istanbul's `coverage-final.json` is keyed by absolute path; each value
 // carries an `s` statement hit map and an `f` function hit map. The level is
 // hit / found per map, one exact fraction per metric (SCORE-SCHEMA.md).
@@ -166,6 +170,7 @@ function readIstanbul(doc) {
         found: Object.keys(f).length,
         hit: Object.values(f).filter((n) => n > 0).length,
       },
+      lines: statementLines(fc?.statementMap ?? {}, s),
       sf: key,
       statements: {
         found: Object.keys(s).length,
@@ -275,4 +280,20 @@ if (failing.length > 0) {
   process.exit(1);
 }
 
+const baseRef = resolveBaseRef();
+const changedResult =
+  baseRef === undefined ? null : checkChangedLines(baseRef, Object.values(byFile));
+if (changedResult !== null) {
+  console.log(
+    `coverage-gate: changed-lines ${baseRef} | ${changedResult.checked} changed line(s) across ${changedResult.files} instrumented file(s)`,
+  );
+}
+
+if (changedResult !== null && changedResult.uncovered.length > 0) {
+  console.error(`\n${changedResult.uncovered.length} file(s) with uncovered changed lines:\n`);
+  console.error(changedResult.uncovered.join("\n\n"));
+  process.exit(1);
+}
+
 console.log("coverage-gate: PASS — every file meets its floor");
+if (baseRef !== undefined) console.log("coverage-gate: PASS — every changed line is covered");
