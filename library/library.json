@@ -2748,6 +2748,22 @@
       "enforcedBy": []
     },
     {
+      "id": "descriptive-commit-messages",
+      "title": "Write the commit message for the reader who arrives via git blame",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/tiger-style.md",
+      "enforcedBy": [
+        "release-automation",
+        "release-automation-npm"
+      ]
+    },
+    {
       "id": "environment-is-a-source-of-truth",
       "title": "Do not cache what the environment already says",
       "when": {
