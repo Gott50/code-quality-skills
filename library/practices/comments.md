@@ -24,3 +24,10 @@ When a comment is needed because the code is confusing, treat that as the code's
 itself: a well-named function or a reshaped interface often removes the need for the comment
 entirely. Where a suppression must stand — a lint directive, a type assertion — the comment states
 the reason, which is also what the lint layer requires of the directives the library installs.
+
+A test says how as well as why: open it with a description of the goal it establishes and the
+methodology it uses to establish it, so a reader can get up to speed on the section or skip it
+without diving into the body. The test's name says what it covers; the opening says how it covers
+it — the setup it builds, the path it drives, the property it checks. A reader who knows the method
+can trust the result without reading every line, and one who does not can decide in a sentence
+whether the section is theirs to read.
