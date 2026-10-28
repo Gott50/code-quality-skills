@@ -260,8 +260,9 @@ for (const r of Object.values(byFile)) {
       `functions ${fnPct.toFixed(2)}%  (${r.functions.hit}/${r.functions.found}) — floor ${fracText(floor.functions)}`,
     );
   }
-  if (below.length > 0)
+  if (below.length > 0) {
     failing.push(`${relative(process.cwd(), r.sf)}\n    ${below.join("\n    ")}`);
+  }
 }
 
 const totalStPct = tStF > 0 ? (tStH / tStF) * 100 : 100;

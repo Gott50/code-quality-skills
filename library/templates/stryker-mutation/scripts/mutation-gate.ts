@@ -104,10 +104,10 @@ const SCOPED_REPORT_FILE = "reports/mutation/report.scoped.json";
  * Per-file mutation levels for the changed files in a Stryker report. With
  * --incremental, Stryker re-emits cached files into the report even when they
  * are not in the current --mutate set, so levels are scoped to the pushed
- * files. An empty changedFiles set matches every file (the full-suite fallback
+ * files. An empty `changed` set matches every file (the full-suite fallback
  * for a new branch with no merge-base), so it must still be verified.
  */
-function fileLevels(reportFile: string, changedFiles: Set<string>): Map<string, Level> {
+function fileLevels(reportFile: string, changed: Set<string>): Map<string, Level> {
   const levels = new Map<string, Level>();
   if (!existsSync(reportFile)) return levels;
   // The parse is unannotated on purpose: `JSON.parse` returns `any`, so the
@@ -115,7 +115,7 @@ function fileLevels(reportFile: string, changedFiles: Set<string>): Map<string, 
   // shape instead of checking it, which the anti-slop rule flags.
   const report = JSON.parse(readFileSync(reportFile, "utf8"));
   for (const [fileName, file] of Object.entries(report?.files ?? {})) {
-    if (changedFiles.size > 0 && !changedFiles.has(fileName)) continue;
+    if (changed.size > 0 && !changed.has(fileName)) continue;
     const mutants = file.mutants ?? [];
     levels.set(fileName, {
       killed: mutants.filter((m) => m.status === "Killed").length,
@@ -318,14 +318,14 @@ function verifyReport(
   config: string,
   reportFile: string,
   stdout: string,
-  changedFiles: Set<string>,
+  changed: Set<string>,
 ): boolean {
   // The area prefix turns the report's area-relative keys into the baseline's
   // workspace-root-relative ones (the member directory for a member config).
   const areaPrefix = AREA_CONFIGS.find(([, c]) => c === config)?.[0] ?? "";
   if (!existsSync(reportFile)) return reportMissing(config, reportFile, stdout);
   const failures: string[] = [];
-  for (const [fileName, level] of fileLevels(reportFile, changedFiles)) {
+  for (const [fileName, level] of fileLevels(reportFile, changed)) {
     failures.push(...fileFailures(fileName, level, areaPrefix));
   }
   if (failures.length === 0) return true;

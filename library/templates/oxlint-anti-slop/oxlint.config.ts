@@ -53,11 +53,13 @@ export default defineConfig({
     "anti-slop/require-preserve-on-coverage-ignore": "error",
     "anti-slop/require-safety-comment-for-type-assertion": "error",
     "anti-slop/valid-test-title": "error",
+    "no-shadow": "error",
     "no-unused-vars": "error",
     "typescript/ban-ts-comment": "error",
     "typescript/no-explicit-any": "error",
     "typescript/no-unsafe-function-type": "error",
     complexity: ["error", 10], // cyclomatic complexity threshold
+    curly: ["error", "multi-line"], // braces on a multi-line if/else body
     "max-classes-per-file": ["error", 1],
     "max-depth": ["error", 4], // nesting depth
     "max-lines": ["error", 400], // file size
