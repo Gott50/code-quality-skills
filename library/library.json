@@ -2526,6 +2526,19 @@
       ]
     },
     {
+      "id": "assertions",
+      "title": "Assert what a function assumes and what it promises",
+      "when": {
+        "requires": [
+          {
+            "file": "package.json"
+          }
+        ]
+      },
+      "source": "research/tiger-style.md",
+      "enforcedBy": []
+    },
+    {
       "id": "baseline-vs-fix",
       "title": "A baseline is a ratchet, not a wall — and not a place to hide new debt",
       "when": {
