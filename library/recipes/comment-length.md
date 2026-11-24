@@ -98,6 +98,12 @@ and does not enforce it: the practice is about *why* a comment earns its place, 
 can decide, and the practice's `enforcedBy` names the oxlint recipes. A repo that wants both
 selects both; neither depends on the other.
 
+The fixture `fixtures/comment-debt-ts` proves both scopes: its skeleton commit is the base, the
+change commit adds a four-line comment and an example comment, and the marker records the two
+findings. `--base <skeleton>` and `--staged` both report the two violations and exit 0 at the
+recorded count; setting `warnings` to 0 makes either exit 1. The fixture's README records the
+commands.
+
 ## Idempotency
 
 - `scripts/check-comments.mjs` and `.github/workflows/comment-length.yml` are `create`s:

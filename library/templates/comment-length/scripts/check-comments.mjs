@@ -5,7 +5,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 
 const MARKER = ".comment-length.json";
 const DEFAULT_MAX_LINES = 3;
-const SOURCE_FILE = /\.(ts|tsx|mts|js|mjs|vue|svelte)$/;
+const SOURCE_FILE = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs|vue|svelte)$/;
 const EXAMPLE_CODE = /^examples\/(?!scripts\/|experiments\/)[^/]+\/[^/]+\//;
 const TOOL_DIRECTIVE =
   /eslint-disable|@ts-expect-error|svelte-ignore|@__PURE__|prettier-ignore|check-code:/;

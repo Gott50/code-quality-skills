@@ -46,9 +46,17 @@ jobs:
           fi
 
       # The gate reads the declarations the build emits, so the packages must be
-      # built before they are packed.
+      # built before they are packed. The build command follows the same
+      # lockfile branch as the install: a pnpm repo has no `workspaces` field.
       - name: build
-        run: npm run build --workspaces --if-present
+        run: |
+          if [ -f bun.lock ] || [ -f bun.lockb ]; then
+            bun run --filter '*' build
+          elif [ -f pnpm-lock.yaml ]; then
+            pnpm -r run build
+          else
+            npm run build --workspaces --if-present
+          fi
 
       - name: Package surface
         run: node scripts/check-packages.mjs

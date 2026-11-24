@@ -3,7 +3,7 @@ id: package-surface
 title: Package surface — pack each package and typecheck it as a strict consumer
 purpose: Fail a published package whose declarations break in a consumer, by packing it, installing the tarball in a scratch app, and typechecking every public entry.
 when:
-  requires: [{ packageExports: true }]
+  requires: [{ packageExports: true }, { dep: typescript }]
 cost: heavy
 priority: 15
 files:
@@ -74,6 +74,10 @@ verify:
 
 The gate is `heavy`: it packs and typechecks every package, so it is slower than a source
 typecheck and belongs in CI rather than a pre-commit hook.
+
+The fixture `fixtures/published-ts` is the proof: its `@fixture/lib` declaration names
+`../src/internal.js`, which the tarball cannot reach, so the gate exits 1; `@fixture/clean` is the
+positive case and exits 0. The fixture's README records the exact commands.
 
 ## Idempotency
 

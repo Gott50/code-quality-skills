@@ -184,15 +184,15 @@ sibling belongs in the same release train — is not gateable and does not belon
 ## 9. What this note does not decide
 
 The `published-ts` fixture, the `{ packageExports: true }` predicate and the `schemaVersion` bump
-are a separate ticket (#242). This note records the question, the verdict and the sources; it does
-not start a schema change, and it adds no recipe, fixture or predicate. The predicate set is part of
-the library contract, and adding `{ packageExports: true }` moves the version gate the update check
-reads — that is #242's change, not this note's.
+landed in #242. This note records the question, the verdict and the sources; it does not start a
+schema change, and it adds no recipe, fixture or predicate. The predicate set is part of the library
+contract, and adding `{ packageExports: true }` moves the version gate the update check reads — that
+is #242's change, not this note's.
 
 ## Routing
 
 | Practice | Gate? | Where |
 | --- | --- | --- |
-| **`package-surface` recipe** — pack each package, install the tarballs in a scratch app, typecheck every public entry with `strict`, `exactOptionalPropertyTypes` and `skipLibCheck: false`, and run Node over the packed entries | Yes — `package-surface`, separate ticket #242 | `library/recipes/package-surface.md` (to be written in #242) |
-| **`published-ts` fixture** — a workspace with a build step, a `publishConfig`/`exports` map, a broken-declaration negative case and a clean-declaration positive case | separate ticket #242 | `fixtures/published-ts/` (to be written in #242) |
-| **`{ packageExports: true }` predicate** — presence-only, true when the root manifest declares `exports`; bumps `library.json`'s `schemaVersion` | separate ticket #242 | `library/RECIPE-CONTRACT.md` and the `schemaVersion` bump (to be written in #242) |
+| **`package-surface` recipe** — pack each package, install the tarballs in a scratch app, typecheck every public entry with `strict`, `exactOptionalPropertyTypes` and `skipLibCheck: false`, and run Node over the packed entries | Yes — `package-surface` | `library/recipes/package-surface.md` |
+| **`published-ts` fixture** — a workspace with a build step, a `publishConfig`/`exports` map, a broken-declaration negative case and a clean-declaration positive case | Yes — the recipe's proof | `fixtures/published-ts/` |
+| **`{ packageExports: true }` predicate** — presence-only, true when any detected manifest declares `exports`; bumps `library.json`'s `schemaVersion` | Yes — the recipe's `when` | `library/RECIPE-CONTRACT.md`, `skills/code-quality-setup/scripts/DETECT-SCHEMA.md` |

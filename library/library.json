@@ -1628,6 +1628,9 @@
         "requires": [
           {
             "packageExports": "true"
+          },
+          {
+            "dep": "typescript"
           }
         ]
       },

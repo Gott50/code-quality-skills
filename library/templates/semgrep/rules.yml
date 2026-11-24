@@ -130,12 +130,7 @@ rules:
       category: security
       cwe: "CWE-79: Improper Neutralization of Input During Web Page Generation"
     patterns:
-      - pattern-either:
-          - pattern: '{@html $VALUE}'
-          - pattern: 'v-html="$VALUE"'
-      - metavariable-regex:
-          metavariable: $VALUE
-          regex: '^[^"''`].*$'
+      - pattern-regex: '\{@html\s+[^}"'']*[^}"''\s][^}"'']*|v-html="[^"'']*[^"'']"'
 
   - id: no-unsafe-url-sink
     languages: [javascript, typescript]

@@ -1,18 +1,7 @@
 #!/usr/bin/env node
-/**
- * package-surface gate — pack every published package, unpack the tarballs into
- * a scratch app, and typecheck every public entry as a strict consumer would.
- *
- * `tsc` over the sources reads what the build reads; this reads the declarations
- * the build emits, which can break while the sources pass — a type that names a
- * module its file cannot reach, or an entry whose `types` file the tarball does
- * not carry.
- *
- * Usage: node scripts/check-packages.mjs
- *
- * Exit 0 when every packed entry typechecks; exit 1 on any error or missing
- * declaration.
- */
+// package-surface gate — pack every published package, unpack the tarballs into
+// a scratch app, and typecheck every public entry as a strict consumer would.
+// Exit 0 when every packed entry typechecks; exit 1 on any error or missing declaration.
 import { spawnSync } from "node:child_process";
 import {
   existsSync,
@@ -106,9 +95,8 @@ function expandGlobs(globs) {
 }
 
 // Only a package that declares `exports` has a public surface to check; a
-// private workspace member is not published and is skipped. The root is a
-// candidate too: a single-package repo declares `exports` there, and the
-// predicate selects on any manifest.
+// private workspace member is skipped. The root is a candidate too, for a
+// single-package repo whose manifest declares `exports`.
 function discoverPackages() {
   const root = readJson("package.json");
   const dirs = [...new Set([".", ...expandGlobs(workspaceGlobs(root))])];
