@@ -12,7 +12,8 @@ verdict: >-
   which one-off styles a page may apply are judgement. The shared library
   therefore carries the practice, and the gate is a project-local recipe: the
   linter is not a library recipe, and `components.json` is the marker that
-  selects the practice.
+  selects the practice. Registry validation has the same shape — a local recipe
+  selected on `registry.json`, with no shared recipe until a fixture proves one.
 sources:
   - https://ui.shadcn.com/docs/components-json
   - https://ui.shadcn.com/schema.json
@@ -116,19 +117,46 @@ v0.2.5, MIT, exporting `.` and `./package.json`
 ## The registry
 
 A project that publishes its components as a registry describes them with `registry.json` and
-`registry-item.json`. `registry.json` carries `$schema`, `name`, `homepage`, `include` (relative
-paths to other registry files), `items` and `pagination`, and requires `items` or `include`
-([ui.shadcn.com/schema/registry.json](https://ui.shadcn.com/schema/registry.json)). An item carries
-`name`, `type` (one of `registry:lib`, `registry:block`, `registry:component`, `registry:ui`,
+`registry-item.json` ([ui.shadcn.com/docs/registry](https://ui.shadcn.com/docs/registry)).
+`registry.json` carries `$schema`, `name`, `homepage`, `include` (relative paths to other registry
+files), `items` and `pagination`, and requires `items` or `include`
+([ui.shadcn.com/schema/registry.json](https://ui.shadcn.com/schema/registry.json);
+[registry-json docs](https://ui.shadcn.com/docs/registry/registry-json)). An item carries `name`,
+`type` (one of `registry:lib`, `registry:block`, `registry:component`, `registry:ui`,
 `registry:hook`, `registry:theme`, `registry:page`, `registry:file`, `registry:style`,
 `registry:base`, `registry:font`, `registry:item`), `description`, `title`, `author`,
 `dependencies`, `devDependencies`, `registryDependencies` and `files`
-([ui.shadcn.com/schema/registry-item.json](https://ui.shadcn.com/schema/registry-item.json)). The
-registry "works with any project type and any framework, not limited to React"
+([ui.shadcn.com/schema/registry-item.json](https://ui.shadcn.com/schema/registry-item.json);
+[registry-item-json docs](https://ui.shadcn.com/docs/registry/registry-item-json)). The registry
+"works with any project type and any framework, not limited to React"
 ([ui.shadcn.com/docs/registry](https://ui.shadcn.com/docs/registry)).
 
-Validating those files against their schemas is a local recipe too: the schemas are published, the
-check is mechanical, and the library does not ship a registry recipe.
+### Registry validation as a local recipe
+
+The schemas are published, so validating a registry is mechanical: `registry.json` against
+[registry.json](https://ui.shadcn.com/schema/registry.json) and every `registry-item.json` against
+[registry-item.json](https://ui.shadcn.com/schema/registry-item.json). The check is authored with
+`code-quality-author` into the project's local library rather than shipped: it selects on
+`{ file: registry.json }`, validates the root file and each item file against its schema, and fails
+on a missing file, a `type` outside the enum, or a `registryDependencies` entry that names no item
+in the registry and is not a URL. The judgement half — whether an item's `type` is the right one,
+whether a dependency belongs in `registryDependencies` or `dependencies`, whether the registry
+should exist at all — is the existing audit/verify discipline, not a new practice.
+
+`gaps.mjs` does not rank this gap. It ranks three kinds — an uncovered tooling category, a recipe one
+predicate away, and a gate no selected practice explains — and a registry is none of them: the
+project may carry no registry tooling the detector tracks, and the missing check is not a tooling
+category. The local recipe is requested explicitly, by a user who knows the project publishes a
+registry.
+
+Three things the library deliberately does not ship:
+
+- A shared `shadcn` CLI recipe. The CLI is an application dependency, not gate tooling; installing
+  it is the project's decision, and the library does not install application dependencies.
+- A shared registry recipe before a `registry-ts` fixture exists. A recipe is proven by a fixture;
+  without one, the recipe would be prose the library cannot verify.
+- A `registry:health` gate. Health is a runtime monitor — whether the registry serves, whether an
+  item installs — not a static check a recipe can run.
 
 ## Enforceable vs. judgement
 
@@ -140,7 +168,7 @@ check is mechanical, and the library does not ship a registry recipe.
   `require-static-classes`).
 - The warning count rising above the recorded cap
   ([docs/adoption.md](https://github.com/shadcn-ui/lint/blob/main/docs/adoption.md)).
-- A registry file that does not match its schema.
+- A registry file that does not match its schema (local recipe).
 
 **Judgement, not gateable:**
 
@@ -150,11 +178,14 @@ check is mechanical, and the library does not ship a registry recipe.
 - Which rules to enable and at what severity
   ([SETUP.md](https://github.com/shadcn-ui/lint/blob/main/SETUP.md)).
 - Whether a component's appearance should change at all.
+- Whether an item's `type` is the right one, and whether a dependency belongs in
+  `registryDependencies` or `dependencies`.
+- Whether the project should publish a registry at all.
 
 ## Routing
 
 | Practice | Gate? | Where |
 | --- | --- | --- |
-| `design-system-contracts` | No — local recipe | `library/practices/design-system-contracts.md`; the gate is a project-local recipe, not a library recipe |
-| `@shadcn/lint` (`no-restyle` and the Tailwind rules) | No — local recipe | `.code-quality/recipes/design-system-lint.md` in the project |
-| Registry validation | No — local recipe | `.code-quality/recipes/registry-validate.md` in the project |
+| `design-system-contracts` | No — local recipe | `library/practices/design-system-contracts.md`; the gate is a project-local recipe authored with `code-quality-author`, not a library recipe |
+| `@shadcn/lint` (`no-restyle` and the Tailwind rules) | No — local recipe | `.code-quality/recipes/design-system-lint.md` in the project, authored with `code-quality-author` |
+| Registry validation | No — local recipe | `.code-quality/recipes/registry-validate.md` in the project, authored with `code-quality-author`; selects on `{ file: registry.json }` |
