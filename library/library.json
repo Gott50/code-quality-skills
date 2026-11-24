@@ -1661,7 +1661,7 @@
       "gates": [
         {
           "id": "package-surface",
-          "run": "node scripts/check-packages.mjs",
+          "run": "node scripts/check-packages.mjs --build",
           "description": "pack each package, install the tarballs in a scratch app, typecheck every public entry with strict, exactOptionalPropertyTypes and skipLibCheck false"
         }
       ],
