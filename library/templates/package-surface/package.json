@@ -1,0 +1,5 @@
+{
+  "scripts": {
+    "check:packages": "node scripts/check-packages.mjs"
+  }
+}
