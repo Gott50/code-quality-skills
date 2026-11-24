@@ -1,0 +1,9 @@
+{
+  "name": "published-ts",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/*"],
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}
