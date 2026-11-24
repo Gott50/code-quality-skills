@@ -42,6 +42,12 @@ The first two are read off the detector's per-package `tooling` categories and p
 `reasons[]`; the third off the per-recipe `gates[]` and the per-practice `enforcedBy`. The ranking
 needs no new analysis.
 
+The three kinds are the whole ranking. A shadcn project that has not installed `@shadcn/lint` is
+none of them: Tailwind is not a tracked tooling category, so the detector reports no uncovered
+category for the design system, and `gaps.mjs` does not rank the missing design-system gate. The
+local recipe for it is requested explicitly — the project asks for the check, and you write
+`design-system-lint` against `components.json`. A fourth gap kind is out of scope.
+
 ## The fields that matter when authoring a recipe
 
 - **`when`** — the machine-checkable applicability. A local recipe is selected only when its `when`
