@@ -52,7 +52,28 @@ function isRecord(value) {
   return Object.prototype.toString.call(value) === "[object Object]";
 }
 
+// `pnpm-workspace.yaml` carries the member globs when the repo uses pnpm; the
+// root manifest's `workspaces` is the fallback. Only the `packages:` list is
+// read, matching the detector's own reader.
+function readPnpmWorkspace() {
+  if (!existsSync("pnpm-workspace.yaml")) return null;
+  const lines = readFileSync("pnpm-workspace.yaml", "utf8").split(/\r?\n/);
+  const start = lines.findIndex((line) => /^packages\s*:/.test(line));
+  if (start === -1) return [];
+  const out = [];
+  for (let i = start + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trim() === "" || /^\s*#/.test(line)) continue;
+    const match = /^\s+-\s*(.+?)\s*$/.exec(line);
+    if (match === null) break;
+    out.push(match[1].replace(/^['"]|['"]$/g, ""));
+  }
+  return out;
+}
+
 function workspaceGlobs(root) {
+  const pnpm = readPnpmWorkspace();
+  if (pnpm !== null) return pnpm;
   const workspaces = root.workspaces;
   if (Array.isArray(workspaces)) return workspaces;
   if (isRecord(workspaces) && Array.isArray(workspaces.packages)) return workspaces.packages;
@@ -79,11 +100,14 @@ function expandGlobs(globs) {
 }
 
 // Only a package that declares `exports` has a public surface to check; a
-// private workspace member is not published and is skipped.
+// private workspace member is not published and is skipped. The root is a
+// candidate too: a single-package repo declares `exports` there, and the
+// predicate selects on any manifest.
 function discoverPackages() {
   const root = readJson("package.json");
+  const dirs = [...new Set([".", ...expandGlobs(workspaceGlobs(root))])];
   const out = [];
-  for (const dir of expandGlobs(workspaceGlobs(root))) {
+  for (const dir of dirs) {
     const manifestPath = join(dir, "package.json");
     if (!existsSync(manifestPath)) continue;
     const manifest = readJson(manifestPath);
