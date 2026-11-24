@@ -25,7 +25,7 @@ gates:
     run: sh scripts/semgrep.sh
     description: semgrep over the repo with the vendored ruleset — injection and unsafe APIs; credential detection belongs to the secret-scan gate
 verify:
-  - run: node -e 'const fs=require("node:fs"),L=fs.readFileSync(".semgrep/rules.yml","utf8").split("\n"),die=(m)=>{console.error(m);process.exit(1)};const ids=L.filter((l)=>/^  - id: /.test(l)).map((l)=>l.replace(/^  - id: /,""));if(ids.join()!=="no-eval,no-shell-string-in-child-process,no-sql-string-interpolation,no-unsafe-html-assignment,no-weak-hash,no-disabled-tls-verification")die("ids: "+ids.join());let inBlock=false;const body=[];for(const l of L){if(/^\s*#/.test(l))continue;if(/^    (message|metadata):/.test(l)){inBlock=true;continue;}if(inBlock&&/^ {0,4}\S/.test(l))inBlock=false;if(!inBlock)body.push(l);}if(/secret|token|api[_-]?key|password|credential|private[_-]?key|entropy/i.test(body.join("\n")))die("a rule pattern mentions a credential");'
+  - run: node -e 'const fs=require("node:fs"),L=fs.readFileSync(".semgrep/rules.yml","utf8").split("\n"),die=(m)=>{console.error(m);process.exit(1)};const ids=L.filter((l)=>/^  - id: /.test(l)).map((l)=>l.replace(/^  - id: /,""));if(ids.join()!=="no-eval,no-shell-string-in-child-process,no-sql-string-interpolation,no-unsafe-html-assignment,no-framework-html-sink,no-unsafe-url-sink,no-weak-hash,no-disabled-tls-verification")die("ids: "+ids.join());let inBlock=false;const body=[];for(const l of L){if(/^\s*#/.test(l))continue;if(/^    (message|metadata):/.test(l)){inBlock=true;continue;}if(inBlock&&/^ {0,4}\S/.test(l))inBlock=false;if(!inBlock)body.push(l);}if(/secret|token|api[_-]?key|password|credential|private[_-]?key|entropy/i.test(body.join("\n")))die("a rule pattern mentions a credential");'
     scope: root
   - run: node -e 'const fs=require("node:fs"),L=fs.readFileSync(".github/workflows/semgrep.yml","utf8").split("\n"),die=(m)=>{console.error(m);process.exit(1)};const jobs=(()=>{const i=L.findIndex((l)=>/^jobs:$/.test(l));if(i<0)die("no jobs");const o=[];for(let k=i+1;k<L.length;k++){const m=/^  (\S+):$/.exec(L[k]);if(m)o.push(m[1]);else if(/^\S/.test(L[k]))break;}return o;})();if(jobs.join()!=="semgrep")die("jobs: "+jobs.join());const job=(n)=>{const i=L.findIndex((l)=>l==="  "+n+":");if(i<0)die("no "+n+" job");let e=L.length;for(let k=i+1;k<L.length;k++){if(/^ {0,2}\S/.test(L[k])){e=k;break;}}return L.slice(i+1,e).filter((l)=>!/^\s*#/.test(l)).join("\n");};const b=job("semgrep");const steps=[...b.matchAll(/^\s*- name: (.+)$/gm)].map((m)=>m[1]);if(steps.join()!=="checkout,semgrep")die("steps: "+steps.join());if(!/uses: actions\/checkout@v7/.test(b))die("no checkout pin");if(!/image: semgrep\/semgrep:1\.181\.0/.test(b))die("no pinned image");if(!/--config \.semgrep\/rules\.yml/.test(b))die("no ruleset config");if(!/--error/.test(b))die("no --error");'
     scope: root
@@ -33,9 +33,10 @@ verify:
 
 ## Apply
 
-1. **`.semgrep/rules.yml`** — create from `templates/semgrep/rules.yml`. Six rules, all `ERROR`:
+1. **`.semgrep/rules.yml`** — create from `templates/semgrep/rules.yml`. Eight rules, all `ERROR`:
    `no-eval`, `no-shell-string-in-child-process`, `no-sql-string-interpolation`,
-   `no-unsafe-html-assignment`, `no-weak-hash`, `no-disabled-tls-verification`. They are the
+   `no-unsafe-html-assignment`, `no-framework-html-sink`, `no-unsafe-url-sink`, `no-weak-hash`,
+   `no-disabled-tls-verification`. They are the
    pattern-level half of security — injection and unsafe APIs — and they are deliberately **not**
    credential detection: `secret-scan` owns that (gitleaks over the staged diff and the history),
    and a finding that fails two gates costs the second one its authority. The ruleset is vendored
