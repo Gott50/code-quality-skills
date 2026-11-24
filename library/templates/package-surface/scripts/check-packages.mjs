@@ -21,6 +21,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -50,6 +51,12 @@ function readJson(path) {
 
 function isRecord(value) {
   return Object.prototype.toString.call(value) === "[object Object]";
+}
+
+// A relative import must name a file, not a folder: Node's loader takes
+// neither a folder nor a path without its extension.
+function isFile(path) {
+  return statSync(path, { throwIfNoEntry: false })?.isFile() === true;
 }
 
 // `pnpm-workspace.yaml` carries the member globs when the repo uses pnpm; the
@@ -213,15 +220,15 @@ function relativeSpecifiers(text) {
 // Node's loader takes neither a folder nor a path without its extension, so a
 // relative import that names no file fails in an app even when the sources
 // resolve it.
-function relativeImportProblems(pkg, target) {
+function relativeImportProblems(name, target) {
   const out = [];
   for (const file of walk(target, [])) {
     if (!MODULE_FILE.test(file)) continue;
     for (const spec of relativeSpecifiers(readFileSync(file, "utf8"))) {
-      if (existsSync(resolve(dirname(file), spec))) continue;
+      if (isFile(resolve(dirname(file), spec))) continue;
       out.push({
         message: `relative import "${spec}" in ${relative(target, file)} names no file`,
-        package: pkg.name,
+        package: name,
       });
     }
   }
@@ -230,14 +237,14 @@ function relativeImportProblems(pkg, target) {
 
 // A build that stopped and a wrong `publishConfig.exports` path look the same
 // from here: the entry names a declaration the tarball does not carry.
-function missingDeclarations(pkg, target, entries) {
+function missingDeclarations(name, target, entries) {
   const out = [];
   for (const entry of entries) {
     if (entry.types === undefined) continue;
-    if (existsSync(join(target, entry.types))) continue;
+    if (isFile(join(target, entry.types))) continue;
     out.push({
       message: `entry "${entry.subpath}" names types ${entry.types}, absent from the tarball`,
-      package: pkg.name,
+      package: name,
     });
   }
   return out;
@@ -245,7 +252,7 @@ function missingDeclarations(pkg, target, entries) {
 
 function ownerOf(line, consumers) {
   for (const consumer of consumers) {
-    if (line.startsWith(`${consumer.consumer}(`)) return consumer.name;
+    if (line.includes(`${consumer.consumer}(`)) return consumer.name;
   }
   for (const consumer of consumers) {
     if (line.includes(`node_modules/${consumer.name}/`)) return consumer.name;
@@ -294,12 +301,16 @@ for (const [index, pkg] of packages.entries()) {
   const tarball = pack(pkg, packManager, join(scratchDir, "tarballs", String(index)));
   const target = join(scratchDir, "node_modules", pkg.name);
   unpack(tarball, target);
-  const entries = publicEntries(pkg.manifest.exports);
-  problems.push(...missingDeclarations(pkg, target, entries));
-  problems.push(...relativeImportProblems(pkg, target));
+  // The tarball's manifest is what an app installs: `pack` applies
+  // `publishConfig`, so its `exports` can differ from the workspace manifest.
+  const packed = readJson(join(target, "package.json"));
+  const name = packed.name ?? pkg.name;
+  const entries = publicEntries(packed.exports);
+  problems.push(...missingDeclarations(name, target, entries));
+  problems.push(...relativeImportProblems(name, target));
   const consumer = `consumer-${index}.ts`;
-  writeFileSync(join(scratchDir, consumer), consumerSource(pkg.name, entries));
-  consumerFiles.push({ consumer, name: pkg.name });
+  writeFileSync(join(scratchDir, consumer), consumerSource(name, entries));
+  consumerFiles.push({ consumer, name });
 }
 writeFileSync(join(scratchDir, "tsconfig.json"), `${JSON.stringify(TSCONFIG, null, 2)}\n`);
 problems.push(...runTsc(scratchDir, consumerFiles));

@@ -40,15 +40,17 @@ verify:
    pass — a type that names a module its file cannot reach, or an entry whose `types` file the
    tarball does not carry.
 
-   It discovers the workspace packages from the root `package.json` `workspaces` globs and keeps
-   the ones whose manifest declares `exports`. Each is packed as it is published — `bun pm pack`,
-   `pnpm pack` or `npm pack`, chosen by the lockfile the repo carries — and every tarball is
-   unpacked into a scratch app's `node_modules` before any is checked, so a package that needs
-   another takes it as a peer and the app ends up with one copy. For each package a generated file
-   imports every subpath of the packed `exports` except `./package.json` and patterns, and
-   TypeScript runs with `strict`, `exactOptionalPropertyTypes` and `skipLibCheck: false`, so an
-   error in a shipped declaration fails here as it does in the strictest app that checks its
-   libraries.
+   It discovers the workspace packages from `pnpm-workspace.yaml` when the repo uses pnpm, else
+   from the root `package.json` `workspaces` globs, and keeps the ones whose manifest declares
+   `exports`; the root manifest is a candidate too, so a single-package repo is packed. Each is
+   packed as it is published — `bun pm pack`, `pnpm pack` or `npm pack`, chosen by the lockfile the
+   repo carries — and every tarball is unpacked into a scratch app's `node_modules` before any is
+   checked, so a package that needs another takes it as a peer and the app ends up with one copy.
+   The tarball's own manifest is what the consumer imports, so a `publishConfig` override is what
+   gets checked. For each package a generated file imports every subpath of the packed `exports`
+   except `./package.json` and patterns, and TypeScript runs with `strict`,
+   `exactOptionalPropertyTypes` and `skipLibCheck: false`, so an error in a shipped declaration
+   fails here as it does in the strictest app that checks its libraries.
 
    Two checks run before the typecheck. Every relative import in a packed module must name a file,
    because Node's loader takes neither a folder nor a path without its extension. An entry whose
