@@ -735,6 +735,7 @@ function readPackage(dir, relPath, role) {
   const deps = { ...(manifest?.dependencies ?? {}), ...(manifest?.devDependencies ?? {}) };
   return {
     dependencies: Object.keys(deps).sort(),
+    hasExports: manifest?.exports !== undefined,
     hasManifest: manifest !== null,
     name: manifest?.name ?? null,
     path: relPath,
@@ -766,6 +767,21 @@ function predicateHolds(pred, ctx) {
         owners.length > 0
           ? `${pred.dep} declared in ${owners.join(", ")}`
           : `${pred.dep} is not declared in any manifest`,
+      pass: owners.length > 0,
+    };
+  }
+  if ("packageExports" in pred) {
+    // Presence-only, like `{ dep }`: any detected manifest declaring an `exports` field holds the
+    // predicate, and the evidence names the owner. The value must be `true` (or the flow reader's
+    // quoted "true"); anything else is not a predicate this contract defines.
+    if (pred.packageExports !== true && pred.packageExports !== "true")
+      return { detail: `unreadable predicate ${JSON.stringify(pred)}`, pass: false };
+    const owners = ctx.packages.filter((p) => p.hasExports).map((p) => p.path);
+    return {
+      detail:
+        owners.length > 0
+          ? `exports declared in ${owners.join(", ")}`
+          : "no manifest declares exports",
       pass: owners.length > 0,
     };
   }

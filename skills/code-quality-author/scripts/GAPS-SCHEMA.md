@@ -165,3 +165,5 @@ An empty list prints `no gaps`.
 - No local-layer awareness: the detector already merges `.code-quality/` into its matrix, so a local
   recipe that covers a category counts as selected, and a local practice that names a recipe counts
   as covering it.
+- No design-system gap: Tailwind is not a tracked tooling category, so a shadcn project without
+  `@shadcn/lint` is not ranked. The local recipe for it is requested explicitly.

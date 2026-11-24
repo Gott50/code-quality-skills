@@ -90,6 +90,78 @@ rules:
                 - pattern: '`...${...}...`'
                 - pattern: $A + $B
 
+  - id: no-framework-html-sink
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      A framework HTML sink parses a non-literal value as markup, so an
+      interpolated value becomes HTML and script. Pass a literal, or sanitize the
+      value with a maintained sanitizer before it reaches the sink.
+    metadata:
+      category: security
+      cwe: "CWE-79: Improper Neutralization of Input During Web Page Generation"
+    patterns:
+      - pattern-either:
+          - pattern: '<$EL dangerouslySetInnerHTML={{ __html: $VALUE }} />'
+          - pattern: '$EL.dangerouslySetInnerHTML = { __html: $VALUE }'
+          - pattern: $EL.dangerouslySetInnerHTML = $VALUE
+          - pattern: '<$EL srcdoc={$VALUE} />'
+          - pattern: $EL.srcdoc = $VALUE
+          - pattern: document.write($VALUE)
+      - metavariable-pattern:
+          metavariable: $VALUE
+          patterns:
+            - pattern-either:
+                - pattern: '`...${...}...`'
+                - pattern: $A + $B
+
+  - id: no-template-html-sink
+    languages: [generic]
+    severity: ERROR
+    paths:
+      include:
+        - '**/*.svelte'
+        - '**/*.vue'
+    message: >-
+      A template HTML sink parses a non-literal value as markup, so an
+      interpolated value becomes HTML and script. Pass a literal, or sanitize the
+      value with a maintained sanitizer before it reaches the sink.
+    metadata:
+      category: security
+      cwe: "CWE-79: Improper Neutralization of Input During Web Page Generation"
+    patterns:
+      - pattern-regex: '\{@html\s+[^}"'']*[^}"''\s][^}"'']*|v-html="[^"'']*[^"'']"'
+
+  - id: no-unsafe-url-sink
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      A URL sink carrying a non-literal value can be handed a javascript: URL,
+      which the browser runs as script. Allowlist the scheme, or build the URL
+      from a parsed value rather than from interpolation.
+    metadata:
+      category: security
+      cwe: "CWE-79: Improper Neutralization of Input During Web Page Generation"
+    patterns:
+      - pattern-either:
+          - pattern: $EL.href = $VALUE
+          - pattern: $EL.src = $VALUE
+          - pattern: $EL.action = $VALUE
+          - pattern: $EL.formAction = $VALUE
+          - pattern: '<$EL href={$VALUE} />'
+          - pattern: '<$EL src={$VALUE} />'
+          - pattern: '<$EL action={$VALUE} />'
+          - pattern: '<$EL formAction={$VALUE} />'
+          - pattern: location.assign($VALUE)
+          - pattern: location.replace($VALUE)
+          - pattern: window.open($VALUE, ...)
+      - metavariable-pattern:
+          metavariable: $VALUE
+          patterns:
+            - pattern-either:
+                - pattern: '`...${...}...`'
+                - pattern: $A + $B
+
   - id: no-weak-hash
     languages: [javascript, typescript]
     severity: ERROR

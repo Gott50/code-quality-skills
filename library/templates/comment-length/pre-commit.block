@@ -1,0 +1,5 @@
+# code-quality:comment-length:start
+# Fail a commit that adds a comment longer than the cap in .comment-length.json,
+# or any comment in an example. The marker is the project's opt-in.
+node scripts/check-comments.mjs --staged || exit 1
+# code-quality:comment-length:end
