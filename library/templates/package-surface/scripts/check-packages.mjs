@@ -123,6 +123,18 @@ function packArgs(manager, dest) {
   return ["pack", "--pack-destination", dest];
 }
 
+// `--build` runs each package's own build script before packing, so the
+// recipe's verify is self-sufficient on a fresh checkout with no `dist`.
+function build(pkg, manager) {
+  if (pkg.manifest.scripts?.build === undefined) return;
+  const run = spawnSync(manager, ["run", "build"], { cwd: pkg.dir, encoding: "utf8" });
+  if (run.error || run.status !== 0) {
+    console.error(`package-surface: ${manager} run build failed in ${pkg.dir}`);
+    process.stderr.write(`${run.stdout ?? ""}${run.stderr ?? ""}`);
+    process.exit(1);
+  }
+}
+
 function pack(pkg, manager, dest) {
   mkdirSync(dest, { recursive: true });
   const run = spawnSync(manager, packArgs(manager, dest), { cwd: pkg.dir, encoding: "utf8" });
@@ -282,9 +294,11 @@ const scratchDir = mkdtempSync(join(tmpdir(), "package-surface-"));
 process.on("exit", () => rmSync(scratchDir, { force: true, recursive: true }));
 
 const packManager = packageManager();
+const buildFirst = process.argv.includes("--build");
 const problems = [];
 const consumerFiles = [];
 for (const [index, pkg] of packages.entries()) {
+  if (buildFirst) build(pkg, packManager);
   const tarball = pack(pkg, packManager, join(scratchDir, "tarballs", String(index)));
   const target = join(scratchDir, "node_modules", pkg.name);
   unpack(tarball, target);

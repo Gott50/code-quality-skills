@@ -22,7 +22,7 @@ files:
 commands: []
 gates:
   - id: package-surface
-    run: node scripts/check-packages.mjs
+    run: node scripts/check-packages.mjs --build
     description: pack each package, install the tarballs in a scratch app, typecheck every public entry with strict, exactOptionalPropertyTypes and skipLibCheck false
 verify:
   - gate: package-surface
@@ -61,6 +61,10 @@ verify:
    The recipe does not install application dependencies. It installs the packed tarballs into a
    scratch app, which is gate tooling: the app exists to resolve the declarations, not to run the
    project.
+
+   `--build` runs each package's own `build` script before packing, so the recipe's `verify` is
+   self-sufficient on a fresh checkout with no `dist`; the CI workflow builds in its own step and
+   runs the gate without the flag.
 
 2. **`.github/workflows/package-surface.yml`** — create from
    `templates/package-surface/package-surface.yml`. Its own workflow, never a block merged into
