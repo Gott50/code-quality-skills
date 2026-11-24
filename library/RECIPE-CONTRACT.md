@@ -69,6 +69,7 @@ Every condition is evaluated against the detector's stack report. All of `requir
 |---|---|
 | `{ file: <path> }` | `<path>` exists at the workspace root |
 | `{ dep: <name> }` | `<name>` is in a detected manifest's dependencies or devDependencies |
+| `{ packageExports: true }` | any detected manifest declares an `exports` field (presence-only, like `{ dep }`; the evidence names the owner) |
 | `{ script: <name> }` | `<name>` is a script in the root `package.json` |
 | `{ testFile: true }` | the project has at least one test file (`*.test.*` / `*.spec.*`, plus bun's `*_test.*` / `*_spec.*`), outside dot-directories and `node_modules` |
 | `{ tsconfig: <option> }` | the project's tsconfig chain turns the compiler option `<option>` on. `strict: true` implies the strict-mode family (`strictNullChecks`, `noImplicitAny`, …), and a solution-style root that states nothing falls back to the members that do |
