@@ -1,0 +1,54 @@
+name: package-surface
+
+# Packs every published package, installs the tarballs in a scratch app and
+# typechecks every public entry as a strict consumer would. `tsc` over the
+# sources reads what the build reads; this reads the declarations the build
+# emits, which can break while the sources pass.
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-surface:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: checkout
+        uses: actions/checkout@v7
+
+      - name: setup-node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # The gate packs with the repo's own package manager, so the install step
+      # reads the lockfile the repo carries. `npm` is the fallback the gate
+      # itself uses when no lockfile is present.
+      - name: install
+        run: |
+          if [ -f bun.lock ] || [ -f bun.lockb ]; then
+            npm install -g bun
+            bun install --frozen-lockfile
+          elif [ -f pnpm-lock.yaml ]; then
+            corepack enable
+            pnpm install --frozen-lockfile
+          elif [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+
+      # The gate reads the declarations the build emits, so the packages must be
+      # built before they are packed.
+      - name: build
+        run: npm run build --workspaces --if-present
+
+      - name: Package surface
+        run: node scripts/check-packages.mjs
