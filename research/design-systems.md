@@ -15,6 +15,8 @@ verdict: >-
   selects the practice. Registry validation has the same shape — a local recipe
   selected on `registry.json`, with no shared recipe until a fixture proves one.
 sources:
+  - https://ui.shadcn.com/docs
+  - https://ui.shadcn.com/docs/components/radix/button
   - https://ui.shadcn.com/docs/components-json
   - https://ui.shadcn.com/schema.json
   - https://github.com/shadcn-ui/lint
@@ -113,6 +115,29 @@ parsers, scripts and ignores, and leaves "choosing rules and defining what is al
 ([SETUP.md](https://github.com/shadcn-ui/lint/blob/main/SETUP.md)). The package is `@shadcn/lint`
 v0.2.5, MIT, exporting `.` and `./package.json`
 ([npmjs.com/package/@shadcn/lint](https://www.npmjs.com/package/@shadcn/lint)).
+
+## The component code is owned
+
+shadcn/ui is "not a component library. It is how you build your component library." Its first
+principle is **Open Code**: "The top layer of your component code is open for modification." The
+docs put the contrast plainly: "In a typical library, if you need to change a button's behavior, you
+have to override styles or wrap the component. With shadcn/ui, you simply edit the button code
+directly." ([ui.shadcn.com/docs](https://ui.shadcn.com/docs)).
+
+That is why the practice's rule is to change the component at the source: the copy in the project is
+the source, not a dependency. The same page asks "How do I pull upstream updates in an Open Code
+approach?" — the copy can drift from upstream, so an update is a diff to review, not a file to
+overwrite; the project's own variants live in the copy, and a blind overwrite drops them.
+
+The component also publishes contracts to its callers. The Button's documented props include
+`asChild` — "use the `asChild` prop on `<Button />` to make another component look like a button" —
+and its source renders `data-slot="button"` and merges classes with
+`cn(buttonVariants({ variant, size, className }))`
+([ui.shadcn.com/docs/components/radix/button](https://ui.shadcn.com/docs/components/radix/button)).
+Those are what styling and tests select on, and what lets a caller's allowed classes win. The
+components are "accessible components" by design ([ui.shadcn.com/docs](https://ui.shadcn.com/docs)),
+so the accessibility primitives a component wraps are part of what it publishes; a restyle that
+drops a focus ring or a label is a regression no visual diff reports.
 
 ## The registry
 
