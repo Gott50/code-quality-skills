@@ -83,6 +83,7 @@ One entry per package: the root (`role: "root"`, `path: "."`) then each member
 |---|---|
 | `name` | `package.json#name`, or `null` |
 | `hasManifest` | a `package.json` exists here |
+| `hasExports` | the manifest declares an `exports` field (presence-only; `false` when there is no manifest) |
 | `scripts` | the script names, sorted |
 | `dependencies` | `dependencies` + `devDependencies` names, sorted |
 | `typescript` | `{ configFile, compilerOptions, strict, strictSource, solutionStyle, unresolvedExtends }`, or `null` when there is no `tsconfig.json` |
@@ -144,6 +145,7 @@ Predicates, evaluated against the report:
 |---|---|
 | `{ file: <path> }` | `<path>` exists at the workspace root |
 | `{ dep: <name> }` | `<name>` is in any detected package's `dependencies` or `devDependencies` |
+| `{ packageExports: true }` | any detected manifest declares an `exports` field (presence-only, like `{ dep }`; the evidence names the owner) |
 | `{ script: <name> }` | `<name>` is a script in the **root** `package.json` |
 | `{ testFile: true }` | the project has at least one test file (`*.test.*` / `*.spec.*`, plus bun's `*_test.*` / `*_spec.*`), outside dot-directories and `node_modules` |
 | `{ tsconfig: <option> }` | the project's tsconfig chain turns the compiler option `<option>` on. `strict: true` implies the strict-mode family (`strictNullChecks`, `noImplicitAny`, …), and a solution-style root that states nothing falls back to the members that do |
