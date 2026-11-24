@@ -1,0 +1,38 @@
+name: comment-length
+
+# Fails a PR that adds a comment longer than the cap in .comment-length.json, or
+# any comment in an example. The pre-commit hook checks the staged diff; this
+# job checks the PR's diff against its base, which a hook bypassed with
+# `--no-verify` never saw.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  comment-length:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # The gate diffs against the PR's base SHA, which a depth-1 clone does not
+      # contain.
+      - name: checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # The gate script is plain ESM over node builtins, so the job needs node
+      # and nothing else — no install step, and one file serves Bun, npm and
+      # pnpm alike.
+      - name: setup-node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Comment length
+        run: node scripts/check-comments.mjs --base "${{ github.event.pull_request.base.sha }}"
