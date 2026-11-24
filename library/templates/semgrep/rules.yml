@@ -118,6 +118,10 @@ rules:
   - id: no-template-html-sink
     languages: [generic]
     severity: ERROR
+    paths:
+      include:
+        - '**/*.svelte'
+        - '**/*.vue'
     message: >-
       A template HTML sink parses a non-literal value as markup, so an
       interpolated value becomes HTML and script. Pass a literal, or sanitize the
