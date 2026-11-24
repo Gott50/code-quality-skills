@@ -35,18 +35,22 @@ function git(args) {
   return run.stdout ?? "";
 }
 
-// The gate takes an explicit base. `--staged` is the hook's scope, `--base` is
-// CI's, and the merge-base fallback is the by-hand run on a branch.
+// The gate takes an explicit base: `--staged` is the hook's scope, `--base` is
+// CI's, and the merge-base fallback is the by-hand run on a branch. The
+// pathspec keeps the diff inside the directory the gate runs in.
+const DIFF_FLAGS = ["-U0", "--diff-filter=d", "--relative"];
+
 function diffArgs() {
-  if (process.argv.includes("--staged")) return ["diff", "--cached", "-U0", "--diff-filter=d"];
+  if (process.argv.includes("--staged")) return ["diff", "--cached", ...DIFF_FLAGS, "--", "."];
   const base = parseArg("--base");
-  if (base !== undefined) return ["diff", "-U0", "--diff-filter=d", base];
+  if (base !== undefined) return ["diff", ...DIFF_FLAGS, base, "--", "."];
   const mergeBase = git(["merge-base", "HEAD", "origin/main"]).trim();
-  return ["diff", "-U0", "--diff-filter=d", mergeBase];
+  return ["diff", ...DIFF_FLAGS, mergeBase, "--", "."];
 }
 
 // The new-side line numbers a diff touches, per file. A hunk header's count is
-// omitted when it is 1, which is why the count falls back to one line.
+// omitted when it is 1, so the count falls back to one line. `--relative` makes
+// the paths readable from the directory the gate runs in.
 function changedLines() {
   const changed = new Map();
   let file = null;

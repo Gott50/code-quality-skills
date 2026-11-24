@@ -45,16 +45,18 @@ Then, from the fixture root:
 node scripts/check-comments.mjs --base 32a9331543792a52f3c02aaa47c4396fe6c363d1
 ```
 
-prints the two violations and exits 0, because the marker records 2. The `--staged` scope is the
-hook's:
+prints the two violations and exits 0, because the marker records 2. The script resolves diff paths
+relative to the directory it runs in, so the fixture root works even though it sits inside this
+repo. The `--staged` scope is the hook's:
 
 ```sh
 git add -A && node scripts/check-comments.mjs --staged
 ```
 
-Run it in a copy whose change is uncommitted — `git reset --soft <skeleton-sha>` leaves the second
-commit's tree staged against the skeleton — and it reports the same two findings. With `warnings`
-at 0 either command exits 1 and prints:
+Run it in a copy of the fixture that is its own git repository (`fixtures/README.md`), where the
+change is uncommitted: `git reset --soft <skeleton-sha>` leaves the second commit's tree staged
+against the skeleton. `git add -A` there stages the copy, not this repo. With `warnings` at 0
+either command exits 1 and prints:
 
 ```
 src/index.ts:1 comment-length a comment runs 4 lines; the cap is 3
