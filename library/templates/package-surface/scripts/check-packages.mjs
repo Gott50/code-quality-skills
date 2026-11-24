@@ -28,8 +28,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 
 const MODULE_FILE = /\.(?:cjs|js|mjs)$/;
-const RELATIVE_IMPORT =
-  /(?:from\s*|import\s*\(\s*|import\s*|require\s*\(\s*)["'](\.[^"']+)["']/g;
+const RELATIVE_IMPORT = /(?:from\s*|import\s*\(\s*|import\s*|require\s*\(\s*)["'](\.[^"']+)["']/g;
 const TSCONFIG = {
   compilerOptions: {
     exactOptionalPropertyTypes: true,

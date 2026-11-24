@@ -1,6 +1,6 @@
 # Fixtures
 
-Ten throwaway projects the detector is run against, and the projects a recipe is verified by
+Eleven throwaway projects the detector is run against, and the projects a recipe is verified by
 applying to. No `node_modules`, no `SKILL.md` (a nested `SKILL.md` would be discovered as a skill of
 its own by the `skills` CLI).
 
@@ -24,6 +24,7 @@ node skills/code-quality-setup/scripts/detect.mjs fixtures/<name>
 | `comment-debt-ts` | npm, single package, strict `tsconfig.json`, a `.comment-length.json` marker, a four-line comment and an example comment | the **comment-length gate** — the base-diff and staged-diff scopes, the recorded warning count, the three-line cap, and the example-comment ban |
 | `shadcn-ts` | npm, single package, `components.json`, Tailwind v4, a shadcn-shaped `components/ui/button.tsx` | the **design-system-contracts practice** — selection by `components.json`, the plan's practice pointer, and the `@shadcn/lint` local-recipe route |
 | `shadcn-local-recipe` | npm, single package, `components.json`, a `.code-quality/` local recipe and template | the **local-recipe path** — `check-local.mjs` validates the local recipe/template, `plan.mjs` selects it and renders `eslint.config.mjs` |
+| `published-ts` | npm workspace, two packages with `exports` and a build step, one broken declaration and one clean | the **package-surface gate** — the `{ packageExports: true }` predicate selects on any manifest with `exports`, the packed `@fixture/lib` declaration fails with `Cannot find module '../src/internal.js'`, and `@fixture/clean` passes |
 
 **A fresh copy of an apply-target fixture must be a git repository with at least one commit.** The
 `fallow-audit` recipe's verify is `bun run fallow:audit`, and `fallow audit` detects its base ref from

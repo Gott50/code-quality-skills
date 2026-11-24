@@ -68,6 +68,7 @@ Each recipe is one file at `library/recipes/<id>.md`: machine-checkable frontmat
 | `dep-audit` | a lockfile advisory scan with a committed count floor, plus the Renovate config |
 | `semgrep` | pattern-level security findings — injection, unsafe APIs — beside the fast linter |
 | `comment-length` | a three-line cap on the comments a change adds, opt-in through `.comment-length.json` |
+| `package-surface` | pack each published package and typecheck its declarations as a strict consumer |
 | `dep-graph` | no dependency cycles, no deep import into another package's internals |
 | `license-check` | a dependency license allowlist and an SBOM step in CI |
 | `release-automation` / `-npm` | the commit-msg check, the changelog and the version derivation |
