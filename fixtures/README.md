@@ -1,6 +1,6 @@
 # Fixtures
 
-Seven throwaway projects the detector is run against, and the projects a recipe is verified by
+Ten throwaway projects the detector is run against, and the projects a recipe is verified by
 applying to. No `node_modules`, no `SKILL.md` (a nested `SKILL.md` would be discovered as a skill of
 its own by the `skills` CLI).
 
@@ -21,6 +21,9 @@ node skills/code-quality-setup/scripts/detect.mjs fixtures/<name>
 | `npm-eslint-prettier` | npm, single package, eslint + prettier at the root | the **`conflicts.tools` collision** and the **`conflicts.recipes` hold-back** at root level: `biome-assist-npm` collides with the project's prettier + eslint, and `eslint-prettier` is held back |
 | `local-recipe` | npm, single package, strict `tsconfig.json`, a `.code-quality/` local library (two recipes + their templates), and a `dprint.json` no library recipe covers | the **local library layer** — the detector reads `.code-quality/recipes/` alongside the library, a local recipe wins on id collision (`repo-hygiene-npm` is shadowed), and `gaps.mjs` reports the `uncovered-category: formatter — dprint` gap. The `one-predicate-away` kind is reachable only in the repo-layout probe (`node skills/code-quality-author/scripts/gaps.mjs fixtures/local-recipe`): a real consumer has the setup skill installed at `.agents/skills/code-quality-setup/scripts/plan.mjs`, so `ci-drift`'s `when.requires` passes and it is *selected*, not one predicate away. The probe reports two — `ci-drift` (the missing installed skill) and `stryker-mutation-vitest` (the test-file predicate) |
 | `debt-ts` | Bun, single package, strict `tsconfig.json`, one covered function plus deliberate debt under `src/` | the **debt-carrying apply target** — the five shapes the quality ratchet measures: **coverage** (`src/index.ts` at 56.67% lines; `src/unused.ts` never imported), **mutation** (`formatDuration`'s `< 60` boundary and its uncovered minutes branch leave survivors), **lint** (`anti-slop/no-runtime-typeof` at `src/index.ts:14`), **dead code** (`src/unused.ts` and the `legacyFormat` export), and **complexity** (`describeHttpStatus`, cyclomatic complexity 14) |
+| `comment-debt-ts` | npm, single package, strict `tsconfig.json`, a `.comment-length.json` marker, a four-line comment and an example comment | the **comment-length gate** — the base-diff and staged-diff scopes, the recorded warning count, the three-line cap, and the example-comment ban |
+| `shadcn-ts` | npm, single package, `components.json`, Tailwind v4, a shadcn-shaped `components/ui/button.tsx` | the **design-system-contracts practice** — selection by `components.json`, the plan's practice pointer, and the `@shadcn/lint` local-recipe route |
+| `shadcn-local-recipe` | npm, single package, `components.json`, a `.code-quality/` local recipe and template | the **local-recipe path** — `check-local.mjs` validates the local recipe/template, `plan.mjs` selects it and renders `eslint.config.mjs` |
 
 **A fresh copy of an apply-target fixture must be a git repository with at least one commit.** The
 `fallow-audit` recipe's verify is `bun run fallow:audit`, and `fallow audit` detects its base ref from

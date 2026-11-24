@@ -67,12 +67,15 @@ Each recipe is one file at `library/recipes/<id>.md`: machine-checkable frontmat
 | `secret-scan` | gitleaks over the staged diff in pre-commit, and over the full history in CI |
 | `dep-audit` | a lockfile advisory scan with a committed count floor, plus the Renovate config |
 | `semgrep` | pattern-level security findings — injection, unsafe APIs — beside the fast linter |
+| `comment-length` | a three-line cap on the comments a change adds, opt-in through `.comment-length.json` |
 | `dep-graph` | no dependency cycles, no deep import into another package's internals |
 | `license-check` | a dependency license allowlist and an SBOM step in CI |
 | `release-automation` / `-npm` | the commit-msg check, the changelog and the version derivation |
 | `agent-guidance` | a lean `AGENTS.md` section pointing at `docs/code-quality.md` |
 
 The unsuffixed recipes target Bun; the `-npm` variants target npm and pnpm. `eslint-prettier` is the npm/pnpm alternative to `biome-assist-npm` for a project that already runs ESLint + Prettier.
+
+The library also carries **practices** — reference prose for the judgement half of a best practice no gate can fail on — at `library/practices/<id>.md`. The plan delivers the selected ones to `docs/code-quality/practices/` and lists them in the `AGENTS.md` block. `generated-code-cleanup` and `design-system-contracts` are the UI-SDK and shadcn-lint evaluations' judgement half; `comment-length` is the machine-checkable half of the comment rule.
 
 Four recipes the best-practices triage routes are not built yet — `jest-coverage`, `stryker-mutation-jest`, `a11y` and `bundle-budget` — because no fixture can prove them: none declares `jest`, none declares a UI framework, and none produces a bundle to measure. The unblocking step is a fixture, not a new seam; [`research/best-practices-coverage.md`](research/best-practices-coverage.md) records the routing.
 
@@ -89,6 +92,7 @@ Two different things:
 library/                     the recipe library, fetched at runtime by the installed skill
   RECIPE-CONTRACT.md         the recipe frontmatter and body contract
   recipes/<id>.md            one file per recipe
+  practices/<id>.md          one file per practice
   templates/<id>/            the files each recipe writes
   library.json               the generated index (scripts/build-library.mjs)
 scripts/build-library.mjs    regenerates library/library.json from the recipe frontmatter
