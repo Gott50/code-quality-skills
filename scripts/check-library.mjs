@@ -70,7 +70,7 @@ import { parseFrontmatter } from "../skills/code-quality-setup/scripts/frontmatt
 // here, the generator, and the skill's `update.mjs` `LIBRARY_SCHEMA_VERSION` (which cannot import
 // from this repo: the skill ships standalone). A bump here without the generator's (or vice
 // versa) fails check 1; a bump without the skill's leaves the version gate unable to fire (#182).
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const LIBRARY_DIR = join(REPO_ROOT, "library");
 const RECIPES_DIR = join(LIBRARY_DIR, "recipes");
