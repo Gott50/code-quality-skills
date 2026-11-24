@@ -10,8 +10,9 @@ manifest that declares `exports`, presence-only.
 
 ## The two cases
 
-`@fixture/lib` is broken. `src/index.ts` re-exports a type from `src/internal.ts` through an import
-expression, and the emitted `dist/index.d.ts` keeps that specifier:
+`@fixture/lib` is broken. `src/index.ts` re-exports a type from `src/internal.ts` through an
+import expression — deliberately inline, not a top-level `import type` — and the emitted
+`dist/index.d.ts` keeps that specifier:
 
 ```ts
 export type Broken = import("../src/internal.js").Secret;
@@ -36,6 +37,11 @@ npm run build --workspaces
 
 Both builds exit 0 and write `packages/lib/dist` and `packages/clean/dist`. The fixture is not
 installed in this repo and carries no `node_modules`; `npm install` is the first step of the proof.
+
+Each package's `tsconfig.json` repeats `outDir` and `rootDir` even though `tsconfig.base.json`
+declares them: a relative path in an extended config resolves against the file that declares it, so
+the base's `"rootDir": "src"` would point at `fixtures/published-ts/src` and the build would fail
+with TS6059. The repetition is load-bearing, not a leftover.
 
 With the `package-surface` recipe applied at the repo root, the gate packs both packages and
 typechecks their entries:
