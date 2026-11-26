@@ -256,8 +256,20 @@ Without a manifest, from the filesystem alone:
 |---|---|
 | `create` | `new` (absent) · `no-op` (byte-identical, or a formatter-only rewrite — see below) · `drift` (present, different, the repo is a subset of the template) · `update` (present, different, the repo carries content the template does not, **no manifest** — the repo's additions, or the library's own earlier render — see below) · `loss` (present, different, the repo carries content the template does not and it is the repo's own — **manifest present**, or a repo line whose key the template does not declare — see below) |
 | `merge` (markers) | `new` (no block) · `no-op` (identical block) · `replace` (different block) · `duplicate` (no block, but the file already carries the block's content — see below) |
-| `merge` (JSON) | `new` (absent) · `add` (missing keys) · `no-op` · `collision` (an existing value would change) |
+| `merge` (JSON) | `new` (absent) · `add` (missing keys) · `no-op` · `collision` (an existing value would change — except a dependency leaf, see below) |
 | `patch` | `new` (absent) · `no-op` (the after-state already holds — see below) · `patch` (always shown; the detector cannot verify it) |
+
+A `merge` (JSON) row's note names the leaf paths it would touch, in three groups joined with `; `:
+`would change: …` (the recipe owns the leaf and the repo's value differs — the collision), `adds: …`
+(the leaf is absent), and `keeps: …` (the repo owns the leaf and its value differs — a seeded array
+the repo extended, or a dependency range). A leaf under `dependencies`, `devDependencies`,
+`peerDependencies` or `optionalDependencies` is **seed-only** (#244): the recipe owns the
+dependency's presence, the repo owns the range, so a declared range is never a collision — the plan
+reports it as `keeps:` and the apply adds the dependency only where the project does not already
+declare it. Every other scalar leaf, notably `tsconfig.json`'s `compilerOptions.module`/`target`,
+stays a collision. A `no-op` may therefore carry a `keeps:` note. The inline diff's target side is
+the merge result, not the raw fragment: a seed-only leaf the repo declares keeps the repo's value,
+so the diff shows only the leaves the apply writes.
 
 `loss` is a `create` target the repo has customized (#36): the repo's file carries content the
 template does not, so overwriting it drops that content. A `create` target has no marker, so the

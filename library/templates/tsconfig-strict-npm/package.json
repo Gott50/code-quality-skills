@@ -3,7 +3,7 @@
     "typecheck": "node scripts/typecheck-gate.mjs"
   },
   "devDependencies": {
-    "@types/node": "latest",
+    "@types/node": "^22.0.0",
     "typescript": "^5.6.0"
   }
 }

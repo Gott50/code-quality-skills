@@ -479,19 +479,20 @@ function currentOwned(entry, recipeId) {
   return entry.content.replace(/\n+$/, "");
 }
 
-function pick(doc, frag) {
+function pick(doc, frag, path = "") {
   if (frag === null || typeof frag !== "object" || Array.isArray(frag)) {
     if (doc === undefined) return MISSING;
     // A seeded array the repo extended is the template's value, not the repo's (#104): the recipe
     // owns the array's presence and its seeded elements, so the owned content is the template's
-    // array and a re-run reads `intact` instead of `update` forever.
-    return seededLeaf(frag, doc) ? frag : doc;
+    // array and a re-run reads `intact` instead of `update` forever. A dependency leaf is the same
+    // (#244): the recipe owns the dependency's presence, the repo owns the range.
+    return seedOnlyLeaf(path, frag, doc) ? frag : doc;
   }
   if (doc === null || typeof doc !== "object" || Array.isArray(doc)) return MISSING;
   const out = {};
   for (const [key, value] of Object.entries(frag)) {
     if (!(key in doc)) return MISSING;
-    const sub = pick(doc[key], value);
+    const sub = pick(doc[key], value, path ? `${path}.${key}` : key);
     if (sub === MISSING) return MISSING;
     out[key] = sub;
   }
@@ -515,11 +516,13 @@ function ownedContent(fileContent, entry, recipeId) {
   return extractBlock(fileContent, recipeId);
 }
 
-// The leaf paths a JSON merge would add (absent in `doc`) and change (present with a different
-// value). A fragment can do both: one new key does not excuse a changed one.
+// The leaf paths a JSON merge would add (absent in `doc`), change (present with a different value
+// the recipe owns), and keep (present with a different value the repo owns — a seeded array or a
+// dependency range, #244). A fragment can do all three: one new key does not excuse a changed one.
 function jsonMergeDelta(doc, frag) {
   const changed = [];
   const added = [];
+  const kept = [];
   const walk = (f, d, prefix) => {
     for (const [key, value] of Object.entries(f)) {
       const path = prefix ? `${prefix}.${key}` : key;
@@ -529,13 +532,14 @@ function jsonMergeDelta(doc, frag) {
         walk(value, d[key], path);
       } else if (!dIsObj || !(key in d)) {
         added.push(path);
-      } else if (JSON.stringify(d[key]) !== JSON.stringify(value) && !seededLeaf(value, d[key])) {
-        changed.push(path);
+      } else if (JSON.stringify(d[key]) !== JSON.stringify(value)) {
+        if (seedOnlyLeaf(path, value, d[key])) kept.push(path);
+        else changed.push(path);
       }
     }
   };
   walk(frag, doc, "");
-  return { added, changed };
+  return { added, changed, kept };
 }
 
 // The subset of `frag` whose leaves already exist in `doc` — the recipe's owned content as it
@@ -551,6 +555,21 @@ function presentFragment(doc, frag) {
     if (sub !== undefined) out[key] = sub;
   }
   return Object.keys(out).length > 0 ? out : undefined;
+}
+
+// The fragment as the merge would leave the file: a seed-only leaf the repo already declares keeps
+// the repo's value (#244), so the inline diff shows only the leaves the apply actually writes — a
+// dependency range is never rendered as a change, only a genuinely absent dependency as an add.
+function mergeTarget(doc, frag, path = "") {
+  if (frag === null || typeof frag !== "object" || Array.isArray(frag)) {
+    return doc !== undefined && seedOnlyLeaf(path, frag, doc) ? doc : frag;
+  }
+  if (doc === null || typeof doc !== "object" || Array.isArray(doc)) return frag;
+  const out = {};
+  for (const [key, value] of Object.entries(frag)) {
+    out[key] = key in doc ? mergeTarget(doc[key], value, path ? `${path}.${key}` : key) : value;
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -671,13 +690,29 @@ function covers(template, repo) {
 // the template's when every template element is present in it (the same `covers` test the
 // create-loss comparison uses), so an extended array is not a change — the recipe owns the array's
 // presence and its seeded elements, not the repo's additions. A scalar is the recipe's to set, so
-// it is compared by value. This is the JSON-merge half of "the recipe owns the keys it declares,
+// it is compared by value — except a dependency leaf, which `seedOnlyLeaf` treats as seed-only
+// (#244). This is the JSON-merge half of "the recipe owns the keys it declares,
 // not the file": `tsconfig.json`'s `lib` is the case, where the repo adds `DOM`/`DOM.Iterable` and
 // the merge must not propose dropping them.
 function seededLeaf(templateValue, repoValue) {
   return (
     Array.isArray(templateValue) && Array.isArray(repoValue) && covers(repoValue, templateValue)
   );
+}
+
+// The package.json maps whose leaves the recipe seeds: the repo owns the range, the recipe owns
+// the dependency's presence (#244). A template range never replaces a declared one.
+const DEPENDENCY_MAPS = new Set([
+  "dependencies",
+  "devDependencies",
+  "peerDependencies",
+  "optionalDependencies",
+]);
+
+function seedOnlyLeaf(path, templateValue, repoValue) {
+  if (seededLeaf(templateValue, repoValue)) return true;
+  const container = path.split(".")[0];
+  return DEPENDENCY_MAPS.has(container);
 }
 
 // The paths where `repo` carries content `template` does not (#44). Objects recurse by key: a key
@@ -965,20 +1000,21 @@ function filesystemVerdict(write, content, projectRoot, recipeId, manifestPresen
           note: "target is not valid JSON",
           verdict: "collision",
         };
-      const { changed, added } = jsonMergeDelta(doc, frag);
+      const { changed, added, kept } = jsonMergeDelta(doc, frag);
       const present = presentFragment(doc, frag);
       const diff = unifiedDiff(
         present ? JSON.stringify(present, null, 2) : "",
-        JSON.stringify(frag, null, 2),
+        JSON.stringify(mergeTarget(doc, frag), null, 2),
         write.target,
       );
-      if (changed.length > 0) {
-        return { diff, note: `would change: ${changed.join(", ")}`, verdict: "collision" };
-      }
-      if (added.length > 0) {
-        return { diff, note: `adds: ${added.join(", ")}`, verdict: "add" };
-      }
-      return { verdict: "no-op" };
+      const notes = [];
+      if (changed.length > 0) notes.push(`would change: ${changed.join(", ")}`);
+      if (added.length > 0) notes.push(`adds: ${added.join(", ")}`);
+      if (kept.length > 0) notes.push(`keeps: ${kept.join(", ")}`);
+      const note = notes.join("; ");
+      if (changed.length > 0) return { diff, note, verdict: "collision" };
+      if (added.length > 0) return { diff, note, verdict: "add" };
+      return kept.length > 0 ? { note, verdict: "no-op" } : { verdict: "no-op" };
     }
     const block = existing === null ? null : extractBlock(existing, recipeId);
     const target = content.replace(/\n+$/, "");
