@@ -1298,7 +1298,7 @@ function buildPlan(report, opts) {
     for (const w of resolveWrites(r, stack.workspace, selectedPractices)) {
       if (w.target.startsWith(".husky/") && !hookInstallerPresent) {
         hookWarnings.push(
-          `\`${w.target}\` (${r.id}) — no hook installer is selected or already applied, so the block is not written; apply \`repo-hygiene-npm\` (or \`repo-hygiene\`) to wire the hooks`,
+          `\`${w.target}\` (${r.id}) — no hook installer is selected or already applied, so the block is not written; apply \`repo-hygiene-npm\` (or \`repo-hygiene\`) to wire the hooks.`,
         );
         continue;
       }
