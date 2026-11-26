@@ -122,6 +122,8 @@ A file row whose verdict is **`update`** (see the plan's *Updates* section) is a
 
 A file row whose verdict is **`no-op`** on a `patch` is the after-state the recipe body states already holding: the target declares every key the template declares, with the template's scalar values. Write nothing for that entry — the patch is done — and record it like any other file (RECIPE-CONTRACT.md → `files`).
 
+A `.husky/` block the plan omits (see the plan's *Warnings* section) is **not written**: no hook installer is selected or already applied, so the block would be inert. The recipe's other files — its config, its `package.json` merge, its own CI workflow — still apply, and the recipe is recorded once its `verify` passes. Apply `repo-hygiene-npm` (or `repo-hygiene`) to wire the hooks.
+
 Record each recipe in `.code-quality.json` as it completes — recipe-granular, after its `verify` passes — through the canonical writer, never by hand:
 
 ```

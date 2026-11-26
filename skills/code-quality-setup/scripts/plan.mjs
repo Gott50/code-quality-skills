@@ -1273,6 +1273,22 @@ function buildPlan(report, opts) {
     gates: renderGatesTable(selected),
   };
 
+  // A `.husky/` block is inert without husky: the hook file is written but nothing installs the
+  // hooks or wires `prepare`. The block is emitted only when the repo will have a working
+  // installer — a selected recipe installs husky, or the root package.json already declares husky
+  // and a `prepare` script (the hand-set-up repo). The recipe itself is NOT dropped: its config,
+  // package.json and its own CI workflow still apply, and dropping it would cascade into
+  // `ci-workflow-npm` (fixtures/README.md → the mutation-recipe precedent).
+  const rootPackage = report.packages?.[0] ?? {};
+  const installerSelected = selected.some(
+    (r) => r.id === "repo-hygiene" || r.id === "repo-hygiene-npm",
+  );
+  const installerApplied =
+    (rootPackage.dependencies ?? []).includes("husky") &&
+    (rootPackage.scripts ?? []).includes("prepare");
+  const hookInstallerPresent = installerSelected || installerApplied;
+  const hookWarnings = [];
+
   // Concrete writes per selected recipe, with rendered content. A template the recipe names but
   // that is not on disk is reported, not fatal: the rest of the plan still renders.
   const writesByRecipe = new Map();
@@ -1280,6 +1296,12 @@ function buildPlan(report, opts) {
   for (const r of selected) {
     const writes = [];
     for (const w of resolveWrites(r, stack.workspace, selectedPractices)) {
+      if (w.target.startsWith(".husky/") && !hookInstallerPresent) {
+        hookWarnings.push(
+          `\`${w.target}\` (${r.id}) — no hook installer is selected or already applied, so the block is not written; apply \`repo-hygiene-npm\` (or \`repo-hygiene\`) to wire the hooks`,
+        );
+        continue;
+      }
       let content;
       try {
         content = w.practice
@@ -1376,6 +1398,7 @@ function buildPlan(report, opts) {
     // apply, so the consumer commits first (or pins a base) instead of hitting a confusing failure.
     gitWarnings: hasCommits(report.root) ? [] : gitBaseRecipes(selected).map((r) => r.id),
     heldBack,
+    hookWarnings,
     manifestPresent: manifest !== null,
     // `--check` prints the drift report, not the plan, so the measurement (which reads the gate
     // artifacts) is skipped: a CI job must not pay for a section it never renders.
@@ -2046,13 +2069,14 @@ function agentsMdWarnings(selected, writesByRecipe) {
   return warnings;
 }
 
-function renderWarnings(errored, templateErrors, gitWarnings, agentsMd) {
+function renderWarnings(errored, templateErrors, gitWarnings, agentsMd, hookWarnings) {
   const lines = ["## Warnings", ""];
   if (
     errored.length === 0 &&
     templateErrors.length === 0 &&
     gitWarnings.length === 0 &&
-    agentsMd.length === 0
+    agentsMd.length === 0 &&
+    hookWarnings.length === 0
   ) {
     lines.push("_None._");
     return lines.join("\n");
@@ -2070,6 +2094,7 @@ function renderWarnings(errored, templateErrors, gitWarnings, agentsMd) {
     );
   }
   for (const w of agentsMd) lines.push(`- ${w}`);
+  for (const w of hookWarnings) lines.push(`- ${w}`);
   return lines.join("\n");
 }
 
@@ -2165,7 +2190,13 @@ function renderPlan(plan, opts) {
     "",
   );
   out.push(
-    renderWarnings(plan.errored, plan.templateErrors, plan.gitWarnings, plan.agentsMdWarnings),
+    renderWarnings(
+      plan.errored,
+      plan.templateErrors,
+      plan.gitWarnings,
+      plan.agentsMdWarnings,
+      plan.hookWarnings,
+    ),
     "",
   );
 

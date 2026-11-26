@@ -129,7 +129,13 @@ The first line after the title is the state:
 7. **Files (phase 1 — writes, priority order)** — every file to be written: `path (action, scope) — verdict`.
    A `merge`/`patch`/collision/loss/update shows its unified diff inline; a `create` is `new` /
    `no-op` / `drift` / `update` / `loss`. A `create` row also carries the render hash the apply
-   records, as ` · render <hash>`. `--diff` adds the rest.
+   records, as ` · render <hash>`. `--diff` adds the rest. A `.husky/` write is emitted only when
+   the repo will have a working hook installer — a selected recipe installs husky (`repo-hygiene`
+   or `repo-hygiene-npm`), or the root `package.json` already declares `husky` and a `prepare`
+   script. Otherwise the row is omitted (not written, not hashed, not recorded) and a Warnings line
+   names it. The recipe is not dropped: its config, `package.json` and its own CI workflow still
+   apply, and dropping it would cascade into `ci-workflow-npm` (fixtures/README.md → the
+   mutation-recipe precedent).
 8. **Losses (create drift — the repo's extra content would be dropped)** — every `create` target the
    repo has customized (verdict `loss`), one `- \`<path>\` (<recipe>) — N key(s)/line(s) the template
    lacks:` line each followed by the lost items as `  - \`<item>\`` bullets, or `_None._`. The repo's
@@ -182,7 +188,9 @@ The first line after the title is the state:
    the agent-conventions note states). The block is a section of a file that also carries the repo's
    own content, so the check is conservative by construction; it is a warning and never a `verify`,
    because a repo whose `AGENTS.md` predates the block must not fail closed and leave the recipe
-   unrecorded (RECIPE-CONTRACT.md → `verify`).
+   unrecorded (RECIPE-CONTRACT.md → `verify`). Plus one line per `.husky/` write the plan omits
+   because no hook installer is selected or already applied: the block would be inert, so it is not
+   written, and the line names the path, the recipe, and the installer to apply.
 14. **Drift (manifest)** — the per-recipe state from the manifest, or a degraded note. The state is
    the worst file verdict (`missing` > `loss` > `drifted` > `update` > `intact`), so a recipe whose
    only non-intact file is a skipped `create` loss reads `loss`, not `drifted` (#46).
