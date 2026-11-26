@@ -1211,6 +1211,12 @@ function classify(manifest, { library, files }) {
   for (const rec of manifest?.recipes ?? []) {
     if (!known.has(rec.id)) recipes.push({ files: [], id: rec.id, state: "stale" });
   }
+  // A declined recipe is no longer in the selection, so it is not in `library` and the loop above
+  // never sees it (#245). The manifest still records the decline, so report it: the drift section
+  // must keep saying `declined` rather than silently dropping the recipe.
+  for (const id of declined) {
+    if (!known.has(id)) recipes.push({ files: [], id, state: "declined" });
+  }
   return { recipes };
 }
 
@@ -1233,7 +1239,11 @@ function buildPlan(report, opts) {
       narrowNote = `No recipe with id "${opts.recipe}".`;
       selectedIds = [];
     } else if (!selection.includes(opts.recipe)) {
-      narrowNote = `Recipe "${opts.recipe}" is not selected — its \`when\` does not hold.`;
+      const r = byId.get(opts.recipe);
+      const declined = (r.reasons ?? []).some((x) => x.predicate === "declined");
+      narrowNote = declined
+        ? `Recipe "${opts.recipe}" is declined in the manifest.`
+        : `Recipe "${opts.recipe}" is not selected — its \`when\` does not hold.`;
       selectedIds = [];
     } else {
       const r = byId.get(opts.recipe);

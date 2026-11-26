@@ -478,3 +478,10 @@ names them:
   two-space indented with a trailing comma.
 - `{{root}}` — the per-file token: the member's relative path back to the workspace root (`.` for a
   root-scoped file), taken from `stack.workspace.members[].rootPrefix`.
+
+The selection these keys render is the detector's **resolved** selection: a recipe recorded as
+declined in `.code-quality.json` is excluded, and every recipe whose `requires` no longer holds is
+held back with the detector's existing reason. So `{{plan.gates}}` and `{{plan.details}}` name only
+the gates the apply will actually install — a declined recipe's gate never appears in the rendered
+`AGENTS.md` or `docs/code-quality.md`. The Not-selected matrix marks a declined recipe `declined in
+the manifest`, and the Drift section keeps its `declined` state.

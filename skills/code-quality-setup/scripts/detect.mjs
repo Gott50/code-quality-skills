@@ -894,11 +894,34 @@ function evaluateWhen(item, ctx) {
   return { applicable: reasons.every((r) => r.pass), reasons };
 }
 
+// A recipe that requires a declined recipe cannot be selected, and neither can one that requires
+// such a recipe: the block cascades down the `requires` chain. Computed as a fixpoint over the
+// requires graph so the whole dependent subtree is held back, not only the direct dependents.
+function declinedBlocked(usable, declined) {
+  const blocked = new Set();
+  for (let guard = 0; guard < usable.length + 2; guard++) {
+    let changed = false;
+    for (const r of usable) {
+      if (blocked.has(r.id) || declined.has(r.id)) continue;
+      const needs = (r.when?.requires ?? [])
+        .map((p) => p.recipe)
+        .filter((id) => typeof id === "string" && id !== "*");
+      if (needs.some((id) => declined.has(id) || blocked.has(id))) {
+        blocked.add(r.id);
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  return blocked;
+}
+
 // Selection is a fixpoint over recipes AND practices: `requires: [{ recipe: X }]` /
 // `requires: [{ practice: X }]` makes applicability depend on the selection, and `conflicts.recipes`
 // can remove a recipe another one requires. A practice's own `when` decides, evaluated by the same
 // engine; `enforcedBy` is metadata and never selects. Grow, then shrink, until stable.
 function selectItems(recipes, practices, ctx) {
+  const declined = ctx.declined ?? new Set();
   const usable = [...recipes, ...practices].filter((r) => r.error === null);
   const byId = new Map(usable.map((r) => [r.id, r]));
   const base = new Set();
@@ -922,6 +945,21 @@ function selectItems(recipes, practices, ctx) {
   }
 
   const heldBack = [];
+  // A declined recipe is removed before the conflict pass, so it never wins a conflict against a
+  // recipe that stays. Every recipe that requires it — directly or through another blocked recipe
+  // — is removed with it, with the same reason the shrink pass uses for a dependency that
+  // disappeared. The grow pass above still sees the declined recipes, which is what lets the
+  // dependents enter the selection and be recorded here rather than silently vanish (#245).
+  const blocked = declinedBlocked(usable, declined);
+  for (const id of [...selection]) {
+    if (declined.has(id)) {
+      selection.delete(id);
+    } else if (blocked.has(id)) {
+      selection.delete(id);
+      heldBack.push({ id, reason: "a dependency it requires is no longer selected" });
+    }
+  }
+
   for (let guard = 0; guard < usable.length + 2; guard++) {
     let changed = false;
     for (const id of [...selection]) {
@@ -986,6 +1024,14 @@ function detect(projectDir, libraryDir) {
   const root = resolve(projectDir);
   if (!isDir(root)) throw new Error(`not a directory: ${root}`);
   const rootManifest = readJson(join(root, "package.json"));
+  // The applied-state manifest's declines (#245). Absent or corrupt reads as no declines; a
+  // malformed entry is ignored rather than fatal, because the detector must still report a matrix.
+  const appliedManifest = readJson(join(root, ".code-quality.json"));
+  const declined = new Set(
+    (Array.isArray(appliedManifest?.declined) ? appliedManifest.declined : [])
+      .map((d) => d?.id)
+      .filter((id) => typeof id === "string"),
+  );
   const packageManager = detectPackageManager(root, rootManifest);
   const workspace = detectWorkspace(root, rootManifest, packageManager.name);
   const rootTsconfig = resolveTsconfig(root);
@@ -1023,6 +1069,7 @@ function detect(projectDir, libraryDir) {
   ].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
   const ctx = {
+    declined,
     itemId: null,
     languages,
     packageManager,
@@ -1043,8 +1090,12 @@ function detect(projectDir, libraryDir) {
   const matrix = recipes.map((r) => {
     if (r.error !== null) return { error: r.error, id: r.id, source: r.source };
     const { applicable, reasons } = evaluateWhen(r, { ...ctx, itemId: r.id, selection });
+    // A declined recipe is not applicable, whatever its `when` says: the manifest removed it from
+    // the selection. The leading reason names the real cause, so the plan's Not-selected matrix
+    // does not report a `requires` failure that only exists because a dependency was declined.
+    const isDeclined = declined.has(r.id);
     return {
-      applicable,
+      applicable: isDeclined ? false : applicable,
       commands: r.commands,
       conflicts: r.conflicts,
       cost: r.cost,
@@ -1055,7 +1106,9 @@ function detect(projectDir, libraryDir) {
       libraryDir: r.libraryDir,
       priority: r.priority,
       purpose: r.purpose,
-      reasons,
+      reasons: isDeclined
+        ? [{ detail: "declined in the manifest", pass: false, predicate: "declined" }, ...reasons]
+        : reasons,
       selected: selection.has(r.id),
       source: r.source,
       title: r.title,

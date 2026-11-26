@@ -132,7 +132,7 @@ node scripts/manifest.mjs record [projectDir] --recipe <id> --recipe-hash <hash>
 For a `create` target, also record the render hash the plan prints (` · render <hash>`), so a later
 library move that only removes content reads `update` instead of being silently dropped.
 
-The writer sorts keys, indents with two spaces, and ends with a newline, so the committed manifest passes the formatter recipes' `format:check` (ADR 0002). The hashes are the ones [PLAN-SCHEMA.md](scripts/PLAN-SCHEMA.md) → the manifest hash convention defines. A declined recipe is recorded with `node scripts/manifest.mjs decline [projectDir] --recipe <id>`. A failed `verify` is reported as-is, not rolled back; that recipe stays unrecorded, so a re-run resumes where it stopped. Declining the plan writes nothing.
+The writer sorts keys, indents with two spaces, and ends with a newline, so the committed manifest passes the formatter recipes' `format:check` (ADR 0002). The hashes are the ones [PLAN-SCHEMA.md](scripts/PLAN-SCHEMA.md) → the manifest hash convention defines. A declined recipe is recorded with `node scripts/manifest.mjs decline [projectDir] --recipe <id>`. Record the decline, then re-run `plan.mjs`: the plan re-resolves `requires`, holds back every recipe that required the declined one, and re-renders the guidance docs (`AGENTS.md`, `docs/code-quality.md`) from the achievable set. Do not hand-edit the rendered docs — the next plan run overwrites them. A failed `verify` is reported as-is, not rolled back; that recipe stays unrecorded, so a re-run resumes where it stopped. Declining the plan writes nothing.
 
 ### The library pin — recorded once the manifest exists
 

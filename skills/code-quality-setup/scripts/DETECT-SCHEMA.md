@@ -129,6 +129,12 @@ order the merged local + library list is sorted into (see *Local recipes*).
 `reasons` is the applicability matrix: one entry per check, in evaluation order, each with the
 human-readable `detail` that says why it passed or failed. `applicable` is `reasons.every(pass)`.
 
+A recipe the project's `.code-quality.json` records as declined is reported `applicable: false` and
+`selected: false`, with a leading
+`{ "predicate": "declined", "pass": false, "detail": "declined in the manifest" }` reason. The
+leading reason names the real cause, so the plan's Not-selected matrix does not report a `requires`
+failure that only exists because a dependency was declined.
+
 ### The `when` evaluation rules
 
 | Key | Rule |
@@ -172,6 +178,15 @@ and `enforcedBy` is metadata that never selects. The detector therefore:
 
 Dropped recipes and practices land in `heldBack` with the reason. `selection` is sorted by `priority`
 descending — the order the plan applies them in; a practice has no `priority` and sorts at 0.
+
+A recipe recorded as declined in the project's `.code-quality.json` still takes part in the seed and
+grow passes — that is what lets its dependents enter the selection — but it is removed from the
+selection before the conflict pass, so it never wins a conflict against a recipe that stays. Every
+recipe that requires it — directly or through another blocked recipe — is removed with it and held
+back with the existing `a dependency it requires is no longer selected` reason. The detector reads
+only the `declined[].id` list; an absent or corrupt manifest reads as no declines, and a malformed
+entry is ignored rather than fatal. The declined recipe itself is not in `heldBack`; the matrix
+reports it as declined (see `recipes[]`).
 
 ### `collisions`
 
@@ -237,8 +252,9 @@ or project with no practices is valid, so an absent `practices/` is an empty lis
 ## What it does not do
 
 - No package manager, no network, no writes.
-- No plan rendering, no approval gate, no `.code-quality.json` — those are the manifest and
-  invocation-surface tickets.
+- No plan rendering, no approval gate, no manifest writes. It reads `.code-quality.json`'s
+  `declined` list (see *Selection is a fixpoint*) but never writes the manifest — that is the apply
+  step's job.
 - No `patch` verification: the contract says the detector cannot verify a `patch`, so it only
   carries the entry through to the plan.
 - No `{{plan.gates}}` / `{{plan.details}}` rendering. It supplies the data (`gates`, `undo`) those
